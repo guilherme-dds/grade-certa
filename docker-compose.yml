@@ -19,11 +19,15 @@ services:
       retries: 10
 
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: grade_certa_app
     restart: always
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       DATABASE_URL: mysql+pymysql://grade_user:grade_password@db:3306/grade_certa
     depends_on:
