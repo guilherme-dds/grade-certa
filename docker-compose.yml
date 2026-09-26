@@ -36,5 +36,15 @@ services:
     volumes:
       - ./backend:/app/backend
 
+  frontend:
+    build:
+      context: ./frontend
+    container_name: grade_certa_frontend
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      - app
+
 volumes:
   mysql_data:
