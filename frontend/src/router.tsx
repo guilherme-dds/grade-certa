@@ -4,10 +4,12 @@ import { AppLayout } from '@/layouts/AppLayout'
 import { AuthLayout } from '@/layouts/AuthLayout'
 import { AvailabilityPage } from '@/pages/AvailabilityPage'
 import { ComingSoonPage } from '@/pages/ComingSoonPage'
+import { ConflictsPage } from '@/pages/conflicts/ConflictsPage'
 import { DashboardPage } from '@/pages/dashboard/DashboardPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { RegisterPage } from '@/pages/RegisterPage'
+import { SchedulePage } from '@/pages/schedule/SchedulePage'
 import { SubjectsPage } from '@/pages/SubjectsPage'
 
 export const router = createBrowserRouter([
@@ -33,8 +35,8 @@ export const router = createBrowserRouter([
           { path: '/disciplinas', element: <SubjectsPage /> },
           { path: '/disponibilidade', element: <AvailabilityPage /> },
           { path: '/geracao', element: <ComingSoonPage title="Geração automática" /> },
-          { path: '/grade', element: <ComingSoonPage title="Grade gerada" /> },
-          { path: '/conflitos', element: <ComingSoonPage title="Conflitos" /> },
+          { path: '/grade', element: <SchedulePage /> },
+          { path: '/conflitos', element: <ConflictsPage /> },
           { path: '/relatorios', element: <ComingSoonPage title="Relatórios" /> },
         ],
       },

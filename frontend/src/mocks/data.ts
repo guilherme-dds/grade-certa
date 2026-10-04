@@ -24,7 +24,6 @@ export const recentInstitutions: { name: string; plan: string; status: Instituti
 
 export const coordStats = {
   scheduleStatus: 'Em geração',
-  pendingConflicts: 4,
   pendingAvailability: 6,
   totalTeachers: 42,
   nextGeneration: '18/09 · 08h00',

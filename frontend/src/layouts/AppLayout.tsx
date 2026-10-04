@@ -5,50 +5,53 @@ import { roles, roleShortLabels } from '@/auth/roles'
 import { navItemsFor } from '@/config/navigation'
 import { cn } from '@/lib/cn'
 import { institution } from '@/mocks/data'
+import { ScheduleProvider } from '@/schedule/ScheduleProvider'
 
 export function AppLayout() {
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (
-    <div className="flex min-h-svh">
-      {/* Desktop */}
-      <aside className="sticky top-0 hidden h-svh w-60 shrink-0 md:block">
-        <Sidebar />
-      </aside>
+    <ScheduleProvider>
+      <div className="flex min-h-svh">
+        {/* Desktop */}
+        <aside className="sticky top-0 hidden h-svh w-60 shrink-0 md:block">
+          <Sidebar />
+        </aside>
 
-      {/* Mobile: barra superior + gaveta */}
-      <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center justify-between bg-navy px-4 md:hidden">
-        <span className="font-bold text-white">GradeCerta</span>
-        <button
-          type="button"
-          onClick={() => setMenuOpen(true)}
-          aria-label="Abrir menu"
-          aria-expanded={menuOpen}
-          className="rounded-md p-2 text-white hover:bg-white/10"
-        >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-        </button>
-      </div>
-      {menuOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
+        {/* Mobile: barra superior + gaveta */}
+        <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center justify-between bg-navy px-4 md:hidden">
+          <span className="font-bold text-white">GradeCerta</span>
           <button
             type="button"
-            aria-label="Fechar menu"
-            onClick={() => setMenuOpen(false)}
-            className="absolute inset-0 bg-black/40"
-          />
-          <div className="relative h-full w-64">
-            <Sidebar onNavigate={() => setMenuOpen(false)} />
-          </div>
+            onClick={() => setMenuOpen(true)}
+            aria-label="Abrir menu"
+            aria-expanded={menuOpen}
+            className="rounded-md p-2 text-white hover:bg-white/10"
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
-      )}
+        {menuOpen && (
+          <div className="fixed inset-0 z-40 md:hidden">
+            <button
+              type="button"
+              aria-label="Fechar menu"
+              onClick={() => setMenuOpen(false)}
+              className="absolute inset-0 bg-black/40"
+            />
+            <div className="relative h-full w-64">
+              <Sidebar onNavigate={() => setMenuOpen(false)} />
+            </div>
+          </div>
+        )}
 
-      <main className="min-w-0 flex-1 px-4 pt-20 pb-10 md:px-11 md:py-9">
-        <Outlet />
-      </main>
-    </div>
+        <main className="min-w-0 flex-1 px-4 pt-20 pb-10 md:px-11 md:py-9">
+          <Outlet />
+        </main>
+      </div>
+    </ScheduleProvider>
   )
 }
 
