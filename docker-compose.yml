@@ -21,7 +21,7 @@ services:
   app:
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: auth-service/Dockerfile
     container_name: grade_certa_app
     restart: always
     ports:
@@ -34,7 +34,7 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ./backend:/app/backend
+      - ./auth-service:/app
 
 volumes:
   mysql_data:

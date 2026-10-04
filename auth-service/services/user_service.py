@@ -1,9 +1,9 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from backend.core.security import get_password_hash
-from backend.models.user import User
-from backend.schemas.user import UserCreate
+from core.security import get_password_hash
+from models.user import User
+from schemas.user import UserCreate
 
 
 class UserService:

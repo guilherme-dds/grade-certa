@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import bcrypt
 import jwt
-from backend.core.config import ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, SECRET_KEY
+from core.config import ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, SECRET_KEY
 
 
 def get_password_hash(password: str) -> str:
