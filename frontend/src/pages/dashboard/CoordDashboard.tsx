@@ -2,13 +2,20 @@ import { Link } from 'react-router'
 import { buttonStyles } from '@/components/ui/buttonStyles'
 import { StatCard, StatGrid } from '@/components/ui/StatCard'
 import { coordStats } from '@/mocks/data'
+import { useSchedule } from '@/schedule/useSchedule'
 
 export function CoordDashboard() {
+  const pendingConflicts = useSchedule().conflicts.length
+
   return (
     <div className="space-y-6">
       <StatGrid>
         <StatCard label="Status da grade" value={coordStats.scheduleStatus} tone="warning" size="md" />
-        <StatCard label="Conflitos pendentes" value={coordStats.pendingConflicts} tone="danger" />
+        <StatCard
+          label="Conflitos pendentes"
+          value={pendingConflicts}
+          tone={pendingConflicts > 0 ? 'danger' : 'success'}
+        />
         <StatCard
           label="Disponibilidade pendente"
           value={coordStats.pendingAvailability}
