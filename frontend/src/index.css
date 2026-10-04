@@ -1,0 +1,36 @@
+@import 'tailwindcss';
+
+/* Tokens do design (Claude Design · GradeCerta.dc.html) */
+@theme {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --color-paper: #f4f1ea;
+  --color-ink: #1c2430;
+  --color-muted: #6b6455;
+  --color-line: #dbd5c6;
+  --color-line-soft: #efebdf;
+
+  --color-navy: #16233d;
+  --color-primary: #2f6f5e;
+  --color-primary-hover: #275c4e;
+  --color-primary-soft: #e4ede9;
+  --color-primary-soft-line: #c7dbd3;
+  --color-accent: #5fa88f;
+
+  --color-warning: #c68a1e;
+  --color-warning-soft: #fbf0da;
+  --color-danger: #aa3e22;
+  --color-danger-soft: #f3e2dc;
+  --color-lilac-soft: #ede7f3;
+}
+
+@layer base {
+  body {
+    @apply bg-paper font-sans text-ink antialiased;
+  }
+
+  ::selection {
+    @apply bg-primary text-white;
+  }
+}
