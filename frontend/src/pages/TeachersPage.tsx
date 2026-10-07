@@ -6,16 +6,20 @@ import { DataTable } from '@/components/ui/DataTable'
 import { PageHeader, SectionHeader } from '@/components/ui/PageHeader'
 import { StatCard, StatGrid } from '@/components/ui/StatCard'
 import { availableSubjectsList, initialTeachers, type Teacher } from '@/mocks/teachers'
+import { DeleteTeacherDialog } from './teachers/DeleteTeacherDialog'
+import { SubjectDialog } from './teachers/SubjectDialog'
 import { TeacherDialog } from './teachers/TeacherDialog'
 
 export function TeachersPage() {
   const [teachers, setTeachers] = useState<Teacher[]>(initialTeachers)
+  const [availableSubjects, setAvailableSubjects] = useState<string[]>(availableSubjectsList)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('todos')
   const [subjectFilter, setSubjectFilter] = useState<string>('todas')
 
   // Modais
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isTeacherDialogOpen, setIsTeacherDialogOpen] = useState(false)
+  const [isSubjectDialogOpen, setIsSubjectDialogOpen] = useState(false)
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null)
   const [deletingTeacher, setDeletingTeacher] = useState<Teacher | null>(null)
 
@@ -52,6 +56,15 @@ export function TeachersPage() {
   }, [teachers, search, statusFilter, subjectFilter])
 
   // Handlers
+  const handleAddSubject = (newSubject: string) => {
+    const trimmed = newSubject.trim()
+    if (!trimmed) return
+    const exists = availableSubjects.some((s) => s.toLowerCase() === trimmed.toLowerCase())
+    if (!exists) {
+      setAvailableSubjects((prev) => [...prev, trimmed])
+    }
+  }
+
   const handleSaveTeacher = (
     teacherData: Omit<Teacher, 'id' | 'currentWeeklyHours'> & { id?: string },
   ) => {
@@ -89,15 +102,24 @@ export function TeachersPage() {
         title="Professores"
         description="Gerencie os docentes cadastrados, suas disciplinas associadas e a carga horária semanal máxima."
         actions={
-          <Button
-            size="sm"
-            onClick={() => {
-              setEditingTeacher(null)
-              setIsDialogOpen(true)
-            }}
-          >
-            + Novo professor
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setIsSubjectDialogOpen(true)}
+            >
+              + Nova disciplina
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                setEditingTeacher(null)
+                setIsTeacherDialogOpen(true)
+              }}
+            >
+              + Novo professor
+            </Button>
+          </div>
         }
       />
 
@@ -138,7 +160,7 @@ export function TeachersPage() {
           <div className="w-48">
             <SelectField
               label="Disciplina"
-              options={['todas', ...availableSubjectsList] as const}
+              options={['todas', ...availableSubjects] as const}
               value={subjectFilter}
               onChange={(e) => setSubjectFilter(e.target.value)}
             />
@@ -247,7 +269,7 @@ export function TeachersPage() {
                     size="sm"
                     onClick={() => {
                       setEditingTeacher(row)
-                      setIsDialogOpen(true)
+                      setIsTeacherDialogOpen(true)
                     }}
                   >
                     Editar
@@ -282,40 +304,36 @@ export function TeachersPage() {
         )}
       </section>
 
-      {/* Modal de Criar / Editar */}
-      {isDialogOpen && (
+      {/* Modal de Criar / Editar Professor */}
+      {isTeacherDialogOpen && (
         <TeacherDialog
           teacher={editingTeacher}
+          availableSubjects={availableSubjects}
+          onAddSubject={handleAddSubject}
           onClose={() => {
-            setIsDialogOpen(false)
+            setIsTeacherDialogOpen(false)
             setEditingTeacher(null)
           }}
           onSave={handleSaveTeacher}
         />
       )}
 
+      {/* Modal de Criar Nova Disciplina (Avulso) */}
+      {isSubjectDialogOpen && (
+        <SubjectDialog
+          availableSubjects={availableSubjects}
+          onAddSubject={handleAddSubject}
+          onClose={() => setIsSubjectDialogOpen(false)}
+        />
+      )}
+
       {/* Modal de Confirmação de Exclusão */}
       {deletingTeacher && (
-        <dialog
-          open
-          className="m-auto w-[min(400px,calc(100%-2rem))] rounded-lg border border-line bg-white p-6 text-ink shadow-lg backdrop:bg-black/40"
-        >
-          <h3 className="text-base font-semibold">Excluir Professor</h3>
-          <p className="mt-2 text-xs leading-relaxed text-muted">
-            Tem certeza que deseja remover <strong>{deletingTeacher.name}</strong>? Esta ação não pode ser desfeita na memória local.
-          </p>
-          <div className="mt-5 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setDeletingTeacher(null)}>
-              Cancelar
-            </Button>
-            <Button
-              className="bg-danger hover:bg-danger/90 text-white"
-              onClick={() => handleDeleteTeacher(deletingTeacher.id)}
-            >
-              Excluir
-            </Button>
-          </div>
-        </dialog>
+        <DeleteTeacherDialog
+          teacher={deletingTeacher}
+          onClose={() => setDeletingTeacher(null)}
+          onConfirm={() => handleDeleteTeacher(deletingTeacher.id)}
+        />
       )}
     </>
   )

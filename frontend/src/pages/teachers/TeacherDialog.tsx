@@ -2,15 +2,23 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { FormField } from '@/components/FormField'
 import { SelectField } from '@/components/SelectField'
 import { Button } from '@/components/ui/Button'
-import { availableSubjectsList, type Teacher } from '@/mocks/teachers'
+import { type Teacher } from '@/mocks/teachers'
 
 interface TeacherDialogProps {
   teacher?: Teacher | null
+  availableSubjects: string[]
+  onAddSubject: (subjectName: string) => void
   onClose: () => void
   onSave: (teacherData: Omit<Teacher, 'id' | 'currentWeeklyHours'> & { id?: string }) => void
 }
 
-export function TeacherDialog({ teacher, onClose, onSave }: TeacherDialogProps) {
+export function TeacherDialog({
+  teacher,
+  availableSubjects,
+  onAddSubject,
+  onClose,
+  onSave,
+}: TeacherDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const isEditing = Boolean(teacher)
 
@@ -20,6 +28,11 @@ export function TeacherDialog({ teacher, onClose, onSave }: TeacherDialogProps) 
   const [status, setStatus] = useState<'ativo' | 'inativo'>(teacher?.status ?? 'ativo')
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>(teacher?.subjects ?? [])
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // Estado para criação inline de disciplina
+  const [isAddingSubject, setIsAddingSubject] = useState(false)
+  const [newSubjectName, setNewSubjectName] = useState('')
+  const [newSubjectError, setNewSubjectError] = useState('')
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -37,6 +50,34 @@ export function TeacherDialog({ teacher, onClose, onSave }: TeacherDialogProps) 
     setSelectedSubjects((prev) =>
       prev.includes(subject) ? prev.filter((s) => s !== subject) : [...prev, subject],
     )
+    if (errors.subjects) {
+      setErrors((prev) => ({ ...prev, subjects: '' }))
+    }
+  }
+
+  const handleCreateSubject = (e: FormEvent) => {
+    e.preventDefault()
+    const trimmed = newSubjectName.trim()
+    if (!trimmed) {
+      setNewSubjectError('Digite o nome da disciplina.')
+      return
+    }
+
+    const exists = availableSubjects.some(
+      (s) => s.toLowerCase() === trimmed.toLowerCase(),
+    )
+    if (exists) {
+      setNewSubjectError('Esta disciplina já existe.')
+      return
+    }
+
+    onAddSubject(trimmed)
+    if (!selectedSubjects.includes(trimmed)) {
+      setSelectedSubjects((prev) => [...prev, trimmed])
+    }
+    setNewSubjectName('')
+    setNewSubjectError('')
+    setIsAddingSubject(false)
     if (errors.subjects) {
       setErrors((prev) => ({ ...prev, subjects: '' }))
     }
@@ -85,7 +126,7 @@ export function TeacherDialog({ teacher, onClose, onSave }: TeacherDialogProps) 
       }}
       onClick={(e) => e.target === e.currentTarget && close()}
       aria-labelledby="teacher-dialog-title"
-      className="m-auto w-[min(500px,calc(100%-2rem))] rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
+      className="m-auto w-[min(520px,calc(100%-2rem))] rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
     >
       <form onSubmit={handleSubmit} className="p-6">
         <h2 id="teacher-dialog-title" className="text-[17px] font-semibold">
@@ -122,11 +163,61 @@ export function TeacherDialog({ teacher, onClose, onSave }: TeacherDialogProps) 
           />
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-muted">
-              Disciplinas ministradas
-            </label>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="block text-xs font-medium text-muted">
+                Disciplinas ministradas
+              </label>
+              {!isAddingSubject && (
+                <button
+                  type="button"
+                  onClick={() => setIsAddingSubject(true)}
+                  className="text-xs font-semibold text-primary hover:underline"
+                >
+                  + Criar nova disciplina
+                </button>
+              )}
+            </div>
+
+            {/* Campo Inline para criar disciplina */}
+            {isAddingSubject && (
+              <div className="mb-3 rounded-md border border-primary-soft-line bg-primary-soft/40 p-2.5">
+                <p className="mb-1.5 text-xs font-semibold text-primary">Nova disciplina</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Nome da disciplina (ex: Filosofia)"
+                    value={newSubjectName}
+                    onChange={(e) => {
+                      setNewSubjectName(e.target.value)
+                      if (newSubjectError) setNewSubjectError('')
+                    }}
+                    className="flex-1 rounded border border-line bg-white px-2.5 py-1.5 text-xs outline-none focus:border-primary"
+                    autoFocus
+                  />
+                  <Button type="button" size="sm" onClick={handleCreateSubject}>
+                    Adicionar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setIsAddingSubject(false)
+                      setNewSubjectName('')
+                      setNewSubjectError('')
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+                {newSubjectError && (
+                  <p className="mt-1 text-xs text-danger">{newSubjectError}</p>
+                )}
+              </div>
+            )}
+
             <div className="flex flex-wrap gap-1.5 rounded-md border border-line p-3">
-              {availableSubjectsList.map((subject) => {
+              {availableSubjects.map((subject) => {
                 const isSelected = selectedSubjects.includes(subject)
                 return (
                   <button
