@@ -21,6 +21,7 @@ import {
 import { type Teacher } from '@/mocks/teachers'
 import { DeleteTeacherDialog } from './teachers/DeleteTeacherDialog'
 import { SubjectDialog } from './teachers/SubjectDialog'
+import { TeacherAvailabilityDialog, type SlotState } from './teachers/TeacherAvailabilityDialog'
 import { TeacherDialog } from './teachers/TeacherDialog'
 
 export function TeachersPage() {
@@ -36,6 +37,12 @@ export function TeachersPage() {
   const [isSubjectDialogOpen, setIsSubjectDialogOpen] = useState(false)
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null)
   const [deletingTeacher, setDeletingTeacher] = useState<Teacher | null>(null)
+  const [availabilityTeacher, setAvailabilityTeacher] = useState<Teacher | null>(null)
+
+  // Estado local para horários de disponibilidade salvos por professor (front-end)
+  const [teacherAvailabilityMap, setTeacherAvailabilityMap] = useState<
+    Record<string, Record<string, SlotState>>
+  >({})
 
   // 1. Queries ao core-service
   const professoresQuery = useQuery({
@@ -226,7 +233,6 @@ export function TeachersPage() {
   const handleSaveTeacher = async (
     teacherData: Omit<Teacher, 'id' | 'currentWeeklyHours'> & { id?: string },
   ) => {
-    // Resolver IDs de todas as disciplinas selecionadas (criando no backend se não existirem)
     const disciplineIds: number[] = []
     const currentDisciplinesData = queryClient.getQueryData<DisciplinaBackend[]>(['disciplinas']) ?? []
     const currentMap = new Map(currentDisciplinesData.map((d) => [d.nome.toLowerCase(), d.id!]))
@@ -282,7 +288,7 @@ export function TeachersPage() {
     <>
       <PageHeader
         title="Professores"
-        description="Gerencie os docentes cadastrados, suas disciplinas associadas e a carga horária semanal máxima (integrado ao core-service)."
+        description="Gerencie os docentes cadastrados, suas disciplinas associadas e a carga horária semanal máxima."
         actions={
           <div className="flex gap-2">
             <Button
@@ -457,6 +463,14 @@ export function TeachersPage() {
                     <Button
                       variant="secondary"
                       size="sm"
+                      onClick={() => setAvailabilityTeacher(row)}
+                      title="Gerenciar horários de disponibilidade"
+                    >
+                      Horários
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       onClick={() => {
                         setEditingTeacher(row)
                         setIsTeacherDialogOpen(true)
@@ -494,6 +508,21 @@ export function TeachersPage() {
           </div>
         )}
       </section>
+
+      {/* Modal de Horários de Disponibilidade (Front-end) */}
+      {availabilityTeacher && (
+        <TeacherAvailabilityDialog
+          teacher={availabilityTeacher}
+          initialSlots={teacherAvailabilityMap[availabilityTeacher.id]}
+          onClose={() => setAvailabilityTeacher(null)}
+          onSave={(slots) => {
+            setTeacherAvailabilityMap((prev) => ({
+              ...prev,
+              [availabilityTeacher.id]: slots,
+            }))
+          }}
+        />
+      )}
 
       {/* Modal de Criar / Editar Professor */}
       {isTeacherDialogOpen && (
