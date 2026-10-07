@@ -14,7 +14,18 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Em dev, /api/* é repassado para o FastAPI sem o prefixo /api
+      // Em dev, rotas de professores e disciplinas vão para o core-service (porta 8001)
+      '/api/professores': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      '/api/disciplinas': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      // Demais chamadas /api/* vão para o auth-service (porta 8000)
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
