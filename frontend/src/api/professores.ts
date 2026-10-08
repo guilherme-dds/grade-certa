@@ -1,9 +1,12 @@
 import { api } from './client'
 
+export type NivelEnsinoType = 'Anos Iniciais' | 'Anos Finais' | 'Ensino Médio'
+
 export interface ProfessorBackend {
   id?: number
   nome: string
   email: string
+  niveis_ensino?: NivelEnsinoType[]
   disciplinas: number[]
   carga_maxima_aulas: number
   ativo: boolean
@@ -12,6 +15,7 @@ export interface ProfessorBackend {
 export interface GetProfessoresParams {
   ativo?: boolean
   disciplina_id?: number
+  nivel_ensino?: NivelEnsinoType
 }
 
 export async function getProfessores(params?: GetProfessoresParams): Promise<ProfessorBackend[]> {

@@ -12,13 +12,14 @@ import {
   updateProfessor,
   deleteProfessor,
   type ProfessorBackend,
+  type NivelEnsinoType,
 } from '@/api/professores'
 import {
   getDisciplinas,
   createDisciplina,
   type DisciplinaBackend,
 } from '@/api/disciplinas'
-import { type Teacher } from '@/mocks/teachers'
+import { type NivelEnsino, type Teacher } from '@/mocks/teachers'
 import { DeleteTeacherDialog } from './teachers/DeleteTeacherDialog'
 import { SubjectDialog } from './teachers/SubjectDialog'
 import { TeacherAvailabilityDialog, type SlotState } from './teachers/TeacherAvailabilityDialog'
@@ -31,6 +32,7 @@ export function TeachersPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('todos')
   const [subjectFilter, setSubjectFilter] = useState<string>('todas')
+  const [nivelFilter, setNivelFilter] = useState<string>('todos')
 
   // Modais
   const [isTeacherDialogOpen, setIsTeacherDialogOpen] = useState(false)
@@ -77,6 +79,7 @@ export function TeachersPage() {
         {
           nome: 'Ana Ferreira',
           email: 'ana.ferreira@escola.gov.br',
+          niveis_ensino: ['Anos Finais', 'Ensino Médio'],
           disciplinas: [discMap.get('Matemática')].filter(Boolean) as number[],
           carga_maxima_aulas: 20,
           ativo: true,
@@ -84,6 +87,7 @@ export function TeachersPage() {
         {
           nome: 'Carlos Lima',
           email: 'carlos.lima@escola.gov.br',
+          niveis_ensino: ['Ensino Médio'],
           disciplinas: [discMap.get('Português')].filter(Boolean) as number[],
           carga_maxima_aulas: 20,
           ativo: true,
@@ -91,6 +95,7 @@ export function TeachersPage() {
         {
           nome: 'Beatriz Souza',
           email: 'beatriz.souza@escola.gov.br',
+          niveis_ensino: ['Anos Finais'],
           disciplinas: [discMap.get('Ciências')].filter(Boolean) as number[],
           carga_maxima_aulas: 16,
           ativo: true,
@@ -98,6 +103,7 @@ export function TeachersPage() {
         {
           nome: 'João Prado',
           email: 'joao.prado@escola.gov.br',
+          niveis_ensino: ['Anos Finais', 'Ensino Médio'],
           disciplinas: [discMap.get('História')].filter(Boolean) as number[],
           carga_maxima_aulas: 20,
           ativo: true,
@@ -105,6 +111,7 @@ export function TeachersPage() {
         {
           nome: 'Marina Alves',
           email: 'marina.alves@escola.gov.br',
+          niveis_ensino: ['Anos Iniciais', 'Anos Finais'],
           disciplinas: [discMap.get('Educação Física')].filter(Boolean) as number[],
           carga_maxima_aulas: 12,
           ativo: true,
@@ -112,6 +119,7 @@ export function TeachersPage() {
         {
           nome: 'Roberto Mendes',
           email: 'roberto.mendes@escola.gov.br',
+          niveis_ensino: ['Anos Finais'],
           disciplinas: [discMap.get('Geografia')].filter(Boolean) as number[],
           carga_maxima_aulas: 20,
           ativo: false,
@@ -157,6 +165,9 @@ export function TeachersPage() {
         id: String(p.id),
         name: p.nome,
         email: p.email,
+        niveisEnsino: (p.niveis_ensino && p.niveis_ensino.length > 0
+          ? p.niveis_ensino
+          : ['Anos Finais']) as NivelEnsino[],
         subjects: subjectNames,
         maxWeeklyHours: p.carga_maxima_aulas,
         currentWeeklyHours: Math.min(p.carga_maxima_aulas, Math.round(p.carga_maxima_aulas * 0.75)),
@@ -216,9 +227,14 @@ export function TeachersPage() {
       const matchesSubject =
         subjectFilter === 'todas' ? true : teacher.subjects.includes(subjectFilter)
 
-      return matchesSearch && matchesStatus && matchesSubject
+      const matchesNivel =
+        nivelFilter === 'todos'
+          ? true
+          : teacher.niveisEnsino.includes(nivelFilter as NivelEnsino)
+
+      return matchesSearch && matchesStatus && matchesSubject && matchesNivel
     })
-  }, [teachers, search, statusFilter, subjectFilter])
+  }, [teachers, search, statusFilter, subjectFilter, nivelFilter])
 
   // 7. Handlers assíncronos integrados com o core-service
   const handleAddSubject = async (newSubjectName: string) => {
@@ -251,6 +267,7 @@ export function TeachersPage() {
       id: teacherData.id ? Number(teacherData.id) : undefined,
       nome: teacherData.name,
       email: teacherData.email,
+      niveis_ensino: teacherData.niveisEnsino as NivelEnsinoType[],
       disciplinas: disciplineIds,
       carga_maxima_aulas: teacherData.maxWeeklyHours,
       ativo: teacherData.status === 'ativo',
@@ -288,7 +305,7 @@ export function TeachersPage() {
     <>
       <PageHeader
         title="Professores"
-        description="Gerencie os docentes cadastrados, suas disciplinas associadas e a carga horária semanal máxima."
+        description="Gerencie os docentes cadastrados, níveis de ensino, disciplinas associadas e carga horária semanal."
         actions={
           <div className="flex gap-2">
             <Button
@@ -327,7 +344,7 @@ export function TeachersPage() {
 
         {/* Barra de Filtros */}
         <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-line bg-white p-3.5 shadow-xs">
-          <div className="min-w-[220px] flex-1">
+          <div className="min-w-[200px] flex-1">
             <FormField
               label="Buscar professor"
               placeholder="Nome, e-mail ou disciplina..."
@@ -345,7 +362,16 @@ export function TeachersPage() {
             />
           </div>
 
-          <div className="w-48">
+          <div className="w-40">
+            <SelectField
+              label="Nível de Ensino"
+              options={['todos', 'Anos Iniciais', 'Anos Finais', 'Ensino Médio'] as const}
+              value={nivelFilter}
+              onChange={(e) => setNivelFilter(e.target.value)}
+            />
+          </div>
+
+          <div className="w-44">
             <SelectField
               label="Disciplina"
               options={['todas', ...disciplinesList] as const}
@@ -354,7 +380,7 @@ export function TeachersPage() {
             />
           </div>
 
-          {(search || statusFilter !== 'todos' || subjectFilter !== 'todas') && (
+          {(search || statusFilter !== 'todos' || subjectFilter !== 'todas' || nivelFilter !== 'todos') && (
             <Button
               variant="secondary"
               size="sm"
@@ -362,6 +388,7 @@ export function TeachersPage() {
                 setSearch('')
                 setStatusFilter('todos')
                 setSubjectFilter('todas')
+                setNivelFilter('todos')
               }}
               className="h-[42px]"
             >
@@ -394,13 +421,28 @@ export function TeachersPage() {
                 ),
               },
               {
+                header: 'Níveis de Ensino',
+                cell: (row) => (
+                  <div className="flex flex-wrap gap-1">
+                    {(row.niveisEnsino ?? ['Anos Finais']).map((n) => (
+                      <span
+                        key={n}
+                        className="inline-block rounded border border-line-soft bg-paper px-2 py-0.5 text-xs font-semibold text-ink whitespace-nowrap"
+                      >
+                        {n}
+                      </span>
+                    ))}
+                  </div>
+                ),
+              },
+              {
                 header: 'Disciplinas',
                 cell: (row) => (
                   <div className="flex flex-wrap gap-1">
                     {row.subjects.map((sub) => (
                       <span
                         key={sub}
-                        className="rounded border border-line-soft bg-paper px-2 py-0.5 text-xs font-medium text-ink"
+                        className="rounded border border-primary-soft-line bg-primary-soft/40 px-2 py-0.5 text-xs font-medium text-primary"
                       >
                         {sub}
                       </span>
@@ -416,7 +458,7 @@ export function TeachersPage() {
                     Math.round((row.currentWeeklyHours / row.maxWeeklyHours) * 100),
                   )
                   return (
-                    <div className="w-36">
+                    <div className="w-32">
                       <div className="flex justify-between text-xs mb-1 font-mono">
                         <span>{row.currentWeeklyHours}h</span>
                         <span className="text-muted">máx {row.maxWeeklyHours}h</span>

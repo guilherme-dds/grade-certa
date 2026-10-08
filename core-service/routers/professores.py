@@ -22,12 +22,17 @@ def criar_professor(professor: Professor):
 def listar_professores(
     ativo: Optional[bool] = Query(None, description="Filtrar por status de atividade"),
     disciplina_id: Optional[int] = Query(None, description="Filtrar por ID de disciplina"),
+    nivel_ensino: Optional[str] = Query(None, description="Filtrar por nível de ensino"),
 ):
     resultado = professores_db
     if ativo is not None:
         resultado = [p for p in resultado if p.ativo == ativo]
     if disciplina_id is not None:
         resultado = [p for p in resultado if disciplina_id in p.disciplinas]
+    if nivel_ensino is not None:
+        resultado = [
+            p for p in resultado if any(n.lower() == nivel_ensino.lower() for n in p.niveis_ensino)
+        ]
     return resultado
 
 

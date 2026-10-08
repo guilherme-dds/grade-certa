@@ -2,7 +2,9 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { FormField } from '@/components/FormField'
 import { SelectField } from '@/components/SelectField'
 import { Button } from '@/components/ui/Button'
-import { type Teacher } from '@/mocks/teachers'
+import { type NivelEnsino, type Teacher } from '@/mocks/teachers'
+
+const allNiveis: NivelEnsino[] = ['Anos Iniciais', 'Anos Finais', 'Ensino Médio']
 
 interface TeacherDialogProps {
   teacher?: Teacher | null
@@ -24,6 +26,9 @@ export function TeacherDialog({
 
   const [name, setName] = useState(teacher?.name ?? '')
   const [email, setEmail] = useState(teacher?.email ?? '')
+  const [selectedNiveis, setSelectedNiveis] = useState<NivelEnsino[]>(
+    teacher?.niveisEnsino ?? ['Anos Finais'],
+  )
   const [maxWeeklyHours, setMaxWeeklyHours] = useState(teacher?.maxWeeklyHours ?? 20)
   const [status, setStatus] = useState<'ativo' | 'inativo'>(teacher?.status ?? 'ativo')
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>(teacher?.subjects ?? [])
@@ -44,6 +49,16 @@ export function TeacherDialog({
   const close = () => {
     dialogRef.current?.close()
     onClose()
+  }
+
+  const toggleNivel = (nivel: NivelEnsino) => {
+    setSelectedNiveis((prev) =>
+      prev.includes(nivel)
+        ? prev.length > 1
+          ? prev.filter((n) => n !== nivel)
+          : prev
+        : [...prev, nivel],
+    )
   }
 
   const toggleSubject = (subject: string) => {
@@ -109,6 +124,7 @@ export function TeacherDialog({
       id: teacher?.id,
       name: name.trim(),
       email: email.trim(),
+      niveisEnsino: selectedNiveis,
       subjects: selectedSubjects,
       maxWeeklyHours: Number(maxWeeklyHours),
       status,
@@ -161,6 +177,31 @@ export function TeacherDialog({
             }}
             error={errors.email}
           />
+
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted">
+              Nível(is) de Ensino (pode selecionar mais de um)
+            </label>
+            <div className="flex flex-wrap gap-1.5 rounded-md border border-line p-2.5 bg-paper/50">
+              {allNiveis.map((nivel) => {
+                const isSelected = selectedNiveis.includes(nivel)
+                return (
+                  <button
+                    type="button"
+                    key={nivel}
+                    onClick={() => toggleNivel(nivel)}
+                    className={
+                      isSelected
+                        ? 'rounded border border-primary-soft-line bg-primary-soft px-3 py-1 text-xs font-semibold text-primary transition-colors'
+                        : 'rounded border border-line-soft bg-white px-3 py-1 text-xs text-muted transition-colors hover:border-line hover:text-ink'
+                    }
+                  >
+                    {isSelected ? `✓ ${nivel}` : `+ ${nivel}`}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
 
           <div>
             <div className="mb-1.5 flex items-center justify-between">
