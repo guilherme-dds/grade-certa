@@ -9,7 +9,8 @@ export interface NavItem {
 // Menu por perfil, conforme Fluxos.dc.html. Telas sem design fechado caem no placeholder.
 export const navItems: NavItem[] = [
   { to: '/', label: 'Dashboard', roles: ['admin', 'coordenacao', 'professor'] },
-  { to: '/disciplinas', label: 'Disciplinas e salas', roles: ['coordenacao'] },
+  { to: '/professores', label: 'Professores', roles: ['coordenacao', 'admin'] },
+  { to: '/disciplinas', label: 'Turmas e salas', roles: ['coordenacao'] },
   { to: '/disponibilidade', label: 'Disponibilidade', roles: ['professor'] },
   { to: '/geracao', label: 'Geração automática', roles: ['coordenacao'] },
   { to: '/grade', label: 'Grade gerada', roles: ['coordenacao', 'professor'] },

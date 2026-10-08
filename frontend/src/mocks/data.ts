@@ -1,6 +1,4 @@
 // Dados de exemplo do protótipo (Claude Design · GradeCerta.dc.html).
-// Ainda não existem endpoints para estes recursos; substituir por chamadas em src/api/
-// conforme o backend evoluir.
 
 export const institution = {
   name: 'Escola Modelo Municipal',
@@ -65,4 +63,72 @@ export const rooms: Room[] = [
 
 export const weekDays = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'] as const
 
-export const timeSlots = ['07:00', '07:50', '08:40', '09:30', '13:30', '14:20'] as const
+export type NivelEnsinoSchedule = 'Anos Iniciais' | 'Anos Finais' | 'Ensino Médio'
+
+export interface ShiftSchedule {
+  manha: readonly string[]
+  tarde: readonly string[]
+}
+
+export const timeSlotsByNivel: Record<NivelEnsinoSchedule, ShiftSchedule> = {
+  'Ensino Médio': {
+    manha: [
+      '07:20 - 08:10',
+      '08:10 - 09:00',
+      '09:15 - 10:05',
+      '10:05 - 10:55',
+      '11:10 - 12:00',
+      '12:00 - 12:50',
+    ],
+    tarde: [
+      '13:50 - 14:40',
+      '14:40 - 15:30',
+      '15:50 - 16:40',
+      '16:40 - 17:30',
+    ],
+  },
+  'Anos Finais': {
+    manha: [
+      '07:20 - 08:10',
+      '08:10 - 09:00',
+      '09:00 - 09:50',
+      '10:10 - 11:00',
+      '11:00 - 11:50',
+      '11:50 - 12:40',
+    ],
+    tarde: [
+      '13:00 - 13:50',
+      '13:50 - 14:40',
+      '14:40 - 15:30',
+      '15:50 - 16:40',
+      '16:40 - 17:30',
+      '17:30 - 18:20',
+    ],
+  },
+  'Anos Iniciais': {
+    manha: [
+      '07:20 - 08:10',
+      '08:10 - 09:00',
+      '09:20 - 10:10',
+      '10:10 - 11:00',
+      '11:00 - 11:50',
+      '11:50 - 12:40',
+    ],
+    tarde: [
+      '13:00 - 13:50',
+      '13:50 - 14:40',
+      '14:40 - 15:30',
+      '15:50 - 16:40',
+      '16:40 - 17:30',
+      '17:30 - 18:20',
+    ],
+  },
+}
+
+export function getAllTimeSlotsForNivel(nivel: NivelEnsinoSchedule): string[] {
+  const data = timeSlotsByNivel[nivel] ?? timeSlotsByNivel['Anos Finais']
+  return [...data.manha, ...data.tarde]
+}
+
+// Fallback genérico para componentes estáticos da grade antiga
+export const timeSlots = timeSlotsByNivel['Anos Finais'].manha

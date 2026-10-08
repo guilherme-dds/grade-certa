@@ -11,6 +11,7 @@ import { NotFoundPage } from '@/pages/NotFoundPage'
 import { RegisterPage } from '@/pages/RegisterPage'
 import { SchedulePage } from '@/pages/schedule/SchedulePage'
 import { SubjectsPage } from '@/pages/SubjectsPage'
+import { TeachersPage } from '@/pages/TeachersPage'
 
 export const router = createBrowserRouter([
   {
@@ -32,6 +33,7 @@ export const router = createBrowserRouter([
         element: <AppLayout />,
         children: [
           { path: '/', element: <DashboardPage /> },
+          { path: '/professores', element: <TeachersPage /> },
           { path: '/disciplinas', element: <SubjectsPage /> },
           { path: '/disponibilidade', element: <AvailabilityPage /> },
           { path: '/geracao', element: <ComingSoonPage title="Geração automática" /> },
