@@ -44,6 +44,11 @@ services:
     restart: always
     ports:
       - "8001:8001"
+    environment:
+      DATABASE_URL: mysql+pymysql://grade_user:grade_password@db:3306/grade_certa
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
       - ./core-service:/app
 
