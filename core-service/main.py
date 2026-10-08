@@ -4,8 +4,18 @@ from database.connection import Base, engine
 import database.models  # Garante que os modelos SQLAlchemy sejam importados
 from routers import professores, turmas, disciplinas, disponibilidades, grades
 
+from sqlalchemy import text
+
 # Cria automaticamente as tabelas no MySQL se não existirem
 Base.metadata.create_all(bind=engine)
+
+# Garante que colunas novas como matriz_curricular existam em tabelas já criadas
+try:
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE turmas ADD COLUMN matriz_curricular JSON NULL;"))
+        conn.commit()
+except Exception:
+    pass
 
 app = FastAPI(
     title="Grade Certa - Core Service",

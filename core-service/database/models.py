@@ -27,6 +27,7 @@ class TurmaDB(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     nome = Column(String(255), nullable=False)
     turno = Column(String(100), nullable=False)
+    matriz_curricular = Column(JSON, default=list)
 
 
 class DisponibilidadeDB(Base):
