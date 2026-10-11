@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/Button'
 import { DataTable } from '@/components/ui/DataTable'
 import { PageHeader, SectionHeader } from '@/components/ui/PageHeader'
-import { rooms } from '@/mocks/data'
 import {
   getTurmas,
   createTurma,
@@ -14,6 +13,15 @@ import {
 } from '@/api/turmas'
 import { getProfessores } from '@/api/professores'
 import { getDisciplinas } from '@/api/disciplinas'
+import {
+  getSalas,
+  createSala,
+  updateSala,
+  deleteSala,
+  type SalaBackend,
+} from '@/api/salas'
+import { SalaDialog } from './salas/SalaDialog'
+import { DeleteSalaDialog } from './salas/DeleteSalaDialog'
 import { TurmaDialog } from './turmas/TurmaDialog'
 import { DeleteTurmaDialog } from './turmas/DeleteTurmaDialog'
 import {
@@ -29,11 +37,20 @@ export function SubjectsPage() {
   const [editingTurma, setEditingTurma] = useState<TurmaBackend | null>(null)
   const [deletingTurma, setDeletingTurma] = useState<TurmaBackend | null>(null)
   const [matrixTurma, setMatrixTurma] = useState<TurmaBackend | null>(null)
+  const [isSalaDialogOpen, setIsSalaDialogOpen] = useState(false)
+  const [editingSala, setEditingSala] = useState<SalaBackend | null>(null)
+  const [deletingSala, setDeletingSala] = useState<SalaBackend | null>(null)
 
   // 1. Query das Turmas ao core-service
   const turmasQuery = useQuery({
     queryKey: ['turmas'],
     queryFn: getTurmas,
+  })
+
+  // Salas ainda não têm endpoint: getSalas lê do localStorage (ver api/salas.ts)
+  const salasQuery = useQuery({
+    queryKey: ['salas'],
+    queryFn: getSalas,
   })
 
   // 2. Query dos Professores e Disciplinas
@@ -180,6 +197,35 @@ export function SubjectsPage() {
     setDeletingTurma(null)
   }
 
+  const createSalaMutation = useMutation({
+    mutationFn: createSala,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['salas'] }),
+  })
+
+  const updateSalaMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: SalaBackend }) =>
+      updateSala(id, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['salas'] }),
+  })
+
+  const deleteSalaMutation = useMutation({
+    mutationFn: deleteSala,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['salas'] }),
+  })
+
+  const handleSaveSala = async ({ id, ...data }: Omit<SalaBackend, 'id'> & { id?: number }) => {
+    if (id) {
+      await updateSalaMutation.mutateAsync({ id, payload: { id, ...data } })
+    } else {
+      await createSalaMutation.mutateAsync(data)
+    }
+  }
+
+  const handleDeleteSala = async (id: number) => {
+    await deleteSalaMutation.mutateAsync(id)
+    setDeletingSala(null)
+  }
+
   const isLoading = turmasQuery.isLoading
 
   return (
@@ -310,23 +356,75 @@ export function SubjectsPage() {
       {/* Seção de Salas */}
       <section>
         <SectionHeader
-          title="Salas"
+          title={`Salas (${salasQuery.data?.length ?? 0})`}
           actions={
-            <Button size="sm" disabled title="Em breve">
+            <Button
+              size="sm"
+              onClick={() => {
+                setEditingSala(null)
+                setIsSalaDialogOpen(true)
+              }}
+            >
               + Nova sala
             </Button>
           }
         />
-        <DataTable
-          caption="Salas"
-          rows={rooms}
-          rowKey={(row) => row.name}
-          columns={[
-            { header: 'Sala', cell: (row) => row.name },
-            { header: 'Capacidade', cell: (row) => `${row.capacity} alunos` },
-            { header: 'Tipo', cell: (row) => row.type, className: 'text-muted' },
-          ]}
-        />
+
+        {salasQuery.isLoading && (
+          <div className="my-6 text-center text-sm text-muted">
+            Carregando salas...
+          </div>
+        )}
+
+        {!salasQuery.isLoading && (
+          <DataTable
+            caption="Salas"
+            rows={salasQuery.data ?? []}
+            rowKey={(row) => String(row.id ?? row.nome)}
+            columns={[
+              {
+                header: 'Sala',
+                cell: (row) => <span className="font-semibold text-ink">{row.nome}</span>,
+              },
+              { header: 'Capacidade', cell: (row) => `${row.capacidade} alunos` },
+              { header: 'Tipo', cell: (row) => row.tipo, className: 'text-muted' },
+              {
+                header: 'Ações',
+                cell: (row) => (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setEditingSala(row)
+                        setIsSalaDialogOpen(true)
+                      }}
+                    >
+                      Editar
+                    </Button>
+                    {row.id && (
+                      <button
+                        type="button"
+                        onClick={() => setDeletingSala(row)}
+                        className="p-1.5 text-xs text-muted hover:text-danger transition-colors"
+                        title="Excluir sala"
+                      >
+                        Excluir
+                      </button>
+                    )}
+                  </div>
+                ),
+              },
+            ]}
+          />
+        )}
+
+        {!salasQuery.isLoading && (salasQuery.data?.length ?? 0) === 0 && (
+          <div className="mt-4 rounded-lg border border-dashed border-line bg-white p-8 text-center">
+            <p className="text-sm font-medium text-ink">Nenhuma sala cadastrada</p>
+            <p className="mt-1 text-xs text-muted">Clique em "+ Nova sala" para cadastrar a primeira sala.</p>
+          </div>
+        )}
       </section>
 
       {/* Modal de Matriz Curricular */}
@@ -358,6 +456,28 @@ export function SubjectsPage() {
           turma={deletingTurma}
           onClose={() => setDeletingTurma(null)}
           onConfirm={() => handleDeleteTurma(deletingTurma.id!)}
+        />
+      )}
+
+      {/* Modal de Criar / Editar Sala */}
+      {isSalaDialogOpen && (
+        <SalaDialog
+          sala={editingSala}
+          salas={salasQuery.data ?? []}
+          onClose={() => {
+            setIsSalaDialogOpen(false)
+            setEditingSala(null)
+          }}
+          onSave={handleSaveSala}
+        />
+      )}
+
+      {/* Modal de Confirmação de Exclusão de Sala */}
+      {deletingSala && (
+        <DeleteSalaDialog
+          sala={deletingSala}
+          onClose={() => setDeletingSala(null)}
+          onConfirm={() => handleDeleteSala(deletingSala.id!)}
         />
       )}
     </>
