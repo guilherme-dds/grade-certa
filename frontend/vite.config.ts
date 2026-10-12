@@ -14,13 +14,23 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Em dev, rotas de professores e disciplinas vão para o core-service (porta 8001)
+      // Em dev, as rotas do core-service (porta 8001), espelhando o nginx.conf
       '/api/professores': {
         target: 'http://localhost:8001',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
       '/api/disciplinas': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      '/api/turmas': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      '/api/disponibilidades': {
         target: 'http://localhost:8001',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),

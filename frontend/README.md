@@ -30,8 +30,10 @@ src/
 
 - **Integrado com a API:** login (`POST /auth/login`), usuário logado (`GET /auth/me`) e
   cadastro (`POST /users/`, tela em `/cadastro`, fora do menu — o design prevê acesso por convite).
-- **Dados de exemplo (`src/mocks/`):** dashboards, disciplinas, salas, grade e conflitos. Ainda
+- **Dados de exemplo (`src/mocks/`):** dashboards, disciplinas, grade e conflitos. Ainda
   não há endpoints para esses recursos.
+- **Salas:** CRUD na tela Turmas e salas (`/disciplinas`), persistido em `localStorage`
+  (`src/api/salas.ts`) até existir `/salas` no core-service.
 - **Grade gerada (`/grade`) e Conflitos (`/conflitos`):** interativas sobre os dados de exemplo
   (`src/schedule/ScheduleProvider.tsx`). A coordenação reatribui professor, sala ou horário de
   uma aula; aplicar uma sugestão (ou editar a aula manualmente) resolve o conflito. O estado fica
