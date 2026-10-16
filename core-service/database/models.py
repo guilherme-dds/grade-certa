@@ -38,3 +38,13 @@ class DisponibilidadeDB(Base):
     dia_semana = Column(String(50), nullable=False)
     horario_inicio = Column(String(50), nullable=False)
     horario_fim = Column(String(50), nullable=False)
+
+
+class SalaDB(Base):
+    __tablename__ = "salas"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    nome = Column(String(255), nullable=False)
+    capacidade = Column(Integer, nullable=False, default=30)
+    tipo = Column(String(100), nullable=False, default="Sala comum")
+

@@ -47,7 +47,7 @@ export function SubjectsPage() {
     queryFn: getTurmas,
   })
 
-  // Salas ainda não têm endpoint: getSalas lê do localStorage (ver api/salas.ts)
+  // Query das Salas ao core-service
   const salasQuery = useQuery({
     queryKey: ['salas'],
     queryFn: getSalas,
