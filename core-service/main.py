@@ -9,10 +9,16 @@ from sqlalchemy import text
 # Cria automaticamente as tabelas no MySQL se não existirem
 Base.metadata.create_all(bind=engine)
 
-# Garante que colunas novas como matriz_curricular existam em tabelas já criadas
 try:
     with engine.connect() as conn:
         conn.execute(text("ALTER TABLE turmas ADD COLUMN matriz_curricular JSON NULL;"))
+        conn.commit()
+except Exception:
+    pass
+
+try:
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE turmas ADD COLUMN nivel_ensino VARCHAR(100) NULL;"))
         conn.commit()
 except Exception:
     pass
