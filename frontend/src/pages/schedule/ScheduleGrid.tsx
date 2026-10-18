@@ -1,9 +1,11 @@
+import { useMemo } from 'react'
 import { cn } from '@/lib/cn'
-import { timeSlots, weekDays } from '@/mocks/data'
-import { roomShortNames, shortTeacherName, subjectsMeta, type Lesson } from '@/mocks/schedule'
+import { timeSlots as defaultTimeSlots, weekDays } from '@/mocks/data'
+import { getSubjectMeta, roomShortNames, shortTeacherName, type Lesson } from '@/mocks/schedule'
 
 interface ScheduleGridProps {
   lessons: Lesson[]
+  timeSlots?: string[]
   /** Aula com edição em andamento (destaque do design) */
   editingId?: string | null
   isDimmed?: (lesson: Lesson) => boolean
@@ -11,16 +13,25 @@ interface ScheduleGridProps {
   onSelect?: (lesson: Lesson) => void
 }
 
-export function ScheduleGrid({ lessons, editingId, isDimmed, onSelect }: ScheduleGridProps) {
+export function ScheduleGrid({ lessons, timeSlots: customSlots, editingId, isDimmed, onSelect }: ScheduleGridProps) {
   const bySlot = new Map(lessons.map((l) => [`${l.day}|${l.time}`, l]))
+
+  const slots = useMemo(() => {
+    if (customSlots && customSlots.length > 0) return customSlots
+    const distinct = Array.from(new Set(lessons.map((l) => l.time)))
+    if (distinct.length > 0) {
+      return distinct.sort((a, b) => a.localeCompare(b))
+    }
+    return defaultTimeSlots
+  }, [customSlots, lessons])
 
   return (
     <div className="overflow-x-auto rounded-lg border border-line bg-white">
       <table className="w-full min-w-[640px] table-fixed border-collapse text-[12.5px]">
         <thead>
           <tr className="bg-paper">
-            <th scope="col" className="w-[70px] p-2">
-              <span className="sr-only">Horário</span>
+            <th scope="col" className="w-[100px] p-2 text-left text-xs font-semibold text-muted">
+              Horário
             </th>
             {weekDays.map((day) => (
               <th key={day} scope="col" className="p-2 font-semibold">
@@ -30,9 +41,9 @@ export function ScheduleGrid({ lessons, editingId, isDimmed, onSelect }: Schedul
           </tr>
         </thead>
         <tbody>
-          {timeSlots.map((time) => (
+          {slots.map((time) => (
             <tr key={time} className="border-t border-line-soft">
-              <th scope="row" className="p-2 text-left font-mono font-normal text-muted">
+              <th scope="row" className="p-2 text-left font-mono font-normal text-muted whitespace-nowrap">
                 {time}
               </th>
               {weekDays.map((day) => {
@@ -47,7 +58,7 @@ export function ScheduleGrid({ lessons, editingId, isDimmed, onSelect }: Schedul
                         onSelect={onSelect}
                       />
                     ) : (
-                      <div className="px-2 py-1.5 text-line" aria-label={`${day}, ${time}: sem aula`}>
+                      <div className="px-2 py-1.5 text-line text-center" aria-label={`${day}, ${time}: sem aula`}>
                         —
                       </div>
                     )}
@@ -70,8 +81,8 @@ interface LessonCardProps {
 }
 
 function LessonCard({ lesson, editing, dimmed, onSelect }: LessonCardProps) {
-  const meta = subjectsMeta[lesson.subject]
-  const detail = `${shortTeacherName(lesson.teacher)} · ${roomShortNames[lesson.room] ?? lesson.room}`
+  const meta = getSubjectMeta(lesson.subject)
+  const detail = `${shortTeacherName(lesson.teacher)} · ${roomShortNames[lesson.room] ?? lesson.room ?? 'Sala Padrão'}`
   const className = cn(
     'block w-full rounded-[5px] px-2 py-1.5 text-left transition-opacity',
     editing ? 'bg-primary outline-2 outline-offset-2 outline-navy' : meta.color,

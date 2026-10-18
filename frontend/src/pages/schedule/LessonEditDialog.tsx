@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { SelectField } from '@/components/SelectField'
 import { Button } from '@/components/ui/Button'
 import { rooms, timeSlots, weekDays } from '@/mocks/data'
-import { subjectsMeta, teachers, type Lesson, type TimeSlot, type WeekDay } from '@/mocks/schedule'
+import { getSubjectMeta, teachers, type Lesson, type TimeSlot, type WeekDay } from '@/mocks/schedule'
 import { useSchedule } from '@/schedule/useSchedule'
 
 const roomNames = rooms.map((r) => r.name)
@@ -48,6 +48,8 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
     else setError(result.error)
   }
 
+  const subjectMeta = getSubjectMeta(lesson.subject)
+
   return (
     <dialog
       ref={dialogRef}
@@ -61,7 +63,7 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
     >
       <form onSubmit={handleSubmit} className="p-6">
         <h2 id="lesson-edit-title" className="text-[17px] font-semibold">
-          Editar aula — {subjectsMeta[lesson.subject].name} · {lesson.classGroup}
+          Editar aula — {subjectMeta.name} · {lesson.classGroup}
         </h2>
         <p className="mt-1 text-[13px] text-muted">
           Atualmente em {lesson.day}, {lesson.time}.

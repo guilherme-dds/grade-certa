@@ -7,7 +7,7 @@ from database.models import GradeDB
 from models.grade import Grade
 from services.grid_generator import GridGeneratorService
 
-router = APIRouter(prefix="/grade", tags=["grade"])
+router = APIRouter(prefix="/grades", tags=["grades"])
 
 
 @router.post("/gerar-grade")

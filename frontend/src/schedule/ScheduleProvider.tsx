@@ -1,16 +1,50 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   conflicts as initialConflicts,
-  lessons as initialLessons,
   shortTeacherName,
+  type Lesson,
   type LessonChanges,
+  type WeekDay,
 } from '@/mocks/schedule'
+import { getGrade, type GradeBackend } from '@/api/grades'
 import { ScheduleContext, type ScheduleContextValue, type UpdateResult } from './ScheduleContext'
 
-// Estado só em memória: sobrevive à navegação, some ao recarregar ou sair.
 export function ScheduleProvider({ children }: { children: ReactNode }) {
-  const [lessons, setLessons] = useState(initialLessons)
+  const [lessons, setLessons] = useState<Lesson[]>([])
   const [conflicts, setConflicts] = useState(initialConflicts)
+  const [isLoading, setIsLoading] = useState(true)
+  const [activeGrade, setActiveGrade] = useState<GradeBackend | null>(null)
+
+  const refreshSchedule = useCallback(async (gradeId?: number) => {
+    setIsLoading(true)
+    try {
+      const grade = await getGrade(gradeId)
+      setActiveGrade(grade)
+      if (grade && grade.aulas && grade.aulas.length > 0) {
+        const mapped: Lesson[] = grade.aulas.map((aula) => ({
+          id: String(aula.id ?? `${aula.turma_nome}-${aula.dia_semana}-${aula.horario}`),
+          classGroup: aula.turma_nome,
+          day: aula.dia_semana as WeekDay,
+          time: aula.horario,
+          subject: aula.disciplina_nome,
+          teacher: aula.professor_nome || 'A definir',
+          room: aula.sala_nome || 'Sala Padrão',
+        }))
+        setLessons(mapped)
+        setConflicts([])
+      } else {
+        setLessons([])
+      }
+    } catch (err) {
+      console.error('Erro ao carregar grade do backend:', err)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshSchedule()
+  }, [refreshSchedule])
 
   const updateLesson = useCallback(
     (id: string, changes: LessonChanges): UpdateResult => {
@@ -48,8 +82,16 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   )
 
   const value = useMemo<ScheduleContextValue>(
-    () => ({ lessons, conflicts, updateLesson, applySuggestion }),
-    [lessons, conflicts, updateLesson, applySuggestion],
+    () => ({
+      lessons,
+      conflicts,
+      isLoading,
+      activeGrade,
+      refreshSchedule,
+      updateLesson,
+      applySuggestion,
+    }),
+    [lessons, conflicts, isLoading, activeGrade, refreshSchedule, updateLesson, applySuggestion],
   )
 
   return <ScheduleContext value={value}>{children}</ScheduleContext>

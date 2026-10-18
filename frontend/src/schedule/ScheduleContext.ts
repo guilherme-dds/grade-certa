@@ -1,11 +1,15 @@
 import { createContext } from 'react'
 import type { Conflict, Lesson, LessonChanges } from '@/mocks/schedule'
+import type { GradeBackend } from '@/api/grades'
 
 export type UpdateResult = { ok: true } | { ok: false; error: string }
 
 export interface ScheduleContextValue {
   lessons: Lesson[]
   conflicts: Conflict[]
+  isLoading: boolean
+  activeGrade: GradeBackend | null
+  refreshSchedule: (gradeId?: number) => Promise<void>
   /** Reatribui professor, sala ou horário. Falha se a turma já tiver aula no novo horário. */
   updateLesson: (id: string, changes: LessonChanges) => UpdateResult
   /** Aplica a correção sugerida e remove o conflito. */

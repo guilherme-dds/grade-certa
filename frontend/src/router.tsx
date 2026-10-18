@@ -6,6 +6,7 @@ import { AvailabilityPage } from '@/pages/AvailabilityPage'
 import { ComingSoonPage } from '@/pages/ComingSoonPage'
 import { ConflictsPage } from '@/pages/conflicts/ConflictsPage'
 import { DashboardPage } from '@/pages/dashboard/DashboardPage'
+import { GenerationPage } from '@/pages/generation/GenerationPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { RegisterPage } from '@/pages/RegisterPage'
@@ -36,7 +37,7 @@ export const router = createBrowserRouter([
           { path: '/professores', element: <TeachersPage /> },
           { path: '/disciplinas', element: <SubjectsPage /> },
           { path: '/disponibilidade', element: <AvailabilityPage /> },
-          { path: '/geracao', element: <ComingSoonPage title="Geração automática" /> },
+          { path: '/geracao', element: <GenerationPage /> },
           { path: '/grade', element: <SchedulePage /> },
           { path: '/conflitos', element: <ConflictsPage /> },
           { path: '/relatorios', element: <ComingSoonPage title="Relatórios" /> },

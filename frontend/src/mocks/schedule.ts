@@ -1,22 +1,42 @@
 // Grade e conflitos de exemplo (Claude Design · telas 06 e 07).
 // Substituir por chamadas à API quando o serviço de geração de grade existir.
 
-import { type timeSlots, type weekDays } from './data'
+import { type weekDays } from './data'
 
 export type WeekDay = (typeof weekDays)[number]
-export type TimeSlot = (typeof timeSlots)[number]
-export type SubjectCode = 'MAT' | 'POR' | 'CIE' | 'HIS' | 'EDF'
+export type TimeSlot = string
+export type SubjectCode = string
 
-export const subjectsMeta: Record<SubjectCode, { name: string; color: string }> = {
+export const subjectsMeta: Record<string, { name: string; color: string }> = {
   MAT: { name: 'Matemática', color: 'bg-primary-soft' },
   POR: { name: 'Português', color: 'bg-warning-soft' },
   CIE: { name: 'Ciências', color: 'bg-lilac-soft' },
   HIS: { name: 'História', color: 'bg-danger-soft' },
   EDF: { name: 'Educação Física', color: 'bg-line-soft' },
+  Matemática: { name: 'Matemática', color: 'bg-primary-soft' },
+  Português: { name: 'Português', color: 'bg-warning-soft' },
+  Ciências: { name: 'Ciências', color: 'bg-lilac-soft' },
+  História: { name: 'História', color: 'bg-danger-soft' },
+  Geografia: { name: 'Geografia', color: 'bg-primary-soft' },
+  Química: { name: 'Química', color: 'bg-warning-soft' },
+  Física: { name: 'Física', color: 'bg-lilac-soft' },
+  Biologia: { name: 'Biologia', color: 'bg-line-soft' },
+  Geometria: { name: 'Geometria', color: 'bg-primary-soft' },
+  'Educação Física': { name: 'Educação Física', color: 'bg-line-soft' },
+}
+
+export function getSubjectMeta(subject: string): { name: string; color: string } {
+  if (subjectsMeta[subject]) return subjectsMeta[subject]
+  const clean = (subject || '').trim().toLowerCase()
+  if (clean.includes('mat') || clean.includes('geo')) return { name: subject, color: 'bg-primary-soft' }
+  if (clean.includes('port') || clean.includes('qui')) return { name: subject, color: 'bg-warning-soft' }
+  if (clean.includes('cien') || clean.includes('fis') || clean.includes('bio')) return { name: subject, color: 'bg-lilac-soft' }
+  if (clean.includes('hist') || clean.includes('soc') || clean.includes('filo')) return { name: subject, color: 'bg-danger-soft' }
+  return { name: subject, color: 'bg-paper' }
 }
 
 export const classGroups = ['6ºA', '6ºB', '7ºA'] as const
-export type ClassGroup = (typeof classGroups)[number]
+export type ClassGroup = string
 
 export const teachers = ['Ana Ferreira', 'Carlos Lima', 'Beatriz Souza', 'João Prado', 'Marina Alves']
 
@@ -29,10 +49,10 @@ export const roomShortNames: Record<string, string> = {
 
 export interface Lesson {
   id: string
-  classGroup: ClassGroup
+  classGroup: string
   day: WeekDay
-  time: TimeSlot
-  subject: SubjectCode
+  time: string
+  subject: string
   teacher: string
   room: string
 }
@@ -161,8 +181,9 @@ export const conflicts: Conflict[] = [
 ]
 
 /** "Ana Ferreira" → "Ana F." */
-export function shortTeacherName(name: string) {
-  const [first, ...rest] = name.split(' ')
+export function shortTeacherName(name?: string | null) {
+  if (!name) return 'A definir'
+  const [first, ...rest] = name.trim().split(' ')
   const last = rest.at(-1)
   return last ? `${first} ${last[0]}.` : first
 }
