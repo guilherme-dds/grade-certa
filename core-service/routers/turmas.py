@@ -16,6 +16,7 @@ def criar_turma(turma: Turma, db: Session = Depends(get_db)):
         turno=turma.turno,
         nivel_ensino=turma.nivel_ensino,
         matriz_curricular=matriz,
+        sala_id=turma.sala_id,
     )
     db.add(db_turma)
     db.commit()
@@ -35,6 +36,7 @@ def atualizar_turma(turma_id: int, turma: Turma, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Turma não encontrada")
     db_turma.nome = turma.nome
     db_turma.turno = turma.turno
+    db_turma.sala_id = turma.sala_id
     if turma.nivel_ensino is not None:
         db_turma.nivel_ensino = turma.nivel_ensino
     if turma.matriz_curricular is not None:

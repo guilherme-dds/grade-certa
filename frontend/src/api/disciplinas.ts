@@ -4,6 +4,12 @@ export interface DisciplinaBackend {
   id?: number
   nome: string
   quantidade_aulas: number
+  // Área do conhecimento (planejamento compartilhado). Nulo = inferida pelo nome
+  area?: string | null
+  // Tipo de sala exigido (ex: 'Laboratório'). Nulo = sala fixa da turma
+  tipo_sala?: string | null
+  // Exige uma aula dobrada por semana. Nulo = automático (Inglês individual, demais dobradas)
+  aula_dobrada?: boolean | null
 }
 
 export async function getDisciplinas(): Promise<DisciplinaBackend[]> {

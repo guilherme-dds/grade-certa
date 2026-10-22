@@ -125,11 +125,13 @@ def get_slots_for_turma(turno: str, nivel_ensino: Optional[str] = None, turma_no
 
     turno_clean = (turno or "").strip().lower()
     if "tarde" in turno_clean or "vespertino" in turno_clean:
-        horarios = schedules["tarde"]
+        turnos = ["tarde"]
     elif "integral" in turno_clean:
-        horarios = schedules["manha"] + schedules["tarde"]
+        turnos = ["manha", "tarde"]
     else:
-        horarios = schedules["manha"]
+        turnos = ["manha"]
+
+    horarios = [(t, h) for t in turnos for h in schedules[t]]
 
     return [
         {
@@ -138,6 +140,7 @@ def get_slots_for_turma(turno: str, nivel_ensino: Optional[str] = None, turma_no
             "inicio_minutos": parse_slot_range(h)[0],
             "fim_minutos": parse_slot_range(h)[1],
             "nivel": nivel,
+            "turno": t,
         }
-        for idx, h in enumerate(horarios)
+        for idx, (t, h) in enumerate(horarios)
     ]

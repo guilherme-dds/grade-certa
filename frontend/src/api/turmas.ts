@@ -11,6 +11,7 @@ export interface TurmaBackend {
   nome: string
   turno: string
   matriz_curricular?: ItemMatriz[]
+  sala_id?: number | null
 }
 
 export async function getTurmas(): Promise<TurmaBackend[]> {

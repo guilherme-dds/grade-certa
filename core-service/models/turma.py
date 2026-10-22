@@ -12,3 +12,4 @@ class Turma(BaseModel):
     turno: str
     nivel_ensino: Optional[str] = "Anos Finais"
     matriz_curricular: Optional[List[ItemMatriz]] = []
+    sala_id: Optional[int] = None

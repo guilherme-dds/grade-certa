@@ -9,6 +9,12 @@ class DisciplinaDB(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     nome = Column(String(255), nullable=False)
     quantidade_aulas = Column(Integer, default=4)
+    # Área do conhecimento (Linguagens, Matemática...). Nulo = inferida pelo nome.
+    area = Column(String(100), nullable=True)
+    # Tipo de sala exigido (ex: "Laboratório"). Nulo = aula na sala fixa da turma.
+    tipo_sala = Column(String(100), nullable=True)
+    # Exige uma aula dobrada na semana. Nulo = automático (Inglês individual, demais dobradas).
+    aula_dobrada = Column(Boolean, nullable=True)
 
 
 class ProfessorDB(Base):
@@ -31,6 +37,7 @@ class TurmaDB(Base):
     turno = Column(String(100), nullable=False)
     nivel_ensino = Column(String(100), nullable=True, default="Anos Finais")
     matriz_curricular = Column(JSON, default=list)
+    sala_id = Column(Integer, nullable=True)
 
 
 class DisponibilidadeDB(Base):
@@ -41,6 +48,32 @@ class DisponibilidadeDB(Base):
     dia_semana = Column(String(50), nullable=False)
     horario_inicio = Column(String(50), nullable=False)
     horario_fim = Column(String(50), nullable=False)
+
+
+class SalaDB(Base):
+    __tablename__ = "salas"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    nome = Column(String(255), nullable=False)
+    capacidade = Column(Integer, default=40)
+    tipo = Column(String(100), nullable=False, default="Sala comum")
+
+    indisponibilidades = relationship(
+        "IndisponibilidadeSalaDB", back_populates="sala", cascade="all, delete-orphan"
+    )
+
+
+class IndisponibilidadeSalaDB(Base):
+    __tablename__ = "indisponibilidades_sala"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    sala_id = Column(Integer, ForeignKey("salas.id", ondelete="CASCADE"), nullable=False, index=True)
+    dia_semana = Column(String(50), nullable=False)
+    horario_inicio = Column(String(50), nullable=False)
+    horario_fim = Column(String(50), nullable=False)
+    motivo = Column(String(255), nullable=True)
+
+    sala = relationship("SalaDB", back_populates="indisponibilidades")
 
 
 class GradeDB(Base):

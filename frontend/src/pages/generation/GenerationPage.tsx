@@ -143,7 +143,7 @@ export function GenerationPage() {
     <div className="space-y-8">
       <PageHeader
         title="Geração Automática de Grade"
-        description="Resolvedor matemático via Google OR-Tools CP-SAT. Distribui aulas respeitando matrizes curriculares, níveis de ensino e indisponibilidades sem choque de horários."
+        description="Resolvedor matemático via Google OR-Tools CP-SAT. Distribui aulas respeitando matrizes curriculares, níveis de ensino, indisponibilidades de professores e salas, aulas dobradas, ausência de janelas e 4 horários de planejamento por professor."
       />
 
       {/* 1. Diagnóstico Pré-Geração */}

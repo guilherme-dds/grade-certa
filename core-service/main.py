@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database.connection import Base, engine
 import database.models  # Garante que os modelos SQLAlchemy sejam importados
-from routers import professores, turmas, disciplinas, disponibilidades, grades
+from routers import professores, turmas, disciplinas, disponibilidades, grades, salas
 
 from sqlalchemy import text
 
@@ -22,6 +22,20 @@ try:
         conn.commit()
 except Exception:
     pass
+
+# Colunas adicionadas depois da criação inicial das tabelas
+for ddl in (
+    "ALTER TABLE turmas ADD COLUMN sala_id INT NULL;",
+    "ALTER TABLE disciplinas ADD COLUMN area VARCHAR(100) NULL;",
+    "ALTER TABLE disciplinas ADD COLUMN tipo_sala VARCHAR(100) NULL;",
+    "ALTER TABLE disciplinas ADD COLUMN aula_dobrada BOOLEAN NULL;",
+):
+    try:
+        with engine.connect() as conn:
+            conn.execute(text(ddl))
+            conn.commit()
+    except Exception:
+        pass
 
 app = FastAPI(
     title="Grade Certa - Core Service",
@@ -43,6 +57,7 @@ app.include_router(turmas.router)
 app.include_router(disciplinas.router)
 app.include_router(disponibilidades.router)
 app.include_router(grades.router)
+app.include_router(salas.router)
 
 
 @app.get("/")
