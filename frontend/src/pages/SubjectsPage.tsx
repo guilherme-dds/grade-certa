@@ -22,6 +22,7 @@ import {
 } from '@/api/salas'
 import { SalaDialog } from './salas/SalaDialog'
 import { DeleteSalaDialog } from './salas/DeleteSalaDialog'
+import { SalaIndisponibilidadeDialog } from './salas/SalaIndisponibilidadeDialog'
 import { TurmaDialog } from './turmas/TurmaDialog'
 import { DeleteTurmaDialog } from './turmas/DeleteTurmaDialog'
 import {
@@ -40,6 +41,7 @@ export function SubjectsPage() {
   const [isSalaDialogOpen, setIsSalaDialogOpen] = useState(false)
   const [editingSala, setEditingSala] = useState<SalaBackend | null>(null)
   const [deletingSala, setDeletingSala] = useState<SalaBackend | null>(null)
+  const [horariosSalaId, setHorariosSalaId] = useState<number | null>(null)
 
   // 1. Query das Turmas ao core-service
   const turmasQuery = useQuery({
@@ -220,6 +222,9 @@ export function SubjectsPage() {
     }
   }
 
+  // Lido da query para refletir os horários adicionados/removidos sem fechar o modal
+  const horariosSala = salasQuery.data?.find((s) => s.id === horariosSalaId) ?? null
+
   const handleDeleteSala = async (id: number) => {
     await deleteSalaMutation.mutateAsync(id)
     setDeletingSala(null)
@@ -388,6 +393,14 @@ export function SubjectsPage() {
               { header: 'Capacidade', cell: (row) => `${row.capacidade} alunos` },
               { header: 'Tipo', cell: (row) => row.tipo, className: 'text-muted' },
               {
+                header: 'Indisponível',
+                cell: (row) => {
+                  const total = row.indisponibilidades?.length ?? 0
+                  return total ? `${total} horário${total > 1 ? 's' : ''}` : 'Livre'
+                },
+                className: 'text-muted',
+              },
+              {
                 header: 'Ações',
                 cell: (row) => (
                   <div className="flex items-center gap-2">
@@ -401,6 +414,11 @@ export function SubjectsPage() {
                     >
                       Editar
                     </Button>
+                    {row.id && (
+                      <Button variant="secondary" size="sm" onClick={() => setHorariosSalaId(row.id!)}>
+                        Horários
+                      </Button>
+                    )}
                     {row.id && (
                       <button
                         type="button"
@@ -468,6 +486,15 @@ export function SubjectsPage() {
             setEditingSala(null)
           }}
           onSave={handleSaveSala}
+        />
+      )}
+
+      {/* Modal de Horários Indisponíveis da Sala */}
+      {horariosSala && (
+        <SalaIndisponibilidadeDialog
+          sala={horariosSala}
+          onClose={() => setHorariosSalaId(null)}
+          onChanged={() => queryClient.invalidateQueries({ queryKey: ['salas'] })}
         />
       )}
 

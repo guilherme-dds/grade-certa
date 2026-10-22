@@ -53,6 +53,11 @@ def inferir_area(disciplina: str) -> Optional[str]:
     return None
 
 
+def inferir_tipo_sala(disciplina: str) -> Optional[str]:
+    """Educação Física usa a quadra (tipo "Educação física"); as demais não exigem sala."""
+    return "Educação física" if "educacao fisica" in normalizar(disciplina) else None
+
+
 def inferir_aula_dobrada(disciplina: str) -> bool:
     """Por padrão toda disciplina tem aula dobrada, exceto Inglês (sempre individual)."""
     return "ingles" not in normalizar(disciplina)
@@ -244,7 +249,7 @@ def resolver_grade(
                 if not candidatas:
                     avisos.append(
                         f"Não há sala do tipo '{item.tipo_sala}' para '{item.disciplina}' "
-                        f"da turma '{t.nome}'; usando a sala fixa."
+                        f"da turma '{t.nome}'; a aula fica sem sala."
                     )
             if not candidatas and sala_fixa is not None:
                 candidatas = [sala_fixa]

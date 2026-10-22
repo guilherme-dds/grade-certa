@@ -48,3 +48,40 @@ def test_gera_e_grava_grade_com_salas_e_planejamento(db):
     for turma in {a.turma_id for a in aulas}:
         dias = [a.dia_semana for a in aulas if a.turma_id == turma and a.disciplina_nome == "Inglês"]
         assert len(dias) == len(set(dias))
+
+
+def test_educacao_fisica_usa_a_quadra_fora_dos_horarios_bloqueados(db):
+    from database.models import IndisponibilidadeSalaDB
+
+    quadra = SalaDB(nome="Quadra", tipo="Educação física", capacidade=50)
+    # Quadra ocupada toda segunda e na terça de manhã cedo
+    quadra.indisponibilidades = [
+        IndisponibilidadeSalaDB(dia_semana="Seg", horario_inicio="07:00", horario_fim="13:00"),
+        IndisponibilidadeSalaDB(dia_semana="Ter", horario_inicio="07:20", horario_fim="09:00"),
+    ]
+    db.add(quadra)
+    for p in sorted(set(PROFESSOR.values())):
+        db.add(ProfessorDB(nome=p.title(), email=f"{p}@escola.com", carga_maxima_aulas=20))
+    for serie in "6789":
+        grupo = "67" if serie in "67" else "89"
+        matriz = [
+            {"disciplina": d, "aulas_semanais": q, "professor": PROFESSOR.get((d, grupo)) or PROFESSOR[(d, None)]}
+            for d, q in MATRIZ
+        ]
+        db.add(TurmaDB(nome=f"{serie}º Ano A", turno="Manhã", nivel_ensino="Anos Finais", matriz_curricular=matriz))
+    db.commit()
+
+    resultado = GridGeneratorService(db).generate("Teste quadra")
+
+    assert resultado["sucesso"], resultado
+    assert resultado["avisos"] == []
+    aulas = db.query(AulaDB).filter(AulaDB.grade_id == resultado["grade_id"]).all()
+    ed_fisica = [a for a in aulas if a.disciplina_nome == "Educação Física"]
+    assert len(ed_fisica) == 8
+    assert all(a.sala_nome == "Quadra" for a in ed_fisica)
+    assert all(a.sala_nome is None for a in aulas if a.disciplina_nome != "Educação Física")
+    assert not any(a.dia_semana == "Seg" for a in ed_fisica)
+    assert not any(a.dia_semana == "Ter" and a.horario in ("07:20 - 08:10", "08:10 - 09:00") for a in ed_fisica)
+    # Uma turma por vez na quadra
+    usos = [(a.dia_semana, a.horario) for a in ed_fisica]
+    assert len(usos) == len(set(usos))

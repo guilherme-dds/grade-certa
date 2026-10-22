@@ -12,6 +12,7 @@ from services.grid_solver import (
     TurmaInput,
     inferir_area,
     inferir_aula_dobrada,
+    inferir_tipo_sala,
     normalizar,
     resolver_grade,
 )
@@ -22,6 +23,14 @@ TEMPO_LIMITE_SEG = float(os.getenv("GRADE_SOLVER_TIMEOUT", "45"))
 class GridGeneratorService:
     def __init__(self, db: Session):
         self.db = db
+
+    @staticmethod
+    def _tipo_sala(disc, nome_disc, tipos_cadastrados):
+        if disc and disc.tipo_sala:
+            return disc.tipo_sala
+        # Inferido só se a sala existir (ex.: quadra cadastrada), para não gerar avisos à toa
+        inferido = inferir_tipo_sala(nome_disc)
+        return inferido if inferido and normalizar(inferido) in tipos_cadastrados else None
 
     def generate(self, nome_grade: str = "Grade Gerada Automática") -> Dict[str, Any]:
         """
@@ -54,6 +63,8 @@ class GridGeneratorService:
             )
             for s in self.db.query(SalaDB).options(joinedload(SalaDB.indisponibilidades)).all()
         }
+
+        tipos_cadastrados = {normalizar(s.tipo) for s in salas.values()}
 
         professores: Dict[str, ProfessorInput] = {}
         avisos_carga: List[str] = []
@@ -92,7 +103,7 @@ class GridGeneratorService:
                             if disc and disc.aula_dobrada is not None
                             else inferir_aula_dobrada(nome_disc)
                         ),
-                        tipo_sala=disc.tipo_sala if disc else None,
+                        tipo_sala=self._tipo_sala(disc, nome_disc, tipos_cadastrados),
                     )
                 )
             turmas.append(
