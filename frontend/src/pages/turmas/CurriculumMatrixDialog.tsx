@@ -25,24 +25,9 @@ export function CurriculumMatrixDialog({
   const dialogRef = useRef<HTMLDialogElement>(null)
 
   // Matriz inicial da turma
-  const [items, setItems] = useState<ItemMatriz[]>(() => {
-    if (turma.matriz_curricular && turma.matriz_curricular.length > 0) {
-      return turma.matriz_curricular.map((m) => ({ ...m }))
-    }
-    // Caso esteja vazia, oferece sugestões padrão baseadas nos professores disponíveis
-    return [
-      {
-        professor: teachers[0]?.name ?? '',
-        disciplina: teachers[0]?.subjects[0] ?? availableSubjects[0] ?? 'Matemática',
-        aulas_semanais: 5,
-      },
-      {
-        professor: teachers[1]?.name ?? '',
-        disciplina: teachers[1]?.subjects[0] ?? availableSubjects[1] ?? 'Português',
-        aulas_semanais: 5,
-      },
-    ]
-  })
+  const [items, setItems] = useState<ItemMatriz[]>(() =>
+    (turma.matriz_curricular ?? []).map((m) => ({ ...m })),
+  )
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')

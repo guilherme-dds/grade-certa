@@ -32,7 +32,7 @@ class GridGeneratorService:
         inferido = inferir_tipo_sala(nome_disc)
         return inferido if inferido and normalizar(inferido) in tipos_cadastrados else None
 
-    def generate(self, nome_grade: str = "Grade Gerada Automática") -> Dict[str, Any]:
+    def generate(self, nome_grade: str = "Grade Gerada Automática", ano_semestre: str = "") -> Dict[str, Any]:
         """
         Carrega os cadastros, executa o CP-SAT (services/grid_solver.py) e grava a grade.
         Regras aplicadas: matriz curricular, horários por nível de ensino, sem choque de
@@ -46,9 +46,15 @@ class GridGeneratorService:
         prof_by_key = {normalizar(p.nome): p for p in professores_db if p.nome}
 
         indisp_prof: Dict[int, List[Intervalo]] = {}
+        pref_prof: Dict[int, List[Intervalo]] = {}
         for disp in self.db.query(DisponibilidadeDB).all():
-            indisp_prof.setdefault(disp.professor_id, []).append(
-                Intervalo(dia=disp.dia_semana, horario=f"{disp.horario_inicio} - {disp.horario_fim}")
+            destino = pref_prof if disp.tipo == "preferencial" else indisp_prof
+            destino.setdefault(disp.professor_id, []).append(
+                Intervalo(
+                    dia=disp.dia_semana,
+                    horario=f"{disp.horario_inicio} - {disp.horario_fim}",
+                    nivel=disp.nivel_ensino,
+                )
             )
 
         salas = {
@@ -91,6 +97,7 @@ class GridGeneratorService:
                         id=prof.id if prof else None,
                         carga_maxima=prof.carga_maxima_aulas if prof else None,
                         indisponivel=indisp_prof.get(prof.id, []) if prof else [],
+                        preferencial=pref_prof.get(prof.id, []) if prof else [],
                     )
                 itens.append(
                     ItemInput(
@@ -145,7 +152,7 @@ class GridGeneratorService:
         grade_db = GradeDB(
             nome=nome_grade,
             status="sucesso",
-            ano_semestre="2026.2",
+            ano_semestre=ano_semestre or None,
             total_aulas=len(resultado.aulas),
             detalhes={
                 "solver_status": resultado.solver_status,

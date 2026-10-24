@@ -4,7 +4,6 @@ import { useAuth } from '@/auth/useAuth'
 import { roles, roleShortLabels } from '@/auth/roles'
 import { navItemsFor } from '@/config/navigation'
 import { cn } from '@/lib/cn'
-import { institution } from '@/mocks/data'
 import { ScheduleProvider } from '@/schedule/ScheduleProvider'
 
 export function AppLayout() {
@@ -63,7 +62,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     <nav aria-label="Principal" className="flex h-full flex-col bg-navy py-6">
       <div className="mx-5 mb-4 border-b border-white/10 pb-5">
         <p className="text-lg font-bold tracking-tight text-white">GradeCerta</p>
-        <p className="mt-0.5 text-[11.5px] text-white/45">{institution.name}</p>
+        <p className="mt-0.5 text-[11.5px] text-white/45">Grade horária escolar</p>
       </div>
 
       {import.meta.env.DEV && (

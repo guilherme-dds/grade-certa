@@ -1,29 +1,21 @@
-import { useMemo } from 'react'
 import { cn } from '@/lib/cn'
-import { timeSlots as defaultTimeSlots, weekDays } from '@/mocks/data'
-import { getSubjectMeta, roomShortNames, shortTeacherName, type Lesson } from '@/mocks/schedule'
+import { getSubjectColor, shortTeacherName, weekDays } from '@/lib/schedule'
+import type { Lesson } from '@/schedule/ScheduleContext'
 
 interface ScheduleGridProps {
   lessons: Lesson[]
+  /** Horários da turma; se ausente, usa os horários que aparecem nas aulas */
   timeSlots?: string[]
   /** Aula com edição em andamento (destaque do design) */
-  editingId?: string | null
+  editingId?: number | null
   isDimmed?: (lesson: Lesson) => boolean
   /** Sem esta prop a grade é somente leitura */
   onSelect?: (lesson: Lesson) => void
 }
 
-export function ScheduleGrid({ lessons, timeSlots: customSlots, editingId, isDimmed, onSelect }: ScheduleGridProps) {
+export function ScheduleGrid({ lessons, timeSlots, editingId, isDimmed, onSelect }: ScheduleGridProps) {
   const bySlot = new Map(lessons.map((l) => [`${l.day}|${l.time}`, l]))
-
-  const slots = useMemo(() => {
-    if (customSlots && customSlots.length > 0) return customSlots
-    const distinct = Array.from(new Set(lessons.map((l) => l.time)))
-    if (distinct.length > 0) {
-      return distinct.sort((a, b) => a.localeCompare(b))
-    }
-    return defaultTimeSlots
-  }, [customSlots, lessons])
+  const slots = timeSlots?.length ? timeSlots : Array.from(new Set(lessons.map((l) => l.time))).sort()
 
   return (
     <div className="overflow-x-auto rounded-lg border border-line bg-white">
@@ -43,7 +35,7 @@ export function ScheduleGrid({ lessons, timeSlots: customSlots, editingId, isDim
         <tbody>
           {slots.map((time) => (
             <tr key={time} className="border-t border-line-soft">
-              <th scope="row" className="p-2 text-left font-mono font-normal text-muted whitespace-nowrap">
+              <th scope="row" className="p-2 text-left font-mono font-normal whitespace-nowrap text-muted">
                 {time}
               </th>
               {weekDays.map((day) => {
@@ -58,7 +50,7 @@ export function ScheduleGrid({ lessons, timeSlots: customSlots, editingId, isDim
                         onSelect={onSelect}
                       />
                     ) : (
-                      <div className="px-2 py-1.5 text-line text-center" aria-label={`${day}, ${time}: sem aula`}>
+                      <div className="px-2 py-1.5 text-center text-line" aria-label={`${day}, ${time}: sem aula`}>
                         —
                       </div>
                     )}
@@ -81,11 +73,11 @@ interface LessonCardProps {
 }
 
 function LessonCard({ lesson, editing, dimmed, onSelect }: LessonCardProps) {
-  const meta = getSubjectMeta(lesson.subject)
-  const detail = `${shortTeacherName(lesson.teacher)} · ${roomShortNames[lesson.room] ?? lesson.room ?? 'Sala Padrão'}`
+  const detail = lesson.room ? `${shortTeacherName(lesson.teacher)} · ${lesson.room}` : shortTeacherName(lesson.teacher)
+  const description = `${lesson.subject} — ${lesson.teacher ?? 'sem professor'}${lesson.room ? `, ${lesson.room}` : ''}`
   const className = cn(
     'block w-full rounded-[5px] px-2 py-1.5 text-left transition-opacity',
-    editing ? 'bg-primary outline-2 outline-offset-2 outline-navy' : meta.color,
+    editing ? 'bg-primary outline-2 outline-offset-2 outline-navy' : getSubjectColor(lesson.subject),
     dimmed && !editing && 'opacity-30',
   )
   const content = (
@@ -100,7 +92,7 @@ function LessonCard({ lesson, editing, dimmed, onSelect }: LessonCardProps) {
 
   if (!onSelect) {
     return (
-      <div className={className} title={`${meta.name} — ${lesson.teacher}, ${lesson.room}`}>
+      <div className={className} title={description}>
         {content}
       </div>
     )
@@ -110,7 +102,7 @@ function LessonCard({ lesson, editing, dimmed, onSelect }: LessonCardProps) {
     <button
       type="button"
       onClick={() => onSelect(lesson)}
-      aria-label={`Editar ${meta.name}, ${lesson.day} ${lesson.time} — ${lesson.teacher}, ${lesson.room}`}
+      aria-label={`Editar ${description}, ${lesson.day} ${lesson.time}`}
       className={cn(
         className,
         'cursor-pointer hover:ring-1 hover:ring-line focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',

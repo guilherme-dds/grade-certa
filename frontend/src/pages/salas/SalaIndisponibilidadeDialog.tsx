@@ -8,7 +8,7 @@ import {
   type IndisponibilidadeSala,
   type SalaBackend,
 } from '@/api/salas'
-import { weekDays } from '@/mocks/data'
+import { weekDays } from '@/lib/schedule'
 import { getApiErrorMessage } from '@/lib/apiError'
 
 const TODOS_OS_DIAS = 'Todos os dias'

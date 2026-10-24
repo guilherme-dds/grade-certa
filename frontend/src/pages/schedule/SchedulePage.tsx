@@ -3,17 +3,14 @@ import { Link, useSearchParams } from 'react-router'
 import { useAuth } from '@/auth/useAuth'
 import { buttonStyles } from '@/components/ui/buttonStyles'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { rooms } from '@/mocks/data'
-import { teachers, type Lesson } from '@/mocks/schedule'
+import type { Lesson } from '@/schedule/ScheduleContext'
 import { useSchedule } from '@/schedule/useSchedule'
 import { LessonEditDialog } from './LessonEditDialog'
 import { ScheduleGrid } from './ScheduleGrid'
 
-const defaultRoomNames = rooms.map((r) => r.name)
-
 export function SchedulePage() {
   const { role } = useAuth()
-  const { lessons, activeGrade, isLoading, refreshSchedule } = useSchedule()
+  const { lessons, activeGrade, horariosTurmas, isLoading, refreshSchedule } = useSchedule()
   const [params, setParams] = useSearchParams()
 
   const gradeIdParam = params.get('gradeId')
@@ -29,21 +26,21 @@ export function SchedulePage() {
     return fromLessons
   }, [lessons])
 
-  const availableTeachers = useMemo(() => {
-    const fromLessons = Array.from(new Set(lessons.map((l) => l.teacher).filter(Boolean))).sort()
-    return fromLessons.length > 0 ? fromLessons : teachers
-  }, [lessons])
+  const availableTeachers = useMemo(
+    () => Array.from(new Set(lessons.map((l) => l.teacher).filter((t): t is string => Boolean(t)))).sort(),
+    [lessons],
+  )
 
-  const availableRooms = useMemo(() => {
-    const fromLessons = Array.from(new Set(lessons.map((l) => l.room).filter(Boolean))).sort()
-    return fromLessons.length > 0 ? fromLessons : defaultRoomNames
-  }, [lessons])
+  const availableRooms = useMemo(
+    () => Array.from(new Set(lessons.map((l) => l.room).filter((r): r is string => Boolean(r)))).sort(),
+    [lessons],
+  )
 
   const classGroup = availableTurmas.find((c) => c === params.get('turma')) ?? availableTurmas[0] ?? ''
   const teacher = params.get('professor') ?? ''
   const room = params.get('sala') ?? ''
   const canEdit = role === 'coordenacao'
-  const editing = canEdit ? lessons.find((l) => l.id === params.get('aula')) : undefined
+  const editing = canEdit ? lessons.find((l) => String(l.id) === params.get('aula')) : undefined
 
   const setParam = (key: string, value: string | null) =>
     setParams(
@@ -108,6 +105,8 @@ export function SchedulePage() {
   }
 
   const turmaLessons = lessons.filter((l) => l.classGroup === classGroup)
+  const turmaSlots = turmaLessons.length ? horariosTurmas[turmaLessons[0].turmaId] : undefined
+  const planejamentos = (activeGrade?.detalhes?.planejamentos ?? []).filter((p) => p.professor === teacher)
 
   return (
     <>
@@ -115,7 +114,13 @@ export function SchedulePage() {
         title={`Grade — ${classGroup}`}
         description={
           activeGrade
-            ? `${activeGrade.nome} · Semestre ${activeGrade.ano_semestre ?? '2026.2'} · ${lessons.length} aulas alocadas no total`
+            ? [
+                activeGrade.nome,
+                activeGrade.ano_semestre && `Semestre ${activeGrade.ano_semestre}`,
+                `${lessons.length} aulas alocadas no total`,
+              ]
+                .filter(Boolean)
+                .join(' · ')
             : undefined
         }
         actions={
@@ -151,10 +156,20 @@ export function SchedulePage() {
 
       <ScheduleGrid
         lessons={turmaLessons}
+        timeSlots={turmaSlots}
         editingId={editing?.id}
         isDimmed={isDimmed}
-        onSelect={canEdit ? (lesson) => setParam('aula', lesson.id) : undefined}
+        onSelect={canEdit ? (lesson) => setParam('aula', String(lesson.id)) : undefined}
       />
+
+      {teacher && planejamentos.length > 0 && (
+        <p className="mt-3.5 text-[12.5px]">
+          <span className="font-semibold">Planejamento de {teacher}:</span>{' '}
+          {planejamentos
+            .map((p) => `${p.dia_semana} ${p.horario}${p.compartilhado ? ' (compartilhado)' : ''}`)
+            .join(' · ')}
+        </p>
+      )}
 
       <p className="mt-3.5 text-[12.5px] text-muted">
         {canEdit

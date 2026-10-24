@@ -16,12 +16,18 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { StatCard, StatGrid } from '@/components/ui/StatCard'
 import { cn } from '@/lib/cn'
 
+/** Mesmo padrão do backend: "2026.2" para o 2º semestre de 2026 */
+function semestreAtual() {
+  const hoje = new Date()
+  return `${hoje.getFullYear()}.${hoje.getMonth() < 6 ? 1 : 2}`
+}
+
 export function GenerationPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { refreshSchedule } = useSchedule()
 
-  const [nomeGrade, setNomeGrade] = useState('Grade Horária 2026.2')
+  const [nomeGrade, setNomeGrade] = useState(`Grade Horária ${semestreAtual()}`)
   const [isGenerating, setIsGenerating] = useState(false)
   const [elapsedTime, setElapsedTime] = useState(0)
   const [lastResult, setLastResult] = useState<ResultadoGeracaoGrade | null>(null)
@@ -225,7 +231,7 @@ export function GenerationPage() {
               value={nomeGrade}
               disabled={isGenerating}
               onChange={(e) => setNomeGrade(e.target.value)}
-              placeholder="Ex: Grade Horária 2026.2 - Versão Final"
+              placeholder={`Ex: Grade Horária ${semestreAtual()} - Versão Final`}
               className="mt-1.5 w-full rounded-md border border-line bg-white px-3.5 py-2 text-sm text-ink outline-none transition focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50"
             />
           </div>
@@ -306,6 +312,8 @@ export function GenerationPage() {
                   <h3 className="font-bold text-primary">Grade gerada com sucesso!</h3>
                   <p className="text-xs text-muted">
                     {lastResult.total_aulas} aulas distribuídas em {lastResult.tempo_seg ?? elapsedTime} segundos.
+                    {lastResult.planejamentos_compartilhados &&
+                      ` Planejamentos compartilhados com colega da mesma área: ${lastResult.planejamentos_compartilhados}.`}
                   </p>
                 </div>
               </div>
@@ -314,6 +322,16 @@ export function GenerationPage() {
                 Ver Grade Completa →
               </Link>
             </div>
+            {lastResult.avisos && lastResult.avisos.length > 0 && (
+              <div className="mt-4 border-t border-primary-soft-line pt-3 text-xs">
+                <p className="font-semibold text-warning">Avisos</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4 text-muted">
+                  {lastResult.avisos.map((aviso) => (
+                    <li key={aviso}>{aviso}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -360,7 +378,7 @@ export function GenerationPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-muted">{g.ano_semestre ?? '2026.2'}</td>
+                    <td className="px-4 py-2.5 text-muted">{g.ano_semestre ?? '—'}</td>
                     <td className="px-4 py-2.5 font-semibold text-ink">{g.total_aulas}</td>
                     <td className="px-4 py-2.5">
                       <span

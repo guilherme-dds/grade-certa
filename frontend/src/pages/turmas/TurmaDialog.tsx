@@ -3,6 +3,7 @@ import { FormField } from '@/components/FormField'
 import { SelectField } from '@/components/SelectField'
 import { Button } from '@/components/ui/Button'
 import type { TurmaBackend } from '@/api/turmas'
+import { niveisEnsino } from '@/lib/schedule'
 
 interface TurmaDialogProps {
   turma?: TurmaBackend | null
@@ -10,12 +11,14 @@ interface TurmaDialogProps {
   onSave: (turma: Omit<TurmaBackend, 'id'> & { id?: number }) => Promise<void>
 }
 
-const SHIFT_OPTIONS = ['Manhã', 'Tarde', 'Noite', 'Integral'] as const
+// Turnos com horários definidos no core-service (services/time_slots.py)
+const SHIFT_OPTIONS = ['Manhã', 'Tarde', 'Integral'] as const
 
 export function TurmaDialog({ turma, onClose, onSave }: TurmaDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [nome, setNome] = useState(turma?.nome ?? '')
   const [turno, setTurno] = useState<string>(turma?.turno ?? 'Manhã')
+  const [nivel, setNivel] = useState<string>(turma?.nivel_ensino ?? 'Anos Finais')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -45,6 +48,7 @@ export function TurmaDialog({ turma, onClose, onSave }: TurmaDialogProps) {
         id: turma?.id,
         nome: trimmedNome,
         turno,
+        nivel_ensino: nivel,
       })
       close()
     } catch (err) {
@@ -94,6 +98,13 @@ export function TurmaDialog({ turma, onClose, onSave }: TurmaDialogProps) {
             options={SHIFT_OPTIONS}
             value={turno}
             onChange={(e) => setTurno(e.target.value)}
+          />
+
+          <SelectField
+            label="Nível de ensino (define os horários das aulas)"
+            options={niveisEnsino}
+            value={nivel}
+            onChange={(e) => setNivel(e.target.value)}
           />
         </div>
 

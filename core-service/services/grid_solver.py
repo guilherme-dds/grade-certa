@@ -67,6 +67,13 @@ def inferir_aula_dobrada(disciplina: str) -> bool:
 class Intervalo:
     dia: str
     horario: str  # "HH:MM - HH:MM"
+    # Nível de ensino em que o horário foi marcado; nulo = vale para qualquer nível
+    nivel: Optional[str] = None
+
+    def aplica(self, dia: str, horario: str, nivel: Optional[str] = None) -> bool:
+        if self.dia != dia or not slots_overlap(self.horario, horario):
+            return False
+        return self.nivel is None or nivel is None or normalizar(self.nivel) == normalizar(nivel)
 
 
 @dataclass
@@ -96,6 +103,7 @@ class ProfessorInput:
     id: Optional[int] = None
     carga_maxima: Optional[int] = None
     indisponivel: List[Intervalo] = field(default_factory=list)
+    preferencial: List[Intervalo] = field(default_factory=list)
 
 
 @dataclass
@@ -235,6 +243,8 @@ def resolver_grade(
     escolha_sala: Dict[Tuple[int, int, str, int], List[Tuple[int, cp_model.IntVar]]] = {}
     # professor -> dia -> [(var, horario)]
     prof_aulas: Dict[str, Dict[str, List[Tuple[cp_model.IntVar, str]]]] = {}
+    # professor -> [(var, dia, horario, nivel)] para disponibilidade marcada por nível
+    prof_aulas_nivel: Dict[str, List[Tuple[cp_model.IntVar, str, str, str]]] = {}
     # sala -> dia -> [(var, horario)]
     sala_uso: Dict[int, Dict[str, List[Tuple[cp_model.IntVar, str]]]] = {}
 
@@ -261,6 +271,7 @@ def resolver_grade(
                     x[(t.id, idx, dia, ordem)] = var
                     if item.professor:
                         prof_aulas.setdefault(item.professor, {}).setdefault(dia, []).append((var, horario))
+                        prof_aulas_nivel.setdefault(item.professor, []).append((var, dia, horario, slot["nivel"]))
 
                     if len(candidatas) == 1:
                         opcoes = [(candidatas[0], var)]
@@ -299,10 +310,9 @@ def resolver_grade(
     # ------------------------------------------------------------------
     # Indisponibilidade dos professores
     for chave, prof in professores.items():
-        for ind in prof.indisponivel:
-            for var, horario in prof_aulas.get(chave, {}).get(ind.dia, []):
-                if slots_overlap(horario, ind.horario):
-                    model.Add(var == 0).OnlyEnforceIf(lits["disponibilidade_professor"])
+        for var, dia, horario, nivel in prof_aulas_nivel.get(chave, []):
+            if any(ind.aplica(dia, horario, nivel) for ind in prof.indisponivel):
+                model.Add(var == 0).OnlyEnforceIf(lits["disponibilidade_professor"])
 
     # Salas: uma turma por vez e respeito aos horários ocupados por outras atividades
     for sid, por_dia in sala_uso.items():
@@ -433,7 +443,8 @@ def resolver_grade(
                     model.Add(presente == p + ocupado)
                     pres.append(presente)
 
-                    if any(ind.dia == dia and slots_overlap(h, ind.horario) for ind in indisponivel):
+                    # o planejamento não tem nível: qualquer horário indisponível que se sobreponha bloqueia
+                    if any(ind.aplica(dia, h) for ind in indisponivel):
                         model.Add(p == 0).OnlyEnforceIf(lits["disponibilidade_professor"])
 
                 # Horários de níveis diferentes podem se sobrepor: um planejamento por vez
@@ -477,6 +488,7 @@ def resolver_grade(
 
     # ------------------------------------------------------------------
     # 6. Objetivo: planejamento compartilhado com ao menos 1 colega da mesma área
+    #    e aulas nos horários preferenciais dos professores
     # ------------------------------------------------------------------
     compartilhado: Dict[Tuple[str, str, str, str], cp_model.IntVar] = {}
     for (chave, dia, turno, h), p in plan.items():
@@ -494,8 +506,16 @@ def resolver_grade(
         model.Add(s <= p)
         model.Add(s <= sum(colegas))
         compartilhado[(chave, dia, turno, h)] = s
-    if compartilhado:
-        model.Maximize(sum(compartilhado.values()))
+    # Aulas em horários marcados como preferenciais pelo professor (peso menor)
+    preferidas = [
+        var
+        for chave, prof in professores.items()
+        if prof.preferencial
+        for var, dia, horario, nivel in prof_aulas_nivel.get(chave, [])
+        if any(pref.aplica(dia, horario, nivel) for pref in prof.preferencial)
+    ]
+    if compartilhado or preferidas:
+        model.Maximize(3 * sum(compartilhado.values()) + sum(preferidas))
 
     # ------------------------------------------------------------------
     # 7. Resolução

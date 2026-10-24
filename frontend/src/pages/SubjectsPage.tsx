@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/Button'
 import { DataTable } from '@/components/ui/DataTable'
@@ -76,72 +76,13 @@ export function SubjectsPage() {
       if (d.id) discMap.set(d.id, d.nome)
     })
 
-    const map: Record<string, string[]> = {
-      'Ana Ferreira': ['Matemática'],
-      'Carlos Lima': ['Português'],
-      'Beatriz Souza': ['Ciências'],
-      'João Prado': ['História'],
-      'Marina Alves': ['Educação Física'],
-      'Roberto Mendes': ['Geografia'],
-    }
-
-    ;(professoresQuery.data ?? []).forEach((p) => {
-      const subs = (p.disciplinas ?? [])
-        .map((id) => discMap.get(id))
-        .filter((n): n is string => Boolean(n))
-      if (subs.length > 0) {
-        map[p.nome] = subs
-      }
-    })
-
-    return Object.entries(map).map(([name, subjects]) => ({
-      name,
-      subjects,
-    }))
+    return (professoresQuery.data ?? [])
+      .filter((p) => p.ativo)
+      .map((p) => ({
+        name: p.nome,
+        subjects: (p.disciplinas ?? []).map((id) => discMap.get(id)).filter((n): n is string => Boolean(n)),
+      }))
   }, [professoresQuery.data, disciplinasQuery.data])
-
-  // Se o banco estiver vazio, popula com turmas e matrizes iniciais
-  useEffect(() => {
-    if (turmasQuery.isSuccess && turmasQuery.data.length === 0) {
-      const initialTurmas: Omit<TurmaBackend, 'id'>[] = [
-        {
-          nome: '6º Ano A',
-          turno: 'Manhã',
-          matriz_curricular: [
-            { disciplina: 'Matemática', aulas_semanais: 5, professor: 'Ana Ferreira' },
-            { disciplina: 'Português', aulas_semanais: 5, professor: 'Carlos Lima' },
-            { disciplina: 'Ciências', aulas_semanais: 4, professor: 'Beatriz Souza' },
-            { disciplina: 'História', aulas_semanais: 3, professor: 'João Prado' },
-            { disciplina: 'Educação Física', aulas_semanais: 2, professor: 'Marina Alves' },
-          ],
-        },
-        {
-          nome: '6º Ano B',
-          turno: 'Tarde',
-          matriz_curricular: [
-            { disciplina: 'Matemática', aulas_semanais: 5, professor: 'Ana Ferreira' },
-            { disciplina: 'Português', aulas_semanais: 5, professor: 'Carlos Lima' },
-            { disciplina: 'Ciências', aulas_semanais: 4, professor: 'Beatriz Souza' },
-          ],
-        },
-        {
-          nome: '7º Ano A',
-          turno: 'Manhã',
-          matriz_curricular: [
-            { disciplina: 'Matemática', aulas_semanais: 5, professor: 'Ana Ferreira' },
-            { disciplina: 'Português', aulas_semanais: 5, professor: 'Carlos Lima' },
-            { disciplina: 'História', aulas_semanais: 3, professor: 'João Prado' },
-          ],
-        },
-        { nome: '8º Ano A', turno: 'Manhã', matriz_curricular: [] },
-        { nome: '9º Ano A', turno: 'Manhã', matriz_curricular: [] },
-      ]
-
-      Promise.all(initialTurmas.map((t) => createTurma(t))).then(() => {
-        queryClient.invalidateQueries({ queryKey: ['turmas'] })
-      })
-    }
-  }, [turmasQuery.isSuccess, turmasQuery.data, queryClient])
 
   // Mutations
   const createTurmaMutation = useMutation({
@@ -166,9 +107,11 @@ export function SubjectsPage() {
       await updateTurmaMutation.mutateAsync({
         id: data.id,
         payload: {
+          ...existing,
           id: data.id,
           nome: data.nome,
           turno: data.turno,
+          nivel_ensino: data.nivel_ensino,
           matriz_curricular: existing?.matriz_curricular ?? [],
         },
       })
@@ -176,6 +119,7 @@ export function SubjectsPage() {
       await createTurmaMutation.mutateAsync({
         nome: data.nome,
         turno: data.turno,
+        nivel_ensino: data.nivel_ensino,
         matriz_curricular: [],
       })
     }
@@ -236,7 +180,7 @@ export function SubjectsPage() {
     <>
       <PageHeader
         title="Turmas e salas"
-        description="Gerencie as turmas ativas, matrizes curriculares com carga horária por matéria, docentes e salas."
+        description="Gerencie as turmas, matrizes curriculares e salas."
       />
 
       {/* Seção de Turmas */}
@@ -280,6 +224,7 @@ export function SubjectsPage() {
                   </span>
                 ),
               },
+              { header: 'Nível', cell: (row) => row.nivel_ensino ?? '—', className: 'text-muted' },
               {
                 header: 'Matriz Curricular',
                 cell: (row) => {

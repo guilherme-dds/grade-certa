@@ -10,6 +10,8 @@ export interface TurmaBackend {
   id?: number
   nome: string
   turno: string
+  /** Define os horários de aula da turma (cada nível tem sua grade de horários) */
+  nivel_ensino?: string | null
   matriz_curricular?: ItemMatriz[]
   sala_id?: number | null
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { FormField } from '@/components/FormField'
 import { SelectField } from '@/components/SelectField'
@@ -19,10 +19,12 @@ import {
   createDisciplina,
   type DisciplinaBackend,
 } from '@/api/disciplinas'
-import { type NivelEnsino, type Teacher } from '@/mocks/teachers'
+import { getTurmas } from '@/api/turmas'
+import { formatDateTime } from '@/lib/schedule'
+import { type NivelEnsino, type Teacher, type TeacherRow } from './teachers/types'
 import { DeleteTeacherDialog } from './teachers/DeleteTeacherDialog'
 import { SubjectDialog } from './teachers/SubjectDialog'
-import { TeacherAvailabilityDialog, type SlotState } from './teachers/TeacherAvailabilityDialog'
+import { TeacherAvailabilityDialog } from './teachers/TeacherAvailabilityDialog'
 import { TeacherDialog } from './teachers/TeacherDialog'
 
 export function TeachersPage() {
@@ -39,12 +41,7 @@ export function TeachersPage() {
   const [isSubjectDialogOpen, setIsSubjectDialogOpen] = useState(false)
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null)
   const [deletingTeacher, setDeletingTeacher] = useState<Teacher | null>(null)
-  const [availabilityTeacher, setAvailabilityTeacher] = useState<Teacher | null>(null)
-
-  // Estado local para horários de disponibilidade salvos por professor (front-end)
-  const [teacherAvailabilityMap, setTeacherAvailabilityMap] = useState<
-    Record<string, Record<string, SlotState>>
-  >({})
+  const [availabilityTeacher, setAvailabilityTeacher] = useState<TeacherRow | null>(null)
 
   // 1. Queries ao core-service
   const professoresQuery = useQuery({
@@ -57,80 +54,22 @@ export function TeachersPage() {
     queryFn: () => getDisciplinas(),
   })
 
-  // Popula o core-service com dados iniciais se o banco em memória estiver vazio
-  useEffect(() => {
-    if (disciplinasQuery.isSuccess && disciplinasQuery.data.length === 0) {
-      const initialSubjects = ['Matemática', 'Português', 'Ciências', 'História', 'Geografia', 'Educação Física']
-      Promise.all(initialSubjects.map((nome) => createDisciplina({ nome }))).then(() => {
-        queryClient.invalidateQueries({ queryKey: ['disciplinas'] })
-      })
-    }
-  }, [disciplinasQuery.isSuccess, disciplinasQuery.data, queryClient])
+  const turmasQuery = useQuery({
+    queryKey: ['turmas'],
+    queryFn: getTurmas,
+  })
 
-  useEffect(() => {
-    if (
-      professoresQuery.isSuccess &&
-      professoresQuery.data.length === 0 &&
-      disciplinasQuery.isSuccess &&
-      disciplinasQuery.data.length > 0
-    ) {
-      const discMap = new Map(disciplinasQuery.data.map((d) => [d.nome, d.id!]))
-      const initialProfs: Omit<ProfessorBackend, 'id'>[] = [
-        {
-          nome: 'Ana Ferreira',
-          email: 'ana.ferreira@escola.gov.br',
-          niveis_ensino: ['Anos Finais', 'Ensino Médio'],
-          disciplinas: [discMap.get('Matemática')].filter(Boolean) as number[],
-          carga_maxima_aulas: 20,
-          ativo: true,
-        },
-        {
-          nome: 'Carlos Lima',
-          email: 'carlos.lima@escola.gov.br',
-          niveis_ensino: ['Ensino Médio'],
-          disciplinas: [discMap.get('Português')].filter(Boolean) as number[],
-          carga_maxima_aulas: 20,
-          ativo: true,
-        },
-        {
-          nome: 'Beatriz Souza',
-          email: 'beatriz.souza@escola.gov.br',
-          niveis_ensino: ['Anos Finais'],
-          disciplinas: [discMap.get('Ciências')].filter(Boolean) as number[],
-          carga_maxima_aulas: 16,
-          ativo: true,
-        },
-        {
-          nome: 'João Prado',
-          email: 'joao.prado@escola.gov.br',
-          niveis_ensino: ['Anos Finais', 'Ensino Médio'],
-          disciplinas: [discMap.get('História')].filter(Boolean) as number[],
-          carga_maxima_aulas: 20,
-          ativo: true,
-        },
-        {
-          nome: 'Marina Alves',
-          email: 'marina.alves@escola.gov.br',
-          niveis_ensino: ['Anos Iniciais', 'Anos Finais'],
-          disciplinas: [discMap.get('Educação Física')].filter(Boolean) as number[],
-          carga_maxima_aulas: 12,
-          ativo: true,
-        },
-        {
-          nome: 'Roberto Mendes',
-          email: 'roberto.mendes@escola.gov.br',
-          niveis_ensino: ['Anos Finais'],
-          disciplinas: [discMap.get('Geografia')].filter(Boolean) as number[],
-          carga_maxima_aulas: 20,
-          ativo: false,
-        },
-      ]
-
-      Promise.all(initialProfs.map((p) => createProfessor(p))).then(() => {
-        queryClient.invalidateQueries({ queryKey: ['professores'] })
-      })
+  // Aulas semanais atribuídas a cada professor nas matrizes curriculares (vínculo pelo nome)
+  const aulasPorProfessor = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const turma of turmasQuery.data ?? []) {
+      for (const item of turma.matriz_curricular ?? []) {
+        const key = item.professor?.trim().toLowerCase()
+        if (key) map.set(key, (map.get(key) ?? 0) + Number(item.aulas_semanais || 0))
+      }
     }
-  }, [professoresQuery.isSuccess, professoresQuery.data, disciplinasQuery.isSuccess, disciplinasQuery.data, queryClient])
+    return map
+  }, [turmasQuery.data])
 
   // 2. Mapeamentos de Disciplinas
   const disciplinesList = useMemo(() => {
@@ -154,7 +93,7 @@ export function TeachersPage() {
   }, [disciplinasQuery.data])
 
   // 3. Mapeamento de Backend Professors para UI Teachers
-  const teachers: (Teacher & { raw: ProfessorBackend })[] = useMemo(() => {
+  const teachers: TeacherRow[] = useMemo(() => {
     const backendList = professoresQuery.data ?? []
     return backendList.map((p) => {
       const subjectNames = (p.disciplinas ?? []).map(
@@ -170,12 +109,12 @@ export function TeachersPage() {
           : ['Anos Finais']) as NivelEnsino[],
         subjects: subjectNames,
         maxWeeklyHours: p.carga_maxima_aulas,
-        currentWeeklyHours: Math.min(p.carga_maxima_aulas, Math.round(p.carga_maxima_aulas * 0.75)),
+        currentWeeklyHours: aulasPorProfessor.get(p.nome.trim().toLowerCase()) ?? 0,
         status: p.ativo ? 'ativo' : 'inativo',
         raw: p,
       }
     })
-  }, [professoresQuery.data, disciplineNameById])
+  }, [professoresQuery.data, disciplineNameById, aulasPorProfessor])
 
   // 4. Mutations do React Query
   const createProfessorMutation = useMutation({
@@ -288,7 +227,7 @@ export function TeachersPage() {
     setDeletingTeacher(null)
   }
 
-  const handleToggleStatus = async (teacher: Teacher & { raw: ProfessorBackend }) => {
+  const handleToggleStatus = async (teacher: TeacherRow) => {
     const updatedPayload: ProfessorBackend = {
       ...teacher.raw,
       ativo: !teacher.raw.ativo,
@@ -299,7 +238,7 @@ export function TeachersPage() {
     })
   }
 
-  const isLoading = professoresQuery.isLoading || disciplinasQuery.isLoading
+  const isLoading = professoresQuery.isLoading || disciplinasQuery.isLoading || turmasQuery.isLoading
 
   return (
     <>
@@ -333,8 +272,8 @@ export function TeachersPage() {
         <StatGrid>
           <StatCard label="Total de professores" value={stats.total} suffix="cadastrados" />
           <StatCard label="Docentes ativos" value={stats.active} tone="success" suffix={`de ${stats.total}`} />
-          <StatCard label="Horas alocadas" value={`${stats.totalHours}h`} suffix="semanais" />
-          <StatCard label="Média por docente" value={`${stats.avgHours}h`} suffix="/ semana" />
+          <StatCard label="Aulas atribuídas" value={stats.totalHours} suffix="nas matrizes" />
+          <StatCard label="Média por docente ativo" value={stats.avgHours} suffix="aulas / semana" />
         </StatGrid>
       </section>
 
@@ -417,6 +356,11 @@ export function TeachersPage() {
                   <div>
                     <p className="font-semibold text-ink">{row.name}</p>
                     <p className="text-xs text-muted">{row.email}</p>
+                    <p className="text-[11px] text-muted">
+                      {row.raw.disponibilidade_atualizada_em
+                        ? `Disponibilidade atualizada em ${formatDateTime(row.raw.disponibilidade_atualizada_em)}`
+                        : 'Disponibilidade não informada'}
+                    </p>
                   </div>
                 ),
               },
@@ -460,8 +404,8 @@ export function TeachersPage() {
                   return (
                     <div className="w-32">
                       <div className="flex justify-between text-xs mb-1 font-mono">
-                        <span>{row.currentWeeklyHours}h</span>
-                        <span className="text-muted">máx {row.maxWeeklyHours}h</span>
+                        <span>{row.currentWeeklyHours} aulas</span>
+                        <span className="text-muted">máx {row.maxWeeklyHours}</span>
                       </div>
                       <div className="h-1.5 w-full rounded-full bg-line-soft overflow-hidden">
                         <div
@@ -551,18 +495,11 @@ export function TeachersPage() {
         )}
       </section>
 
-      {/* Modal de Horários de Disponibilidade (Front-end) */}
+      {/* Modal de Horários de Disponibilidade (salvos no core-service) */}
       {availabilityTeacher && (
         <TeacherAvailabilityDialog
-          teacher={availabilityTeacher}
-          initialSlots={teacherAvailabilityMap[availabilityTeacher.id]}
+          professor={availabilityTeacher.raw}
           onClose={() => setAvailabilityTeacher(null)}
-          onSave={(slots) => {
-            setTeacherAvailabilityMap((prev) => ({
-              ...prev,
-              [availabilityTeacher.id]: slots,
-            }))
-          }}
         />
       )}
 

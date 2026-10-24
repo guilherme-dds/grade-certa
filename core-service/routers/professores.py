@@ -1,8 +1,10 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from database.connection import get_db
-from database.models import ProfessorDB
+from database.models import DisponibilidadeDB, ProfessorDB
+from models.disponibilidade import Disponibilidade, DisponibilidadeItem
 from models.professor import Professor
 
 router = APIRouter(prefix="/professores", tags=["professores"])
@@ -93,6 +95,32 @@ def deletar_professor(professor_id: int, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND, detail="Professor não encontrado"
         )
 
+    db.query(DisponibilidadeDB).filter(DisponibilidadeDB.professor_id == professor_id).delete()
     db.delete(prof)
     db.commit()
     return {"mensagem": f"Professor {professor_id} removido com sucesso"}
+
+
+@router.get("/{professor_id}/disponibilidades", response_model=List[Disponibilidade])
+def listar_disponibilidade_professor(professor_id: int, db: Session = Depends(get_db)):
+    return db.query(DisponibilidadeDB).filter(DisponibilidadeDB.professor_id == professor_id).all()
+
+
+@router.put("/{professor_id}/disponibilidades", response_model=List[Disponibilidade])
+def salvar_disponibilidade_professor(
+    professor_id: int, itens: List[DisponibilidadeItem], db: Session = Depends(get_db)
+):
+    """
+    Substitui os horários marcados do professor. Horários não enviados ficam disponíveis;
+    "indisponivel" bloqueia aulas e "preferencial" é priorizado pelo gerador.
+    """
+    prof = db.query(ProfessorDB).filter(ProfessorDB.id == professor_id).first()
+    if not prof:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Professor não encontrado")
+
+    db.query(DisponibilidadeDB).filter(DisponibilidadeDB.professor_id == professor_id).delete()
+    novos = [DisponibilidadeDB(professor_id=professor_id, **item.model_dump()) for item in itens]
+    db.add_all(novos)
+    prof.disponibilidade_atualizada_em = datetime.now()
+    db.commit()
+    return novos

@@ -29,6 +29,9 @@ for ddl in (
     "ALTER TABLE disciplinas ADD COLUMN area VARCHAR(100) NULL;",
     "ALTER TABLE disciplinas ADD COLUMN tipo_sala VARCHAR(100) NULL;",
     "ALTER TABLE disciplinas ADD COLUMN aula_dobrada BOOLEAN NULL;",
+    "ALTER TABLE disponibilidades ADD COLUMN tipo VARCHAR(20) NOT NULL DEFAULT 'indisponivel';",
+    "ALTER TABLE disponibilidades ADD COLUMN nivel_ensino VARCHAR(100) NULL;",
+    "ALTER TABLE professores ADD COLUMN disponibilidade_atualizada_em DATETIME NULL;",
 ):
     try:
         with engine.connect() as conn:

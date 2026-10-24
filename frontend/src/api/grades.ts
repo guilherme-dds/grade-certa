@@ -21,8 +21,26 @@ export interface GradeBackend {
   ano_semestre?: string
   criado_em?: string
   total_aulas: number
-  detalhes?: Record<string, unknown>
+  detalhes?: DetalhesGrade
   aulas: AulaBackend[]
+  /** Horários de cada turma da grade (turma_id -> horários) */
+  horarios_turmas?: Record<string, string[]>
+}
+
+export interface PlanejamentoGrade {
+  professor: string
+  professor_id?: number | null
+  dia_semana: string
+  horario: string
+  compartilhado: boolean
+}
+
+export interface DetalhesGrade {
+  solver_status?: string
+  tempo_resolucao_seg?: number
+  turmas_processadas?: number
+  planejamentos?: PlanejamentoGrade[]
+  avisos?: string[]
 }
 
 export interface GradeResumo {
@@ -32,7 +50,7 @@ export interface GradeResumo {
   ano_semestre?: string
   criado_em?: string
   total_aulas: number
-  detalhes?: Record<string, unknown>
+  detalhes?: DetalhesGrade
 }
 
 export interface ResultadoGeracaoGrade {
@@ -42,6 +60,34 @@ export interface ResultadoGeracaoGrade {
   grade_id?: number | null
   total_aulas: number
   tempo_seg?: number
+  planejamentos_compartilhados?: string
+  avisos?: string[]
+}
+
+export type GravidadeConflito = 'alto' | 'medio'
+
+export interface ConflitoGrade {
+  id: string
+  gravidade: GravidadeConflito
+  tipo: string
+  descricao: string
+  aula_id: number
+  turma_nome: string
+  /** Texto da sugestão; nulo quando não há horário livre para a aula */
+  sugestao: string | null
+  correcao: { dia_semana: string; horario: string } | null
+}
+
+export interface AulaUpdate {
+  dia_semana: string
+  horario: string
+  professor_id: number | null
+  sala_nome: string | null
+}
+
+export interface HorariosEscola {
+  dias: string[]
+  niveis: Record<string, { manha: string[]; tarde: string[] }>
 }
 
 /**
@@ -70,5 +116,23 @@ export async function getGrade(gradeId?: number): Promise<GradeBackend> {
  */
 export async function getHistoricoGrades(): Promise<GradeResumo[]> {
   const { data } = await api.get<GradeResumo[]>('/grades/historico')
+  return data
+}
+
+/** Dias letivos e horários de aula de cada nível de ensino (manhã/tarde). */
+export async function getHorarios(): Promise<HorariosEscola> {
+  const { data } = await api.get<HorariosEscola>('/grades/horarios')
+  return data
+}
+
+/** Conflitos da grade (choques e indisponibilidades) com sugestão de horário livre. */
+export async function getConflitos(gradeId: number): Promise<ConflitoGrade[]> {
+  const { data } = await api.get<ConflitoGrade[]>(`/grades/${gradeId}/conflitos`)
+  return data
+}
+
+/** Reatribui dia, horário, professor e sala de uma aula (recusa choque na mesma turma). */
+export async function editarAula(aulaId: number, payload: AulaUpdate): Promise<AulaBackend> {
+  const { data } = await api.put<AulaBackend>(`/grades/aulas/${aulaId}`, payload)
   return data
 }

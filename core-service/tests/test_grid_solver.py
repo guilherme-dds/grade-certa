@@ -200,3 +200,19 @@ def test_disciplina_com_aulas_demais():
     res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
     assert not res.sucesso
     assert "no máximo 10" in res.mensagem
+
+
+def test_indisponibilidade_de_outro_nivel_nao_bloqueia_e_preferencia_atrai_aulas():
+    turmas, professores = montar_escola()
+    # Eva só dá aula nos Anos Finais: o bloqueio marcado no Ensino Médio não a afeta
+    professores["eva"].indisponivel = [Intervalo(dia="Seg", horario=h, nivel="Ensino Médio") for h in SLOTS]
+    # Hugo (Inglês, sempre individual) prefere quarta-feira
+    professores["hugo"].preferencial = [Intervalo(dia="Qua", horario=h) for h in SLOTS]
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    verificar_regras(res, turmas)
+    assert sum(1 for a in res.aulas if a.professor_chave == "hugo" and a.dia == "Qua") == 4
+
+    professores["eva"].indisponivel = [Intervalo(dia="Seg", horario=h, nivel="Anos Finais") for h in SLOTS]
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    verificar_regras(res, turmas)
+    assert not any(a.professor_chave == "eva" and a.dia == "Seg" for a in res.aulas)

@@ -4,12 +4,6 @@ export interface DisciplinaBackend {
   id?: number
   nome: string
   quantidade_aulas: number
-  // Área do conhecimento (planejamento compartilhado). Nulo = inferida pelo nome
-  area?: string | null
-  // Tipo de sala exigido (ex: 'Laboratório'). Nulo = sala fixa da turma
-  tipo_sala?: string | null
-  // Exige uma aula dobrada por semana. Nulo = automático (Inglês individual, demais dobradas)
-  aula_dobrada?: boolean | null
 }
 
 export async function getDisciplinas(): Promise<DisciplinaBackend[]> {
@@ -17,6 +11,7 @@ export async function getDisciplinas(): Promise<DisciplinaBackend[]> {
   return data
 }
 
+// Área, aula dobrada e sala exigida ficam por conta do gerador (inferidas pelo nome da disciplina)
 export async function createDisciplina(payload: { nome: string; quantidade_aulas?: number }): Promise<DisciplinaBackend> {
   const { data } = await api.post<DisciplinaBackend>('/disciplinas/', {
     nome: payload.nome,

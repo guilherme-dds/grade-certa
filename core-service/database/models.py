@@ -27,6 +27,8 @@ class ProfessorDB(Base):
     disciplinas = Column(JSON, default=list)
     carga_maxima_aulas = Column(Integer, default=20)
     ativo = Column(Boolean, default=True)
+    # Última vez que a disponibilidade foi salva (nulo = nunca informada)
+    disponibilidade_atualizada_em = Column(DateTime, nullable=True)
 
 
 class TurmaDB(Base):
@@ -48,6 +50,10 @@ class DisponibilidadeDB(Base):
     dia_semana = Column(String(50), nullable=False)
     horario_inicio = Column(String(50), nullable=False)
     horario_fim = Column(String(50), nullable=False)
+    # "indisponivel" (restrição rígida) ou "preferencial" (preferência do professor)
+    tipo = Column(String(20), nullable=False, default="indisponivel")
+    # Nível de ensino da grade em que o horário foi marcado (nulo = vale para todos)
+    nivel_ensino = Column(String(100), nullable=True)
 
 
 class SalaDB(Base):
