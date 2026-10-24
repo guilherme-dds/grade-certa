@@ -10,7 +10,7 @@ router = APIRouter(prefix="/turmas", tags=["turmas"])
 
 @router.post("/", response_model=Turma, status_code=status.HTTP_201_CREATED)
 def criar_turma(turma: Turma, db: Session = Depends(get_db)):
-    matriz = [item.dict() for item in turma.matriz_curricular] if turma.matriz_curricular else []
+    matriz = [item.model_dump() for item in turma.matriz_curricular] if turma.matriz_curricular else []
     db_turma = TurmaDB(
         nome=turma.nome,
         turno=turma.turno,
@@ -40,7 +40,7 @@ def atualizar_turma(turma_id: int, turma: Turma, db: Session = Depends(get_db)):
     if turma.nivel_ensino is not None:
         db_turma.nivel_ensino = turma.nivel_ensino
     if turma.matriz_curricular is not None:
-        db_turma.matriz_curricular = [item.dict() for item in turma.matriz_curricular]
+        db_turma.matriz_curricular = [item.model_dump() for item in turma.matriz_curricular]
     db.commit()
     db.refresh(db_turma)
     return db_turma

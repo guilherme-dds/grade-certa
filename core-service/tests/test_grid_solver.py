@@ -268,3 +268,43 @@ def test_aula_com_dois_professores_reserva_os_dois():
     atualidades = [a for a in res.aulas if a.disciplina == "Atualidades"]
     assert len(atualidades) == 2
     assert all(a.professor_chaves == ["fabio", "ana"] for a in atualidades)
+
+
+def test_aula_com_horario_fixo_e_aula_sem_professor():
+    turmas, professores = montar_escola()
+    fixos = [("Qua", SLOTS[4]), ("Qua", SLOTS[5])]
+    # Laboratório fixo na quarta (dois últimos horários) e uma eletiva sem professor fixa na sexta
+    turmas[0].itens += [
+        ItemInput("Laboratório", 2, ["eva"], "Ciências da Natureza", True, horarios_fixos=fixos),
+        ItemInput("Eletiva", 1, [], None, True, horarios_fixos=[("Sex", SLOTS[0])]),
+    ]
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    assert res.sucesso, res.mensagem
+    lab = sorted((a.dia, a.horario) for a in res.aulas if a.disciplina == "Laboratório")
+    assert lab == sorted(fixos)
+    eletiva = [a for a in res.aulas if a.disciplina == "Eletiva"]
+    assert [(a.dia, a.horario, a.professor_chaves) for a in eletiva] == [("Sex", SLOTS[0], [])]
+    assert any("Eletiva" in aviso and "sem professor" in aviso for aviso in res.avisos)
+    # Eva não tem outra aula no horário do laboratório
+    assert not any(
+        "eva" in a.professor_chaves and a.disciplina != "Laboratório" and (a.dia, a.horario) in fixos
+        for a in res.aulas
+    )
+
+
+def test_horario_fixo_fora_da_grade_da_turma():
+    turmas, professores = montar_escola()
+    turmas[0].itens.append(ItemInput("Laboratório", 2, ["eva"], None, True, horarios_fixos=[("Qua", "13:50 - 14:40")]))
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    assert not res.sucesso
+    assert "não é um horário de aula da turma" in res.mensagem
+
+
+def test_horarios_fixos_conflitantes_aponta_a_regra():
+    turmas, professores = montar_escola()
+    # Eva fixa em duas turmas no mesmo horário: impossível
+    for t in turmas[:2]:
+        t.itens.append(ItemInput("Laboratório", 1, ["eva"], None, True, horarios_fixos=[("Qua", SLOTS[5])]))
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    assert not res.sucesso
+    assert "horarios_fixos" in res.regras_em_conflito

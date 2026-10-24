@@ -111,6 +111,9 @@ class GridGeneratorService:
                         disciplina=nome_disc,
                         aulas_semanais=int(item["aulas_semanais"]),
                         professores=chaves,
+                        horarios_fixos=[
+                            (h["dia_semana"], h["horario"]) for h in item.get("horarios_fixos") or []
+                        ],
                         area=(disc.area if disc and disc.area else inferir_area(nome_disc)),
                         aula_dobrada=(
                             disc.aula_dobrada

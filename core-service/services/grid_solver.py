@@ -26,6 +26,7 @@ REGRAS = {
     "sem_janela_professor": "professor sem janela entre aulas",
     "primeira_ultima": "quem dá a primeira aula do turno não dá a última",
     "planejamento": f"{PLANEJAMENTOS_SEMANAIS} horários de planejamento por professor",
+    "horarios_fixos": "aulas com dia e horário fixos",
 }
 
 # Início de palavra (sem acento) que indica a área do conhecimento pelo nome da disciplina.
@@ -98,6 +99,9 @@ class ItemInput:
     area: Optional[str] = None
     aula_dobrada: bool = True
     tipo_sala: Optional[str] = None
+    # (dia, horário) em que a aula precisa acontecer, definidos pela escola (ex.: laboratório
+    # na quarta à tarde). As aulas restantes, se houver, o gerador distribui.
+    horarios_fixos: List[Tuple[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -219,7 +223,20 @@ def resolver_grade(
                 f"apenas {capacidade} horários na semana ({len(slots)} por dia).",
                 avisos,
             )
+        horarios_turma = {s["horario"] for s in slots}
         for item in t.itens:
+            if len(set(item.horarios_fixos)) > item.aulas_semanais:
+                return _inviavel(
+                    f"Inviável: '{item.disciplina}' na turma '{t.nome}' tem mais horários fixos que aulas semanais.",
+                    avisos,
+                )
+            for dia, horario in item.horarios_fixos:
+                if dia not in DIAS_SEMANA or horario not in horarios_turma:
+                    return _inviavel(
+                        f"Inviável: '{item.disciplina}' na turma '{t.nome}' está fixa em {dia}, {horario}, "
+                        f"que não é um horário de aula da turma no turno '{t.turno}'.",
+                        avisos,
+                    )
             max_semana = len(DIAS_SEMANA) * (2 if item.aula_dobrada else 1)
             if item.aulas_semanais > max_semana:
                 regra = "no máximo 2 por dia" if item.aula_dobrada else "aulas individuais, 1 por dia"
@@ -319,6 +336,13 @@ def resolver_grade(
         for alocacoes in por_dia.values():
             _sem_sobreposicao(model, alocacoes)
 
+    # Aulas com dia e horário definidos pela escola
+    for t in turmas:
+        ordem_por_horario = {s["horario"]: s["ordem"] for s in turma_slots[t.id]}
+        for idx, item in enumerate(t.itens):
+            for dia, horario in set(item.horarios_fixos):
+                model.Add(x[(t.id, idx, dia, ordem_por_horario[horario])] == 1).OnlyEnforceIf(lits["horarios_fixos"])
+
     # ------------------------------------------------------------------
     # 4. Regras com literal (identificáveis em caso de inviabilidade)
     # ------------------------------------------------------------------
@@ -345,6 +369,9 @@ def resolver_grade(
         # Aula dobrada: cada dia tem no máximo um bloco da disciplina, que é uma aula
         # individual ou uma dupla em horários vizinhos do mesmo turno; n blocos duplos na semana
         for idx, item in enumerate(t.itens):
+            # Quem fixou o horário já decidiu a distribuição da disciplina
+            if item.horarios_fixos:
+                continue
             duplas = _qtd_duplas(item)
             blocos_duplos = []
             for dia in DIAS_SEMANA:

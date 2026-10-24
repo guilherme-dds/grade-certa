@@ -7,6 +7,15 @@ export interface ItemMatriz {
   professores?: string[]
   /** Formato antigo, com um professor só (o backend mantém igual ao primeiro de `professores`) */
   professor?: string | null
+  /** Dias e horários definidos pela escola; as demais aulas o gerador distribui */
+  horarios_fixos?: HorarioFixo[]
+  /** Aula extra (ex.: laboratório): ocupa horário na grade, mas não entra no total da matriz */
+  extra?: boolean
+}
+
+export interface HorarioFixo {
+  dia_semana: string
+  horario: string
 }
 
 /** Professores do item, aceitando matrizes salvas no formato antigo */

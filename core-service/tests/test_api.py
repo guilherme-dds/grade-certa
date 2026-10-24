@@ -7,7 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from database.connection import Base, get_db
 from database.models import AulaDB, GradeDB, ProfessorDB, SalaDB, TurmaDB
-from routers import grades, professores, salas
+from routers import grades, professores, salas, turmas
 
 
 @pytest.fixture
@@ -24,7 +24,7 @@ def ctx():
             db.close()
 
     app = FastAPI()
-    for r in (grades, professores, salas):
+    for r in (grades, professores, salas, turmas):
         app.include_router(r.router)
     app.dependency_overrides[get_db] = _db
     return TestClient(app), Session()
@@ -146,3 +146,20 @@ def test_aula_com_varios_professores_detecta_conflito_de_cada_um(ctx):
     db.commit()
     aula = next(a for a in client.get("/grades/", params={"grade_id": grade.id}).json()["aulas"] if a["id"] == port.id)
     assert aula["professores"] == [{"id": bia.id, "nome": "Bia"}]
+
+
+def test_matriz_salva_horarios_fixos_e_extra(ctx):
+    client, _ = ctx
+    item = {
+        "disciplina": "Laboratório", "aulas_semanais": 2, "professores": ["Bio", "Fís"], "extra": True,
+        "horarios_fixos": [{"dia_semana": "Qua", "horario": "13:50 - 14:40"}, {"dia_semana": "Qua", "horario": "14:40 - 15:30"}],
+    }
+    r = client.post("/turmas/", json={"nome": "1º EM A", "turno": "Manhã", "matriz_curricular": [item]})
+    assert r.status_code == 201, r.text
+    salvo = r.json()["matriz_curricular"][0]
+    assert salvo["extra"] is True and salvo["professor"] == "Bio"
+    assert salvo["horarios_fixos"][1] == {"dia_semana": "Qua", "horario": "14:40 - 15:30"}
+
+    item["aulas_semanais"] = 1  # menos aulas que horários fixos
+    r = client.post("/turmas/", json={"nome": "1º EM B", "turno": "Manhã", "matriz_curricular": [item]})
+    assert r.status_code == 422

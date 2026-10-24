@@ -1,10 +1,27 @@
 // Utilitários de exibição da grade (sem dados: tudo que é cadastro vem do core-service)
+import type { HorariosEscola } from '@/api/grades'
 
 export const weekDays = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'] as const
 export type WeekDay = (typeof weekDays)[number]
 
 export const niveisEnsino = ['Anos Iniciais', 'Anos Finais', 'Ensino Médio'] as const
 export type NivelEnsino = (typeof niveisEnsino)[number]
+
+/**
+ * Horários de aula de uma turma pelo nível e turno, como em core-service/services/time_slots.py
+ * (o backend é quem valida; isto só monta as opções da tela).
+ */
+export function horariosDaTurma(
+  turma: { turno: string; nivel_ensino?: string | null },
+  horarios: HorariosEscola,
+): string[] {
+  const grade = horarios.niveis[turma.nivel_ensino ?? 'Anos Finais'] ?? horarios.niveis['Anos Finais']
+  if (!grade) return []
+  const turno = turma.turno.toLowerCase()
+  if (turno.includes('tarde') || turno.includes('vespertino')) return grade.tarde
+  if (turno.includes('integral')) return [...grade.manha, ...grade.tarde]
+  return grade.manha
+}
 
 /** Cor do cartão da aula pela área da disciplina */
 export function getSubjectColor(subject: string): string {

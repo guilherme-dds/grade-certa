@@ -1,6 +1,11 @@
 from pydantic import BaseModel, model_validator
 from typing import Optional, List
 
+class HorarioFixo(BaseModel):
+    dia_semana: str
+    horario: str  # "HH:MM - HH:MM", um dos horários de aula da turma
+
+
 class ItemMatriz(BaseModel):
     disciplina: str
     aulas_semanais: int = 4
@@ -8,12 +13,18 @@ class ItemMatriz(BaseModel):
     professores: List[str] = []
     # Formato antigo (um professor só); mantido igual ao primeiro de `professores`
     professor: Optional[str] = None
+    # Dias e horários definidos pela escola; as demais aulas o gerador distribui
+    horarios_fixos: List[HorarioFixo] = []
+    # Aula extra (ex.: laboratório): ocupa horário na grade, mas não entra no total da matriz
+    extra: bool = False
 
     @model_validator(mode="after")
     def _sincroniza_professores(self):
         nomes = [p.strip() for p in (self.professores or [self.professor or ""]) if p and p.strip()]
         self.professores = list(dict.fromkeys(nomes))
         self.professor = self.professores[0] if self.professores else None
+        if len({(h.dia_semana, h.horario) for h in self.horarios_fixos}) > self.aulas_semanais:
+            raise ValueError(f"'{self.disciplina}' tem mais horários fixos que aulas semanais.")
         return self
 
 class Turma(BaseModel):
