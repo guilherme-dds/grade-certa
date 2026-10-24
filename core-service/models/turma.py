@@ -1,5 +1,7 @@
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional, List
+
+from services.time_slots import DIAS_SEMANA
 
 class HorarioFixo(BaseModel):
     dia_semana: str
@@ -34,3 +36,14 @@ class Turma(BaseModel):
     nivel_ensino: Optional[str] = "Anos Finais"
     matriz_curricular: Optional[List[ItemMatriz]] = []
     sala_id: Optional[int] = None
+    # Turno "Manhã + tardes": dias com aula à tarde; vazio = o gerador escolhe quais tardes usar
+    tardes: List[str] = []
+
+    @field_validator("tardes", mode="before")
+    @classmethod
+    def _tardes_validas(cls, valor):
+        dias = valor or []
+        invalidos = [d for d in dias if d not in DIAS_SEMANA]
+        if invalidos:
+            raise ValueError(f"Dias inválidos: {', '.join(invalidos)}")
+        return [d for d in DIAS_SEMANA if d in dias]

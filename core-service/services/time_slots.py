@@ -115,6 +115,25 @@ def infer_nivel_ensino(turma_nome: str, nivel_informado: Optional[str] = None) -
     return NIVEL_ANOS_FINAIS
 
 
+# Manhãs completas e algumas tardes (ex.: Ensino Médio com "1 tarde fechada")
+TURNO_MANHA_E_TARDES = "Manhã + tardes"
+
+
+def tem_tardes_parciais(turno: str) -> bool:
+    """Turno com todas as manhãs e só algumas tardes (as tardes usadas ficam a critério do gerador)."""
+    turno_clean = (turno or "").strip().lower()
+    return "+" in turno_clean or ("manh" in turno_clean and "tarde" in turno_clean)
+
+
+def turnos_da_turma(turno: str) -> List[str]:
+    turno_clean = (turno or "").strip().lower()
+    if tem_tardes_parciais(turno) or "integral" in turno_clean:
+        return ["manha", "tarde"]
+    if "tarde" in turno_clean or "vespertino" in turno_clean:
+        return ["tarde"]
+    return ["manha"]
+
+
 def get_slots_for_turma(turno: str, nivel_ensino: Optional[str] = None, turma_nome: str = "") -> List[Dict[str, Any]]:
     """
     Retorna a lista de horários de aula aplicáveis para uma turma específica,
@@ -123,15 +142,7 @@ def get_slots_for_turma(turno: str, nivel_ensino: Optional[str] = None, turma_no
     nivel = infer_nivel_ensino(turma_nome, nivel_ensino)
     schedules = TIME_SLOTS_BY_NIVEL.get(nivel, TIME_SLOTS_BY_NIVEL[NIVEL_ANOS_FINAIS])
 
-    turno_clean = (turno or "").strip().lower()
-    if "tarde" in turno_clean or "vespertino" in turno_clean:
-        turnos = ["tarde"]
-    elif "integral" in turno_clean:
-        turnos = ["manha", "tarde"]
-    else:
-        turnos = ["manha"]
-
-    horarios = [(t, h) for t in turnos for h in schedules[t]]
+    horarios = [(t, h) for t in turnos_da_turma(turno) for h in schedules[t]]
 
     return [
         {

@@ -33,6 +33,7 @@ for ddl in (
     "ALTER TABLE disponibilidades ADD COLUMN nivel_ensino VARCHAR(100) NULL;",
     "ALTER TABLE professores ADD COLUMN disponibilidade_atualizada_em DATETIME NULL;",
     "ALTER TABLE aulas ADD COLUMN professores JSON NULL;",
+    "ALTER TABLE turmas ADD COLUMN tardes JSON NULL;",
 ):
     try:
         with engine.connect() as conn:

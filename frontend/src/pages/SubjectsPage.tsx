@@ -13,6 +13,7 @@ import {
 } from '@/api/turmas'
 import { getProfessores } from '@/api/professores'
 import { getDisciplinas } from '@/api/disciplinas'
+import { temTardesParciais } from '@/lib/schedule'
 import {
   getSalas,
   createSala,
@@ -112,6 +113,7 @@ export function SubjectsPage() {
           nome: data.nome,
           turno: data.turno,
           nivel_ensino: data.nivel_ensino,
+          tardes: data.tardes ?? [],
           matriz_curricular: existing?.matriz_curricular ?? [],
         },
       })
@@ -120,6 +122,7 @@ export function SubjectsPage() {
         nome: data.nome,
         turno: data.turno,
         nivel_ensino: data.nivel_ensino,
+        tardes: data.tardes ?? [],
         matriz_curricular: [],
       })
     }
@@ -223,6 +226,12 @@ export function SubjectsPage() {
                     {row.turno}
                   </span>
                 ),
+              },
+              {
+                header: 'Tardes',
+                cell: (row) =>
+                  temTardesParciais(row.turno) ? (row.tardes?.length ? row.tardes.join(', ') : 'Automáticas') : '—',
+                className: 'text-muted',
               },
               { header: 'Nível', cell: (row) => row.nivel_ensino ?? '—', className: 'text-muted' },
               {

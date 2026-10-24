@@ -131,6 +131,7 @@ class GridGeneratorService:
                     nivel_ensino=t.nivel_ensino,
                     sala_id=t.sala_id,
                     itens=itens,
+                    tardes=t.tardes or [],
                 )
             )
 

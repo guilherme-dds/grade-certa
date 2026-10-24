@@ -163,3 +163,14 @@ def test_matriz_salva_horarios_fixos_e_extra(ctx):
     item["aulas_semanais"] = 1  # menos aulas que horários fixos
     r = client.post("/turmas/", json={"nome": "1º EM B", "turno": "Manhã", "matriz_curricular": [item]})
     assert r.status_code == 422
+
+
+def test_turma_manha_e_tardes_salva_dias(ctx):
+    client, _ = ctx
+    turma = {"nome": "2º EM A", "turno": "Manhã + tardes", "nivel_ensino": "Ensino Médio", "tardes": ["Sex", "Qua"]}
+    r = client.post("/turmas/", json=turma)
+    assert r.status_code == 201, r.text
+    assert r.json()["tardes"] == ["Qua", "Sex"]  # na ordem da semana
+
+    r = client.post("/turmas/", json={**turma, "tardes": ["Sábado"]})
+    assert r.status_code == 422

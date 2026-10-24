@@ -40,6 +40,8 @@ class TurmaDB(Base):
     nivel_ensino = Column(String(100), nullable=True, default="Anos Finais")
     matriz_curricular = Column(JSON, default=list)
     sala_id = Column(Integer, nullable=True)
+    # Turno "Manhã + tardes": dias com aula à tarde (vazio = o gerador escolhe)
+    tardes = Column(JSON, nullable=True)
 
 
 class DisponibilidadeDB(Base):

@@ -32,6 +32,8 @@ export interface TurmaBackend {
   nivel_ensino?: string | null
   matriz_curricular?: ItemMatriz[]
   sala_id?: number | null
+  /** Turno "Manhã + tardes": dias com aula à tarde (vazio = o gerador escolhe) */
+  tardes?: string[]
 }
 
 export async function getTurmas(): Promise<TurmaBackend[]> {

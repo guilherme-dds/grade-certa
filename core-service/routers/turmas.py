@@ -17,6 +17,7 @@ def criar_turma(turma: Turma, db: Session = Depends(get_db)):
         nivel_ensino=turma.nivel_ensino,
         matriz_curricular=matriz,
         sala_id=turma.sala_id,
+        tardes=turma.tardes,
     )
     db.add(db_turma)
     db.commit()
@@ -37,6 +38,7 @@ def atualizar_turma(turma_id: int, turma: Turma, db: Session = Depends(get_db)):
     db_turma.nome = turma.nome
     db_turma.turno = turma.turno
     db_turma.sala_id = turma.sala_id
+    db_turma.tardes = turma.tardes
     if turma.nivel_ensino is not None:
         db_turma.nivel_ensino = turma.nivel_ensino
     if turma.matriz_curricular is not None:

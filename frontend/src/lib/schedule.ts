@@ -18,9 +18,17 @@ export function horariosDaTurma(
   const grade = horarios.niveis[turma.nivel_ensino ?? 'Anos Finais'] ?? horarios.niveis['Anos Finais']
   if (!grade) return []
   const turno = turma.turno.toLowerCase()
+  if (temTardesParciais(turma.turno) || turno.includes('integral')) return [...grade.manha, ...grade.tarde]
   if (turno.includes('tarde') || turno.includes('vespertino')) return grade.tarde
-  if (turno.includes('integral')) return [...grade.manha, ...grade.tarde]
   return grade.manha
+}
+
+/** Todas as manhãs e só algumas tardes (ex.: Ensino Médio com "1 tarde fechada") */
+export const TURNO_MANHA_E_TARDES = 'Manhã + tardes'
+
+export function temTardesParciais(turno: string) {
+  const t = turno.toLowerCase()
+  return t.includes('+') || (t.includes('manh') && t.includes('tarde'))
 }
 
 /** Cor do cartão da aula pela área da disciplina */

@@ -3,7 +3,7 @@ import { FormField } from '@/components/FormField'
 import { SelectField } from '@/components/SelectField'
 import { Button } from '@/components/ui/Button'
 import type { TurmaBackend } from '@/api/turmas'
-import { niveisEnsino } from '@/lib/schedule'
+import { niveisEnsino, TURNO_MANHA_E_TARDES, weekDays } from '@/lib/schedule'
 
 interface TurmaDialogProps {
   turma?: TurmaBackend | null
@@ -12,13 +12,17 @@ interface TurmaDialogProps {
 }
 
 // Turnos com horários definidos no core-service (services/time_slots.py)
-const SHIFT_OPTIONS = ['Manhã', 'Tarde', 'Integral'] as const
+const SHIFT_OPTIONS = ['Manhã', 'Tarde', 'Integral', TURNO_MANHA_E_TARDES] as const
 
 export function TurmaDialog({ turma, onClose, onSave }: TurmaDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [nome, setNome] = useState(turma?.nome ?? '')
   const [turno, setTurno] = useState<string>(turma?.turno ?? 'Manhã')
   const [nivel, setNivel] = useState<string>(turma?.nivel_ensino ?? 'Anos Finais')
+  // Turno "Manhã + tardes": dias com aula à tarde; nenhum marcado = o gerador escolhe
+  const [tardes, setTardes] = useState<string[]>(turma?.tardes ?? [])
+  const toggleTarde = (dia: string) =>
+    setTardes((prev) => (prev.includes(dia) ? prev.filter((d) => d !== dia) : [...prev, dia]))
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -49,6 +53,7 @@ export function TurmaDialog({ turma, onClose, onSave }: TurmaDialogProps) {
         nome: trimmedNome,
         turno,
         nivel_ensino: nivel,
+        tardes: turno === TURNO_MANHA_E_TARDES ? tardes : [],
       })
       close()
     } catch (err) {
@@ -99,6 +104,23 @@ export function TurmaDialog({ turma, onClose, onSave }: TurmaDialogProps) {
             value={turno}
             onChange={(e) => setTurno(e.target.value)}
           />
+
+          {turno === TURNO_MANHA_E_TARDES && (
+            <fieldset className="rounded-md border border-line-soft bg-paper p-3">
+              <legend className="px-1 text-xs font-medium text-muted">Tardes com aula</legend>
+              <div className="flex flex-wrap gap-3">
+                {weekDays.map((dia) => (
+                  <label key={dia} className="flex items-center gap-1.5 text-xs text-ink">
+                    <input type="checkbox" checked={tardes.includes(dia)} onChange={() => toggleTarde(dia)} />
+                    {dia}
+                  </label>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] text-muted">
+                Todas as manhãs têm aula. Sem nenhum dia marcado, o gerador escolhe as tardes, usando o mínimo possível.
+              </p>
+            </fieldset>
+          )}
 
           <SelectField
             label="Nível de ensino (define os horários das aulas)"

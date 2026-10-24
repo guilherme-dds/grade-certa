@@ -308,3 +308,64 @@ def test_horarios_fixos_conflitantes_aponta_a_regra():
     res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
     assert not res.sucesso
     assert "horarios_fixos" in res.regras_em_conflito
+
+
+# 1º EM 2025: 34 aulas = 30 da manhã + 4 numa tarde
+MATRIZ_1EM = [
+    ("LP – Gramática", 2), ("LP – Literatura", 2), ("LP – Redação", 2), ("Inglês", 1), ("Arte", 1),
+    ("Ed. Física", 2), ("Biologia", 2), ("Física", 2), ("Química", 2), ("Álgebra", 2), ("Trigonometria", 2),
+    ("Geometria", 2), ("História", 2), ("Geografia", 2), ("Filosofia", 1), ("Sociologia", 1),
+    ("Ciências Jurídicas", 2), ("Tecnologia", 2), ("Projeto de Vida", 1), ("Ed. Cristã", 1),
+]
+TARDE_EM = [s["horario"] for s in get_slots_for_turma("Manhã + tardes", "Ensino Médio") if s["turno"] == "tarde"]
+
+
+def montar_1em(tardes=(), extras=()):
+    itens = [
+        ItemInput(d, q, [f"p{i}"], inferir_area(d), inferir_aula_dobrada(d))
+        for i, (d, q) in enumerate(MATRIZ_1EM)
+    ] + list(extras)
+    turma = TurmaInput(1, "1º EM A", "Manhã + tardes", "Ensino Médio", None, itens, tardes=list(tardes))
+    chaves = {c for i in itens for c in i.professores}
+    return [turma], {c: ProfessorInput(c, c) for c in chaves}
+
+
+def tardes_da_solucao(res):
+    return {a.dia for a in res.aulas if a.horario in TARDE_EM}
+
+
+def test_manha_e_tardes_automatico_usa_uma_tarde_fechada():
+    assert sum(q for _, q in MATRIZ_1EM) == 34
+    turmas, professores = montar_1em()
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    assert res.sucesso, res.mensagem
+    assert len(res.aulas) == 34
+    (dia,) = tardes_da_solucao(res)
+    assert sorted(a.horario for a in res.aulas if a.dia == dia and a.horario in TARDE_EM) == TARDE_EM
+
+
+def test_manha_e_tardes_com_dia_escolhido_e_laboratorio_fixo():
+    # Laboratório extra fixo na quarta 13h50–15h30: a quarta precisa ter aula à tarde
+    lab = ItemInput("Laboratório", 2, ["bio", "fis", "qui"], None, True,
+                    horarios_fixos=[("Qua", TARDE_EM[0]), ("Qua", TARDE_EM[1])])
+    turmas, professores = montar_1em(tardes=["Qua", "Sex"], extras=[lab])
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    assert res.sucesso, res.mensagem
+    assert tardes_da_solucao(res) <= {"Qua", "Sex"}
+    assert sorted(a.horario for a in res.aulas if a.disciplina == "Laboratório") == TARDE_EM[:2]
+
+
+def test_manha_e_tardes_sem_espaco_nas_tardes_escolhidas():
+    extra = ItemInput("Atualidades", 4, ["p99"], None, True)
+    turmas, professores = montar_1em(tardes=["Qua"], extras=[extra])  # 38 aulas, 34 horários
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    assert not res.sucesso
+    assert "disponibiliza apenas 34 horários" in res.mensagem
+
+
+def test_tarde_fixa_fora_dos_dias_escolhidos():
+    lab = ItemInput("Laboratório", 1, ["bio"], None, True, horarios_fixos=[("Seg", TARDE_EM[0])])
+    turmas, professores = montar_1em(tardes=["Qua", "Sex"], extras=[lab])
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    assert not res.sucesso
+    assert "não é um horário de aula da turma" in res.mensagem

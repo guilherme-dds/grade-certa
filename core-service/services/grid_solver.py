@@ -12,7 +12,13 @@ from typing import Dict, List, Optional, Tuple
 
 from ortools.sat.python import cp_model
 
-from services.time_slots import DIAS_SEMANA, get_slots_for_turma, infer_nivel_ensino, slots_overlap
+from services.time_slots import (
+    DIAS_SEMANA,
+    get_slots_for_turma,
+    infer_nivel_ensino,
+    slots_overlap,
+    tem_tardes_parciais,
+)
 
 PLANEJAMENTOS_SEMANAIS = 4
 
@@ -112,6 +118,13 @@ class TurmaInput:
     nivel_ensino: Optional[str] = None
     sala_id: Optional[int] = None
     itens: List[ItemInput] = field(default_factory=list)
+    # Turno "Manhã + tardes": dias com aula à tarde; vazio = o gerador escolhe (usando o mínimo de tardes)
+    tardes: List[str] = field(default_factory=list)
+
+    def dias_com_tarde(self) -> List[str]:
+        if not tem_tardes_parciais(self.turno):
+            return list(DIAS_SEMANA)
+        return [d for d in DIAS_SEMANA if d in self.tardes] if self.tardes else list(DIAS_SEMANA)
 
 
 @dataclass
@@ -214,13 +227,15 @@ def resolver_grade(
         t.itens = [i for i in t.itens if i.aulas_semanais > 0]
         slots = get_slots_for_turma(turno=t.turno, nivel_ensino=t.nivel_ensino, turma_nome=t.nome)
         turma_slots[t.id] = slots
-        capacidade = len(DIAS_SEMANA) * len(slots)
+        capacidade = sum(
+            1 for dia in DIAS_SEMANA for s in slots if s["turno"] != "tarde" or dia in t.dias_com_tarde()
+        )
         total = sum(i.aulas_semanais for i in t.itens)
         if total > capacidade:
             return _inviavel(
                 f"Inviável: a turma '{t.nome}' necessita de {total} aulas semanais, mas o nível "
                 f"'{infer_nivel_ensino(t.nome, t.nivel_ensino)}' no turno '{t.turno}' disponibiliza "
-                f"apenas {capacidade} horários na semana ({len(slots)} por dia).",
+                f"apenas {capacidade} horários na semana.",
                 avisos,
             )
         horarios_turma = {s["horario"] for s in slots}
@@ -231,7 +246,10 @@ def resolver_grade(
                     avisos,
                 )
             for dia, horario in item.horarios_fixos:
-                if dia not in DIAS_SEMANA or horario not in horarios_turma:
+                tarde_bloqueada = any(
+                    s["horario"] == horario and s["turno"] == "tarde" for s in slots
+                ) and dia not in t.dias_com_tarde()
+                if dia not in DIAS_SEMANA or horario not in horarios_turma or tarde_bloqueada:
                     return _inviavel(
                         f"Inviável: '{item.disciplina}' na turma '{t.nome}' está fixa em {dia}, {horario}, "
                         f"que não é um horário de aula da turma no turno '{t.turno}'.",
@@ -335,6 +353,23 @@ def resolver_grade(
     for por_dia in prof_aulas.values():
         for alocacoes in por_dia.values():
             _sem_sobreposicao(model, alocacoes)
+
+    # Turno "Manhã + tardes": só há aula à tarde nos dias escolhidos; sem escolha, o
+    # gerador decide e tenta usar o mínimo de tardes (uma "tarde fechada")
+    tardes_usadas: List[cp_model.IntVar] = []
+    for t in turmas:
+        if not tem_tardes_parciais(t.turno):
+            continue
+        tarde = [s["ordem"] for s in turma_slots[t.id] if s["turno"] == "tarde"]
+        for dia in DIAS_SEMANA:
+            ocupacao = [occ[(t.id, dia, o)] for o in tarde]
+            if dia not in t.dias_com_tarde():
+                for o in ocupacao:
+                    model.Add(o == 0)
+            elif not t.tardes:
+                usa = model.NewBoolVar(f"tarde_t{t.id}_{dia}")
+                model.AddMaxEquality(usa, ocupacao)
+                tardes_usadas.append(usa)
 
     # Aulas com dia e horário definidos pela escola
     for t in turmas:
@@ -492,11 +527,11 @@ def resolver_grade(
                         if slots_overlap(horarios[a], horarios[b]):
                             model.Add(plan[(chave, dia, turno, horarios[a])] + plan[(chave, dia, turno, horarios[b])] <= 1)
 
-                # Planejamento só em turno/dia em que o professor já está na escola
+                # Planejamento só em dia em que o professor tem aula (em qualquer turno: quem só
+                # dá aula à tarde naquele dia pode planejar de manhã)
                 da_aula = model.NewBoolVar(f"da_aula_{chave}_{dia}_{turno}")
-                vars_turno = [v for v, hv in aulas_dia if any(hv == h for h in horarios)]
-                if vars_turno:
-                    model.AddMaxEquality(da_aula, vars_turno)
+                if aulas_dia:
+                    model.AddMaxEquality(da_aula, [v for v, _ in aulas_dia])
                 else:
                     model.Add(da_aula == 0)
                 for h in horarios:
@@ -553,8 +588,11 @@ def resolver_grade(
         for var, dia, horario, nivel in prof_aulas_nivel.get(chave, [])
         if any(pref.aplica(dia, horario, nivel) for pref in prof.preferencial)
     ]
-    if compartilhado or preferidas:
-        model.Maximize(3 * sum(compartilhado.values()) + sum(preferidas))
+    # Concentrar as tardes vem antes de tudo: uma tarde a mais custa mais que o máximo
+    # que planejamento compartilhado e preferências juntos podem render
+    peso_tarde = 3 * len(compartilhado) + len(preferidas) + 1
+    if compartilhado or preferidas or tardes_usadas:
+        model.Maximize(3 * sum(compartilhado.values()) + sum(preferidas) - peso_tarde * sum(tardes_usadas))
 
     # ------------------------------------------------------------------
     # 7. Resolução
