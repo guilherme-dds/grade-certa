@@ -5,6 +5,7 @@ Recebe turmas, professores e salas já carregados (dataclasses abaixo) e devolve
 aulas e os horários de planejamento alocados. Fica separado do GridGeneratorService
 para poder ser testado sem MySQL.
 """
+import re
 import unicodedata
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -27,13 +28,20 @@ REGRAS = {
     "planejamento": f"{PLANEJAMENTOS_SEMANAIS} horários de planejamento por professor",
 }
 
-# Palavras-chave (sem acento) para inferir a área do conhecimento pelo nome da disciplina
+# Início de palavra (sem acento) que indica a área do conhecimento pelo nome da disciplina.
+# A ordem importa: Humanas vem antes de Natureza por causa de "Ciências Jurídicas".
 AREAS_POR_PALAVRA = [
-    ("Matemática", ["matematica", "geometria", "algebra", "estatistica"]),
-    ("Linguagens", ["portugues", "lingua", "ingles", "espanhol", "literatura", "redacao", "arte", "educacao fisica"]),
-    ("Ciências da Natureza", ["ciencias", "biologia", "fisica", "quimica"]),
-    ("Ciências Humanas", ["historia", "geografia", "filosofia", "sociologia", "religi"]),
+    ("Matemática", ["matematica", "geometria", "algebra", "trigonometria", "aritmetica", "estatistica"]),
+    ("Linguagens", ["portugues", "lingua", "lp", "gramatica", "literatura", "redacao", "ingles", "espanhol", "arte"]),
+    ("Ciências Humanas", [
+        "historia", "geografia", "filosofia", "sociologia", "religi", "crista", "projeto de vida",
+        "atualidades", "juridic", "humanas",
+    ]),
+    ("Ciências da Natureza", ["ciencias", "biologia", "fisica", "quimica", "natureza", "laboratorio"]),
 ]
+
+# "Educação Física", "Ed. Física", "Ed Física"
+_EDUCACAO_FISICA = re.compile(r"\bed(ucacao)?\.?\s*fisica\b")
 
 
 def normalizar(texto: Optional[str]) -> str:
@@ -42,20 +50,24 @@ def normalizar(texto: Optional[str]) -> str:
     return " ".join(sem_acento.lower().split())
 
 
+def _eh_educacao_fisica(nome: str) -> bool:
+    return bool(_EDUCACAO_FISICA.search(normalizar(nome)))
+
+
 def inferir_area(disciplina: str) -> Optional[str]:
     nome = normalizar(disciplina)
-    # "educacao fisica" precisa vencer "fisica" (Ciências da Natureza)
-    if "educacao fisica" in nome:
+    # Educação Física precisa vencer "fisica" (Ciências da Natureza)
+    if _eh_educacao_fisica(nome):
         return "Linguagens"
     for area, palavras in AREAS_POR_PALAVRA:
-        if any(p in nome for p in palavras):
+        if any(re.search(rf"\b{p}", nome) for p in palavras):
             return area
     return None
 
 
 def inferir_tipo_sala(disciplina: str) -> Optional[str]:
     """Educação Física usa a quadra (tipo "Educação física"); as demais não exigem sala."""
-    return "Educação física" if "educacao fisica" in normalizar(disciplina) else None
+    return "Educação física" if _eh_educacao_fisica(disciplina) else None
 
 
 def inferir_aula_dobrada(disciplina: str) -> bool:
@@ -401,13 +413,14 @@ def resolver_grade(
     # ------------------------------------------------------------------
     # Linha do tempo de cada professor por turno: horários distintos das turmas em que leciona
     linha_tempo: Dict[str, Dict[str, List[str]]] = {}
+    # Áreas de cada professor pelas disciplinas que leciona; disciplina sem área conhecida
+    # ("Tecnologia") vira um grupo próprio com os demais professores dela
     areas_prof: Dict[str, set] = {}
     for t in turmas:
         for item in t.itens:
             if not item.professor:
                 continue
-            if item.area:
-                areas_prof.setdefault(item.professor, set()).add(item.area)
+            areas_prof.setdefault(item.professor, set()).add(item.area or normalizar(item.disciplina))
             por_turno = linha_tempo.setdefault(item.professor, {})
             for s in turma_slots[t.id]:
                 lista = por_turno.setdefault(s["turno"], [])

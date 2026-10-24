@@ -9,6 +9,7 @@ from services.grid_solver import (
     TurmaInput,
     inferir_area,
     inferir_aula_dobrada,
+    inferir_tipo_sala,
     resolver_grade,
 )
 from services.time_slots import DIAS_SEMANA, get_slots_for_turma
@@ -147,6 +148,43 @@ def test_inferencias_por_nome():
     assert inferir_area("Educação Física") == "Linguagens"
     assert inferir_area("Física") == "Ciências da Natureza"
     assert inferir_area("Geometria") == "Matemática"
+
+
+def test_nomes_da_matriz_2025():
+    for nome in ("Ed. Física", "Ed Física", "Educação Física"):
+        assert inferir_area(nome) == "Linguagens"
+        assert inferir_tipo_sala(nome) == "Educação física"
+    assert inferir_tipo_sala("Física") is None
+    esperado = {
+        "LP – Gramática": "Linguagens",
+        "LP – Redação": "Linguagens",
+        "Trigonometria": "Matemática",
+        "Álgebra": "Matemática",
+        "Ed. Cristã": "Ciências Humanas",
+        "Projeto de Vida": "Ciências Humanas",
+        "Atualidades I": "Ciências Humanas",
+        "Ciências Jurídicas": "Ciências Humanas",
+        "Química": "Ciências da Natureza",
+        "Laboratório": "Ciências da Natureza",
+        "Tecnologia": None,
+        "Plano": None,  # "lp" só conta no início de palavra
+    }
+    assert {nome: inferir_area(nome) for nome in esperado} == esperado
+
+
+def test_disciplina_sem_area_agrupa_seus_professores_no_planejamento():
+    # Duas turmas com Tecnologia (sem área conhecida), cada uma com um professor
+    turmas = [
+        TurmaInput(i, f"{i}º Ano A", "Manhã", "Anos Finais", None, [
+            ItemInput("Tecnologia", 2, f"tec{i}", inferir_area("Tecnologia"), True),
+            ItemInput("Matemática", 2, f"mat{i}", "Matemática", True),
+        ])
+        for i in (6, 7)
+    ]
+    professores = {c: ProfessorInput(c, c) for c in ("tec6", "tec7", "mat6", "mat7")}
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    assert res.sucesso, res.mensagem
+    assert any(p.compartilhado for p in res.planejamentos if p.professor_chave == "tec6")
 
 
 def test_indisponibilidade_do_professor():
