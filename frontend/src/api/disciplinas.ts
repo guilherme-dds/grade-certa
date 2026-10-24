@@ -11,6 +11,7 @@ export async function getDisciplinas(): Promise<DisciplinaBackend[]> {
   return data
 }
 
+// Área, aula dobrada e sala exigida ficam por conta do gerador (inferidas pelo nome da disciplina)
 export async function createDisciplina(payload: { nome: string; quantidade_aulas?: number }): Promise<DisciplinaBackend> {
   const { data } = await api.post<DisciplinaBackend>('/disciplinas/', {
     nome: payload.nome,

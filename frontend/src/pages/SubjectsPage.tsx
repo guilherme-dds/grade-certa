@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/Button'
 import { DataTable } from '@/components/ui/DataTable'
@@ -13,6 +13,7 @@ import {
 } from '@/api/turmas'
 import { getProfessores } from '@/api/professores'
 import { getDisciplinas } from '@/api/disciplinas'
+import { temTardesParciais } from '@/lib/schedule'
 import {
   getSalas,
   createSala,
@@ -22,6 +23,7 @@ import {
 } from '@/api/salas'
 import { SalaDialog } from './salas/SalaDialog'
 import { DeleteSalaDialog } from './salas/DeleteSalaDialog'
+import { SalaIndisponibilidadeDialog } from './salas/SalaIndisponibilidadeDialog'
 import { TurmaDialog } from './turmas/TurmaDialog'
 import { DeleteTurmaDialog } from './turmas/DeleteTurmaDialog'
 import {
@@ -40,6 +42,7 @@ export function SubjectsPage() {
   const [isSalaDialogOpen, setIsSalaDialogOpen] = useState(false)
   const [editingSala, setEditingSala] = useState<SalaBackend | null>(null)
   const [deletingSala, setDeletingSala] = useState<SalaBackend | null>(null)
+  const [horariosSalaId, setHorariosSalaId] = useState<number | null>(null)
 
   // 1. Query das Turmas ao core-service
   const turmasQuery = useQuery({
@@ -47,7 +50,6 @@ export function SubjectsPage() {
     queryFn: getTurmas,
   })
 
-  // Salas ainda não têm endpoint: getSalas lê do localStorage (ver api/salas.ts)
   const salasQuery = useQuery({
     queryKey: ['salas'],
     queryFn: getSalas,
@@ -75,72 +77,13 @@ export function SubjectsPage() {
       if (d.id) discMap.set(d.id, d.nome)
     })
 
-    const map: Record<string, string[]> = {
-      'Ana Ferreira': ['Matemática'],
-      'Carlos Lima': ['Português'],
-      'Beatriz Souza': ['Ciências'],
-      'João Prado': ['História'],
-      'Marina Alves': ['Educação Física'],
-      'Roberto Mendes': ['Geografia'],
-    }
-
-    ;(professoresQuery.data ?? []).forEach((p) => {
-      const subs = (p.disciplinas ?? [])
-        .map((id) => discMap.get(id))
-        .filter((n): n is string => Boolean(n))
-      if (subs.length > 0) {
-        map[p.nome] = subs
-      }
-    })
-
-    return Object.entries(map).map(([name, subjects]) => ({
-      name,
-      subjects,
-    }))
+    return (professoresQuery.data ?? [])
+      .filter((p) => p.ativo)
+      .map((p) => ({
+        name: p.nome,
+        subjects: (p.disciplinas ?? []).map((id) => discMap.get(id)).filter((n): n is string => Boolean(n)),
+      }))
   }, [professoresQuery.data, disciplinasQuery.data])
-
-  // Se o banco estiver vazio, popula com turmas e matrizes iniciais
-  useEffect(() => {
-    if (turmasQuery.isSuccess && turmasQuery.data.length === 0) {
-      const initialTurmas: Omit<TurmaBackend, 'id'>[] = [
-        {
-          nome: '6º Ano A',
-          turno: 'Manhã',
-          matriz_curricular: [
-            { disciplina: 'Matemática', aulas_semanais: 5, professor: 'Ana Ferreira' },
-            { disciplina: 'Português', aulas_semanais: 5, professor: 'Carlos Lima' },
-            { disciplina: 'Ciências', aulas_semanais: 4, professor: 'Beatriz Souza' },
-            { disciplina: 'História', aulas_semanais: 3, professor: 'João Prado' },
-            { disciplina: 'Educação Física', aulas_semanais: 2, professor: 'Marina Alves' },
-          ],
-        },
-        {
-          nome: '6º Ano B',
-          turno: 'Tarde',
-          matriz_curricular: [
-            { disciplina: 'Matemática', aulas_semanais: 5, professor: 'Ana Ferreira' },
-            { disciplina: 'Português', aulas_semanais: 5, professor: 'Carlos Lima' },
-            { disciplina: 'Ciências', aulas_semanais: 4, professor: 'Beatriz Souza' },
-          ],
-        },
-        {
-          nome: '7º Ano A',
-          turno: 'Manhã',
-          matriz_curricular: [
-            { disciplina: 'Matemática', aulas_semanais: 5, professor: 'Ana Ferreira' },
-            { disciplina: 'Português', aulas_semanais: 5, professor: 'Carlos Lima' },
-            { disciplina: 'História', aulas_semanais: 3, professor: 'João Prado' },
-          ],
-        },
-        { nome: '8º Ano A', turno: 'Manhã', matriz_curricular: [] },
-        { nome: '9º Ano A', turno: 'Manhã', matriz_curricular: [] },
-      ]
-
-      Promise.all(initialTurmas.map((t) => createTurma(t))).then(() => {
-        queryClient.invalidateQueries({ queryKey: ['turmas'] })
-      })
-    }
-  }, [turmasQuery.isSuccess, turmasQuery.data, queryClient])
 
   // Mutations
   const createTurmaMutation = useMutation({
@@ -165,9 +108,12 @@ export function SubjectsPage() {
       await updateTurmaMutation.mutateAsync({
         id: data.id,
         payload: {
+          ...existing,
           id: data.id,
           nome: data.nome,
           turno: data.turno,
+          nivel_ensino: data.nivel_ensino,
+          tardes: data.tardes ?? [],
           matriz_curricular: existing?.matriz_curricular ?? [],
         },
       })
@@ -175,6 +121,8 @@ export function SubjectsPage() {
       await createTurmaMutation.mutateAsync({
         nome: data.nome,
         turno: data.turno,
+        nivel_ensino: data.nivel_ensino,
+        tardes: data.tardes ?? [],
         matriz_curricular: [],
       })
     }
@@ -221,6 +169,9 @@ export function SubjectsPage() {
     }
   }
 
+  // Lido da query para refletir os horários adicionados/removidos sem fechar o modal
+  const horariosSala = salasQuery.data?.find((s) => s.id === horariosSalaId) ?? null
+
   const handleDeleteSala = async (id: number) => {
     await deleteSalaMutation.mutateAsync(id)
     setDeletingSala(null)
@@ -232,7 +183,7 @@ export function SubjectsPage() {
     <>
       <PageHeader
         title="Turmas e salas"
-        description="Gerencie as turmas ativas, matrizes curriculares com carga horária por matéria, docentes e salas."
+        description="Gerencie as turmas, matrizes curriculares e salas."
       />
 
       {/* Seção de Turmas */}
@@ -276,6 +227,13 @@ export function SubjectsPage() {
                   </span>
                 ),
               },
+              {
+                header: 'Tardes',
+                cell: (row) =>
+                  temTardesParciais(row.turno) ? (row.tardes?.length ? row.tardes.join(', ') : 'Automáticas') : '—',
+                className: 'text-muted',
+              },
+              { header: 'Nível', cell: (row) => row.nivel_ensino ?? '—', className: 'text-muted' },
               {
                 header: 'Matriz Curricular',
                 cell: (row) => {
@@ -389,6 +347,14 @@ export function SubjectsPage() {
               { header: 'Capacidade', cell: (row) => `${row.capacidade} alunos` },
               { header: 'Tipo', cell: (row) => row.tipo, className: 'text-muted' },
               {
+                header: 'Indisponível',
+                cell: (row) => {
+                  const total = row.indisponibilidades?.length ?? 0
+                  return total ? `${total} horário${total > 1 ? 's' : ''}` : 'Livre'
+                },
+                className: 'text-muted',
+              },
+              {
                 header: 'Ações',
                 cell: (row) => (
                   <div className="flex items-center gap-2">
@@ -402,6 +368,11 @@ export function SubjectsPage() {
                     >
                       Editar
                     </Button>
+                    {row.id && (
+                      <Button variant="secondary" size="sm" onClick={() => setHorariosSalaId(row.id!)}>
+                        Horários
+                      </Button>
+                    )}
                     {row.id && (
                       <button
                         type="button"
@@ -469,6 +440,15 @@ export function SubjectsPage() {
             setEditingSala(null)
           }}
           onSave={handleSaveSala}
+        />
+      )}
+
+      {/* Modal de Horários Indisponíveis da Sala */}
+      {horariosSala && (
+        <SalaIndisponibilidadeDialog
+          sala={horariosSala}
+          onClose={() => setHorariosSalaId(null)}
+          onChanged={() => queryClient.invalidateQueries({ queryKey: ['salas'] })}
         />
       )}
 

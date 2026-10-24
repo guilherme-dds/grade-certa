@@ -1,4 +1,6 @@
-from sqlalchemy import Column, Integer, String, Boolean, JSON
+from sqlalchemy import Column, Integer, String, Boolean, JSON, DateTime, ForeignKey, Text
+from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 from database.connection import Base
 
 class DisciplinaDB(Base):
@@ -7,6 +9,12 @@ class DisciplinaDB(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     nome = Column(String(255), nullable=False)
     quantidade_aulas = Column(Integer, default=4)
+    # Área do conhecimento (Linguagens, Matemática...). Nulo = inferida pelo nome.
+    area = Column(String(100), nullable=True)
+    # Tipo de sala exigido (ex: "Laboratório"). Nulo = aula na sala fixa da turma.
+    tipo_sala = Column(String(100), nullable=True)
+    # Exige uma aula dobrada na semana. Nulo = automático (Inglês individual, demais dobradas).
+    aula_dobrada = Column(Boolean, nullable=True)
 
 
 class ProfessorDB(Base):
@@ -19,6 +27,8 @@ class ProfessorDB(Base):
     disciplinas = Column(JSON, default=list)
     carga_maxima_aulas = Column(Integer, default=20)
     ativo = Column(Boolean, default=True)
+    # Última vez que a disponibilidade foi salva (nulo = nunca informada)
+    disponibilidade_atualizada_em = Column(DateTime, nullable=True)
 
 
 class TurmaDB(Base):
@@ -27,7 +37,11 @@ class TurmaDB(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     nome = Column(String(255), nullable=False)
     turno = Column(String(100), nullable=False)
+    nivel_ensino = Column(String(100), nullable=True, default="Anos Finais")
     matriz_curricular = Column(JSON, default=list)
+    sala_id = Column(Integer, nullable=True)
+    # Turno "Manhã + tardes": dias com aula à tarde (vazio = o gerador escolhe)
+    tardes = Column(JSON, nullable=True)
 
 
 class DisponibilidadeDB(Base):
@@ -38,3 +52,67 @@ class DisponibilidadeDB(Base):
     dia_semana = Column(String(50), nullable=False)
     horario_inicio = Column(String(50), nullable=False)
     horario_fim = Column(String(50), nullable=False)
+    # "indisponivel" (restrição rígida) ou "preferencial" (preferência do professor)
+    tipo = Column(String(20), nullable=False, default="indisponivel")
+    # Nível de ensino da grade em que o horário foi marcado (nulo = vale para todos)
+    nivel_ensino = Column(String(100), nullable=True)
+
+
+class SalaDB(Base):
+    __tablename__ = "salas"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    nome = Column(String(255), nullable=False)
+    capacidade = Column(Integer, default=40)
+    tipo = Column(String(100), nullable=False, default="Sala comum")
+
+    indisponibilidades = relationship(
+        "IndisponibilidadeSalaDB", back_populates="sala", cascade="all, delete-orphan"
+    )
+
+
+class IndisponibilidadeSalaDB(Base):
+    __tablename__ = "indisponibilidades_sala"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    sala_id = Column(Integer, ForeignKey("salas.id", ondelete="CASCADE"), nullable=False, index=True)
+    dia_semana = Column(String(50), nullable=False)
+    horario_inicio = Column(String(50), nullable=False)
+    horario_fim = Column(String(50), nullable=False)
+    motivo = Column(String(255), nullable=True)
+
+    sala = relationship("SalaDB", back_populates="indisponibilidades")
+
+
+class GradeDB(Base):
+    __tablename__ = "grades"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    nome = Column(String(255), default="Grade Horária Automática")
+    status = Column(String(50), default="concluida")  # "gerando", "sucesso", "inviavel", "erro"
+    ano_semestre = Column(String(50), default="2026.2")
+    criado_em = Column(DateTime, server_default=func.now())
+    total_aulas = Column(Integer, default=0)
+    detalhes = Column(JSON, default=dict)
+
+    aulas = relationship("AulaDB", back_populates="grade", cascade="all, delete-orphan")
+
+
+class AulaDB(Base):
+    __tablename__ = "aulas"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    grade_id = Column(Integer, ForeignKey("grades.id", ondelete="CASCADE"), nullable=False, index=True)
+    turma_id = Column(Integer, nullable=False, index=True)
+    turma_nome = Column(String(100), nullable=False)
+    disciplina_nome = Column(String(100), nullable=False)
+    professor_id = Column(Integer, nullable=True, index=True)
+    professor_nome = Column(String(255), nullable=True)
+    # [{"id": int | None, "nome": str}] — todos os professores da aula (o primeiro repete professor_id/nome)
+    professores = Column(JSON, nullable=True)
+    sala_nome = Column(String(100), nullable=True)
+    dia_semana = Column(String(20), nullable=False)
+    horario = Column(String(50), nullable=False)
+    ordem = Column(Integer, default=1)
+
+    grade = relationship("GradeDB", back_populates="aulas")

@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field
+from datetime import datetime
 from typing import List, Optional
 from enum import Enum
 
@@ -15,3 +16,4 @@ class Professor(BaseModel):
     disciplinas: List[int] = Field(default_factory=list)
     carga_maxima_aulas: int = 20
     ativo: bool = True
+    disponibilidade_atualizada_em: Optional[datetime] = None

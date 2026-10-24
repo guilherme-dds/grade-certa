@@ -10,6 +10,19 @@ export interface ProfessorBackend {
   disciplinas: number[]
   carga_maxima_aulas: number
   ativo: boolean
+  /** Última vez que a disponibilidade foi salva (nulo = nunca informada) */
+  disponibilidade_atualizada_em?: string | null
+}
+
+export type TipoDisponibilidade = 'indisponivel' | 'preferencial'
+
+/** Horário marcado na grade de disponibilidade; horários não enviados ficam disponíveis */
+export interface DisponibilidadeItem {
+  dia_semana: string
+  horario_inicio: string
+  horario_fim: string
+  tipo: TipoDisponibilidade
+  nivel_ensino: string | null
 }
 
 export interface GetProfessoresParams {
@@ -40,5 +53,19 @@ export async function updateProfessor(id: number, payload: ProfessorBackend): Pr
 
 export async function deleteProfessor(id: number): Promise<{ mensagem: string }> {
   const { data } = await api.delete<{ mensagem: string }>(`/professores/${id}`)
+  return data
+}
+
+export async function getDisponibilidadeProfessor(id: number): Promise<DisponibilidadeItem[]> {
+  const { data } = await api.get<DisponibilidadeItem[]>(`/professores/${id}/disponibilidades`)
+  return data
+}
+
+/** Substitui todos os horários marcados do professor */
+export async function saveDisponibilidadeProfessor(
+  id: number,
+  itens: DisponibilidadeItem[],
+): Promise<DisponibilidadeItem[]> {
+  const { data } = await api.put<DisponibilidadeItem[]>(`/professores/${id}/disponibilidades`, itens)
   return data
 }

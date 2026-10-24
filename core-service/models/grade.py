@@ -1,12 +1,61 @@
-from pydantic import BaseModel
-from typing import List, Optional
+from pydantic import BaseModel, field_validator, model_validator
+from typing import List, Optional, Dict, Any
+from datetime import datetime
+
+
+class ProfessorAula(BaseModel):
+    id: Optional[int] = None
+    nome: str
+
 
 class Aula(BaseModel):
-    disciplina_id: int
-    professor_id: int
+    id: Optional[int] = None
     turma_id: int
+    turma_nome: str
+    disciplina_nome: str
+    disciplina_id: Optional[int] = None
+    professor_id: Optional[int] = None
+    professor_nome: Optional[str] = None
+    # Todos os professores da aula; professor_id/professor_nome repetem o primeiro
+    professores: List[ProfessorAula] = []
+    sala_nome: Optional[str] = None
     dia_semana: str
     horario: str
+    ordem: int = 1
+
+    model_config = {"from_attributes": True}
+
+    @field_validator("professores", mode="before")
+    @classmethod
+    def _professores_nulos(cls, valor):
+        return valor or []
+
+    @model_validator(mode="after")
+    def _preenche_professores(self):
+        # Aulas gravadas antes da coluna `professores` só têm o professor principal
+        if not self.professores and self.professor_nome:
+            self.professores = [ProfessorAula(id=self.professor_id, nome=self.professor_nome)]
+        return self
+
 
 class Grade(BaseModel):
-    aulas: List[Aula]
+    id: Optional[int] = None
+    nome: str = "Grade Horária Automática"
+    status: str = "sucesso"
+    ano_semestre: Optional[str] = "2026.2"
+    criado_em: Optional[datetime] = None
+    total_aulas: int = 0
+    detalhes: Optional[Dict[str, Any]] = None
+    aulas: List[Aula] = []
+    # Horários de cada turma (turma_id -> horários), para exibir e editar a grade
+    horarios_turmas: Dict[int, List[str]] = {}
+
+    model_config = {"from_attributes": True}
+
+
+class AulaUpdate(BaseModel):
+    """Edição manual de uma aula: substitui dia, horário, professores e sala."""
+    dia_semana: str
+    horario: str
+    professor_ids: List[int] = []
+    sala_nome: Optional[str] = None

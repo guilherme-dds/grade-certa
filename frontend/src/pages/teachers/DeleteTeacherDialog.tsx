@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/Button'
-import { type Teacher } from '@/mocks/teachers'
+import { type Teacher } from './types'
 
 interface DeleteTeacherDialogProps {
   teacher: Teacher

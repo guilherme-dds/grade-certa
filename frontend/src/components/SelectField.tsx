@@ -3,7 +3,8 @@ import { cn } from '@/lib/cn'
 
 interface SelectFieldProps extends ComponentProps<'select'> {
   label: string
-  options: readonly string[]
+  /** Texto simples (valor = rótulo) ou par valor/rótulo */
+  options: readonly (string | { value: string; label: string })[]
 }
 
 export function SelectField({ label, options, className, ...selectProps }: SelectFieldProps) {
@@ -23,11 +24,14 @@ export function SelectField({ label, options, className, ...selectProps }: Selec
         )}
         {...selectProps}
       >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
+        {options.map((option) => {
+          const { value, label: optionLabel } = typeof option === 'string' ? { value: option, label: option } : option
+          return (
+            <option key={value} value={value}>
+              {optionLabel}
+            </option>
+          )
+        })}
       </select>
     </div>
   )

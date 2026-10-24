@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { FormField } from '@/components/FormField'
 import { SelectField } from '@/components/SelectField'
 import { Button } from '@/components/ui/Button'
-import { type NivelEnsino, type Teacher } from '@/mocks/teachers'
+import { type NivelEnsino, type Teacher } from './types'
 
 const allNiveis: NivelEnsino[] = ['Anos Iniciais', 'Anos Finais', 'Ensino Médio']
 

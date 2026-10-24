@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from database.connection import get_db
 from database.models import DisponibilidadeDB
 from models.disponibilidade import Disponibilidade
@@ -17,6 +17,8 @@ def registrar_disponibilidade(
         dia_semana=disponibilidade.dia_semana,
         horario_inicio=disponibilidade.horario_inicio,
         horario_fim=disponibilidade.horario_fim,
+        tipo=disponibilidade.tipo,
+        nivel_ensino=disponibilidade.nivel_ensino,
     )
     db.add(db_disp)
     db.commit()
@@ -25,5 +27,11 @@ def registrar_disponibilidade(
 
 
 @router.get("/", response_model=List[Disponibilidade])
-def listar_disponibilidades(db: Session = Depends(get_db)):
-    return db.query(DisponibilidadeDB).all()
+def listar_disponibilidades(
+    professor_id: Optional[int] = Query(None, description="Filtrar por professor"),
+    db: Session = Depends(get_db),
+):
+    query = db.query(DisponibilidadeDB)
+    if professor_id is not None:
+        query = query.filter(DisponibilidadeDB.professor_id == professor_id)
+    return query.all()

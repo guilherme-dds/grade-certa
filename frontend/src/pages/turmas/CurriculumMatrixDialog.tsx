@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/Button'
-import type { ItemMatriz, TurmaBackend } from '@/api/turmas'
+import { professoresDoItem, type HorarioFixo, type ItemMatriz, type TurmaBackend } from '@/api/turmas'
+import { MultiSelectChips } from '@/components/MultiSelectChips'
+import { horariosDaTurma, weekDays } from '@/lib/schedule'
+import { useHorarios } from '@/schedule/useHorarios'
 
 export interface TeacherWithSubjects {
   name: string
@@ -25,24 +28,32 @@ export function CurriculumMatrixDialog({
   const dialogRef = useRef<HTMLDialogElement>(null)
 
   // Matriz inicial da turma
-  const [items, setItems] = useState<ItemMatriz[]>(() => {
-    if (turma.matriz_curricular && turma.matriz_curricular.length > 0) {
-      return turma.matriz_curricular.map((m) => ({ ...m }))
-    }
-    // Caso esteja vazia, oferece sugestões padrão baseadas nos professores disponíveis
-    return [
-      {
-        professor: teachers[0]?.name ?? '',
-        disciplina: teachers[0]?.subjects[0] ?? availableSubjects[0] ?? 'Matemática',
-        aulas_semanais: 5,
-      },
-      {
-        professor: teachers[1]?.name ?? '',
-        disciplina: teachers[1]?.subjects[0] ?? availableSubjects[1] ?? 'Português',
-        aulas_semanais: 5,
-      },
-    ]
-  })
+  // Cada item guarda a lista de professores; matrizes antigas têm só "professor"
+  const [items, setItems] = useState<ItemMatriz[]>(() =>
+    (turma.matriz_curricular ?? []).map((m) => ({
+      disciplina: m.disciplina,
+      aulas_semanais: m.aulas_semanais,
+      professores: professoresDoItem(m),
+      horarios_fixos: m.horarios_fixos ?? [],
+      extra: m.extra ?? false,
+    })),
+  )
+  const teacherOptions = teachers.map((t) => ({ value: t.name, label: t.name }))
+  const horariosQuery = useHorarios()
+  const turmaSlots = horariosQuery.data ? horariosDaTurma(turma, horariosQuery.data) : []
+  // Linhas com o painel de opções (horário fixo / aula extra) aberto
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set())
+
+  const updateItem = (index: number, changes: Partial<ItemMatriz>) =>
+    setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...changes } : item)))
+
+  const toggleExpanded = (index: number) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(index)) next.delete(index)
+      else next.add(index)
+      return next
+    })
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -67,7 +78,7 @@ export function CurriculumMatrixDialog({
     setItems((prev) => [
       ...prev,
       {
-        professor: defaultTeacher,
+        professores: defaultTeacher ? [defaultTeacher] : [],
         disciplina: defaultSubject,
         aulas_semanais: 4,
       },
@@ -76,27 +87,26 @@ export function CurriculumMatrixDialog({
 
   const handleRemoveItem = (index: number) => {
     setItems((prev) => prev.filter((_, i) => i !== index))
+    // Os índices das linhas mudam: fecha os painéis abertos
+    setExpanded(new Set())
   }
 
-  // Atualiza o professor e ajusta dinamicamente a disciplina para as matérias cadastradas do professor
-  const handleTeacherChange = (index: number, teacherName: string) => {
+  // Disciplinas cadastradas nos perfis dos professores escolhidos (todas, se nenhum tiver)
+  const subjectsFor = (professores: string[]) => {
+    const registered = new Set(
+      professores.flatMap((name) => teachers.find((t) => t.name === name)?.subjects ?? []),
+    )
+    return registered.size > 0 ? [...registered] : availableSubjects
+  }
+
+  // Atualiza os professores e ajusta a disciplina às matérias cadastradas para eles
+  const handleTeachersChange = (index: number, professores: string[]) => {
     setItems((prev) =>
       prev.map((item, i) => {
         if (i !== index) return item
-
-        const teacherObj = teachers.find((t) => t.name === teacherName)
-        const allowed = teacherObj?.subjects ?? []
-
-        let newSubject = item.disciplina
-        if (allowed.length > 0 && !allowed.includes(item.disciplina)) {
-          newSubject = allowed[0]
-        }
-
-        return {
-          ...item,
-          professor: teacherName,
-          disciplina: newSubject,
-        }
+        const allowed = subjectsFor(professores)
+        const disciplina = allowed.includes(item.disciplina) ? item.disciplina : (allowed[0] ?? item.disciplina)
+        return { ...item, professores, disciplina }
       }),
     )
   }
@@ -131,6 +141,11 @@ export function CurriculumMatrixDialog({
       setError('Adicione pelo menos uma matéria à matriz curricular.')
       return
     }
+    const excedente = items.find((i) => (i.horarios_fixos?.length ?? 0) > i.aulas_semanais)
+    if (excedente) {
+      setError(`'${excedente.disciplina}' tem mais horários fixos que aulas semanais.`)
+      return
+    }
 
     try {
       setIsSubmitting(true)
@@ -144,7 +159,10 @@ export function CurriculumMatrixDialog({
     }
   }
 
-  const totalHours = items.reduce((acc, curr) => acc + (Number(curr.aulas_semanais) || 0), 0)
+  // Aulas extras (ex.: laboratório) ocupam a grade, mas ficam fora do total da matriz
+  const sumAulas = (list: ItemMatriz[]) => list.reduce((acc, curr) => acc + (Number(curr.aulas_semanais) || 0), 0)
+  const totalHours = sumAulas(items.filter((i) => !i.extra))
+  const extraHours = sumAulas(items.filter((i) => i.extra))
 
   return (
     <dialog
@@ -164,7 +182,7 @@ export function CurriculumMatrixDialog({
               Matriz Curricular — {turma.nome}
             </h3>
             <p className="mt-0.5 text-xs text-muted">
-              Turno: <strong className="font-semibold text-ink">{turma.turno}</strong> · Selecione o professor para visualizar apenas as matérias cadastradas em seu perfil.
+              Turno: <strong className="font-semibold text-ink">{turma.turno}</strong> · Com mais de um professor, eles dão a aula juntos (ou em rodízio) e todos ficam reservados no horário.
             </p>
           </div>
           <div className="rounded-md border border-line-soft bg-paper px-3 py-1.5 text-right">
@@ -172,6 +190,7 @@ export function CurriculumMatrixDialog({
             <p className="text-base font-bold font-mono text-primary">
               {totalHours}h <span className="text-xs font-normal text-muted">/ sem</span>
             </p>
+            {extraHours > 0 && <p className="text-[11px] text-muted">+ {extraHours} extra</p>}
           </div>
         </div>
 
@@ -186,7 +205,7 @@ export function CurriculumMatrixDialog({
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-line bg-paper/60 text-muted uppercase tracking-wider">
-                <th className="py-2.5 px-3 font-semibold">Professor responsável</th>
+                <th className="py-2.5 px-3 font-semibold">Professores</th>
                 <th className="py-2.5 px-3 font-semibold">Matéria / Disciplina</th>
                 <th className="py-2.5 px-3 font-semibold w-28">Aulas / sem</th>
                 <th className="py-2.5 px-2 text-right w-16">Ação</th>
@@ -194,32 +213,23 @@ export function CurriculumMatrixDialog({
             </thead>
             <tbody className="divide-y divide-line-soft">
               {items.map((item, idx) => {
-                const selectedTeacherObj = teachers.find((t) => t.name === item.professor)
-                const teacherRegisteredSubjects = selectedTeacherObj?.subjects ?? []
+                const professores = item.professores ?? []
+                const allowedSubjects = subjectsFor(professores)
 
-                // Se o professor selecionado possuir disciplinas no cadastro, exibe APENAS elas.
-                // Se nenhum professor estiver selecionado ou o professor não tiver matérias, exibe availableSubjects.
-                const allowedSubjects =
-                  item.professor && teacherRegisteredSubjects.length > 0
-                    ? teacherRegisteredSubjects
-                    : availableSubjects
+                const fixos = item.horarios_fixos ?? []
+                const opcoesAtivas = fixos.length + (item.extra ? 1 : 0)
 
                 return (
-                  <tr key={idx} className="hover:bg-paper/30 transition-colors">
-                    {/* Seleção do Professor */}
+                  <Fragment key={idx}>
+                  <tr className="hover:bg-paper/30 transition-colors">
+                    {/* Professores (mais de um = aula dada em conjunto ou em rodízio) */}
                     <td className="py-2 px-3">
-                      <select
-                        value={item.professor ?? ''}
-                        onChange={(e) => handleTeacherChange(idx, e.target.value)}
-                        className="w-full rounded border border-line bg-white px-2.5 py-1.5 text-xs text-ink font-medium outline-none focus:border-primary"
-                      >
-                        <option value="">(Sem professor alocado)</option>
-                        {teachers.map((t) => (
-                          <option key={t.name} value={t.name}>
-                            {t.name}
-                          </option>
-                        ))}
-                      </select>
+                      <MultiSelectChips
+                        options={teacherOptions}
+                        value={professores}
+                        onChange={(value) => handleTeachersChange(idx, value)}
+                        addLabel={professores.length ? '+ professor' : 'Escolher professor'}
+                      />
                     </td>
 
                     {/* Seleção da Matéria (Apenas do cadastro do professor selecionado) */}
@@ -255,8 +265,17 @@ export function CurriculumMatrixDialog({
                       </div>
                     </td>
 
-                    {/* Ação Remover */}
-                    <td className="py-2 px-2 text-right">
+                    {/* Ações: opções (horário fixo / extra) e remover */}
+                    <td className="py-2 px-2 text-right whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => toggleExpanded(idx)}
+                        aria-expanded={expanded.has(idx)}
+                        className="rounded p-1 text-xs text-primary transition-colors hover:bg-primary-soft"
+                        title="Horário fixo e aula extra"
+                      >
+                        Opções{opcoesAtivas > 0 && ` (${opcoesAtivas})`}
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleRemoveItem(idx)}
@@ -267,6 +286,18 @@ export function CurriculumMatrixDialog({
                       </button>
                     </td>
                   </tr>
+                  {expanded.has(idx) && (
+                    <tr className="bg-paper/40">
+                      <td colSpan={4} className="px-3 pt-1 pb-3">
+                        <ItemOptions
+                          item={item}
+                          slots={turmaSlots}
+                          onChange={(changes) => updateItem(idx, changes)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 )
               })}
             </tbody>
@@ -308,5 +339,97 @@ export function CurriculumMatrixDialog({
         </div>
       </form>
     </dialog>
+  )
+}
+
+interface ItemOptionsProps {
+  item: ItemMatriz
+  /** Horários de aula da turma */
+  slots: string[]
+  onChange: (changes: Partial<ItemMatriz>) => void
+}
+
+/** Horários fixos (dia + horário definidos pela escola) e marcação de aula extra de um item. */
+function ItemOptions({ item, slots, onChange }: ItemOptionsProps) {
+  const fixos = item.horarios_fixos ?? []
+  const [dia, setDia] = useState<string>(weekDays[0])
+  const [horario, setHorario] = useState('')
+  const horarioEscolhido = horario || slots[0] || ''
+  const jaFixado = fixos.some((f) => f.dia_semana === dia && f.horario === horarioEscolhido)
+  const podeFixar = Boolean(horarioEscolhido) && !jaFixado && fixos.length < item.aulas_semanais
+
+  const fixar = () =>
+    onChange({ horarios_fixos: [...fixos, { dia_semana: dia, horario: horarioEscolhido }] })
+  const remover = (alvo: HorarioFixo) =>
+    onChange({ horarios_fixos: fixos.filter((f) => f !== alvo) })
+
+  return (
+    <div className="space-y-2.5 rounded-md border border-line-soft bg-white p-3">
+      <label className="flex items-center gap-2 text-xs text-ink">
+        <input
+          type="checkbox"
+          checked={item.extra ?? false}
+          onChange={(e) => onChange({ extra: e.target.checked })}
+        />
+        Aula extra: ocupa horário na grade, mas não entra no total da matriz (ex.: laboratório)
+      </label>
+
+      <div>
+        <p className="text-xs font-medium text-ink">Horário fixo</p>
+        <p className="text-[11px] text-muted">
+          A aula acontece sempre nesses horários. Sem horário fixo, o gerador escolhe.
+          {fixos.length > 0 && fixos.length < item.aulas_semanais &&
+            ` As outras ${item.aulas_semanais - fixos.length} aula(s) o gerador distribui.`}
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {fixos.map((f) => (
+            <span
+              key={`${f.dia_semana}-${f.horario}`}
+              className="inline-flex items-center gap-1 rounded border border-warning/40 bg-warning-soft py-0.5 pr-1 pl-2 text-xs"
+            >
+              {f.dia_semana}, {f.horario}
+              <button
+                type="button"
+                onClick={() => remover(f)}
+                aria-label={`Remover horário fixo ${f.dia_semana} ${f.horario}`}
+                className="rounded px-1 text-muted hover:bg-danger-soft hover:text-danger"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          <select
+            value={dia}
+            onChange={(e) => setDia(e.target.value)}
+            aria-label="Dia do horário fixo"
+            className="rounded border border-line bg-white px-2 py-1 text-xs outline-none focus:border-primary"
+          >
+            {weekDays.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+          <select
+            value={horarioEscolhido}
+            onChange={(e) => setHorario(e.target.value)}
+            aria-label="Horário fixo"
+            className="rounded border border-line bg-white px-2 py-1 font-mono text-xs outline-none focus:border-primary"
+          >
+            {slots.map((h) => (
+              <option key={h} value={h}>
+                {h}
+              </option>
+            ))}
+          </select>
+          <Button type="button" variant="secondary" size="sm" onClick={fixar} disabled={!podeFixar}>
+            Fixar
+          </Button>
+        </div>
+        {fixos.length >= item.aulas_semanais && (
+          <p className="mt-1 text-[11px] text-muted">Todas as aulas desta matéria já têm horário fixo.</p>
+        )}
+      </div>
+    </div>
   )
 }
