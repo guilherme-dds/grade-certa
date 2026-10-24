@@ -82,9 +82,16 @@ class GridGeneratorService:
                     continue
                 nome_disc = item.get("disciplina") or "Sem nome"
                 disc = disciplinas.get(normalizar(nome_disc))
-                prof_nome = (item.get("professor") or "").strip()
-                chave = normalizar(prof_nome) or None
-                if chave and chave not in professores:
+                # Formato atual: lista "professores"; matrizes antigas têm só "professor"
+                nomes = item.get("professores") or [item.get("professor")]
+                chaves: List[str] = []
+                for prof_nome in (n.strip() for n in nomes if n and n.strip()):
+                    chave = normalizar(prof_nome)
+                    if chave in chaves:
+                        continue
+                    chaves.append(chave)
+                    if chave in professores:
+                        continue
                     prof = prof_by_key.get(chave)
                     if prof is None:
                         avisos_carga.append(
@@ -103,7 +110,7 @@ class GridGeneratorService:
                     ItemInput(
                         disciplina=nome_disc,
                         aulas_semanais=int(item["aulas_semanais"]),
-                        professor=chave,
+                        professores=chaves,
                         area=(disc.area if disc and disc.area else inferir_area(nome_disc)),
                         aula_dobrada=(
                             disc.aula_dobrada
@@ -172,8 +179,11 @@ class GridGeneratorService:
                     turma_id=a.turma_id,
                     turma_nome=a.turma_nome,
                     disciplina_nome=a.disciplina,
-                    professor_id=professores[a.professor_chave].id if a.professor_chave else None,
-                    professor_nome=professores[a.professor_chave].nome if a.professor_chave else None,
+                    professor_id=professores[a.professor_chaves[0]].id if a.professor_chaves else None,
+                    professor_nome=professores[a.professor_chaves[0]].nome if a.professor_chaves else None,
+                    professores=[
+                        {"id": professores[c].id, "nome": professores[c].nome} for c in a.professor_chaves
+                    ],
                     sala_nome=salas[a.sala_id].nome if a.sala_id is not None else None,
                     dia_semana=a.dia,
                     horario=a.horario,

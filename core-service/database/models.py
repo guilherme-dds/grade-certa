@@ -106,6 +106,8 @@ class AulaDB(Base):
     disciplina_nome = Column(String(100), nullable=False)
     professor_id = Column(Integer, nullable=True, index=True)
     professor_nome = Column(String(255), nullable=True)
+    # [{"id": int | None, "nome": str}] — todos os professores da aula (o primeiro repete professor_id/nome)
+    professores = Column(JSON, nullable=True)
     sala_nome = Column(String(100), nullable=True)
     dia_semana = Column(String(20), nullable=False)
     horario = Column(String(50), nullable=False)

@@ -1,6 +1,11 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator, model_validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+
+
+class ProfessorAula(BaseModel):
+    id: Optional[int] = None
+    nome: str
 
 
 class Aula(BaseModel):
@@ -11,12 +16,26 @@ class Aula(BaseModel):
     disciplina_id: Optional[int] = None
     professor_id: Optional[int] = None
     professor_nome: Optional[str] = None
+    # Todos os professores da aula; professor_id/professor_nome repetem o primeiro
+    professores: List[ProfessorAula] = []
     sala_nome: Optional[str] = None
     dia_semana: str
     horario: str
     ordem: int = 1
 
     model_config = {"from_attributes": True}
+
+    @field_validator("professores", mode="before")
+    @classmethod
+    def _professores_nulos(cls, valor):
+        return valor or []
+
+    @model_validator(mode="after")
+    def _preenche_professores(self):
+        # Aulas gravadas antes da coluna `professores` só têm o professor principal
+        if not self.professores and self.professor_nome:
+            self.professores = [ProfessorAula(id=self.professor_id, nome=self.professor_nome)]
+        return self
 
 
 class Grade(BaseModel):
@@ -35,8 +54,8 @@ class Grade(BaseModel):
 
 
 class AulaUpdate(BaseModel):
-    """Edição manual de uma aula: substitui dia, horário, professor e sala."""
+    """Edição manual de uma aula: substitui dia, horário, professores e sala."""
     dia_semana: str
     horario: str
-    professor_id: Optional[int] = None
+    professor_ids: List[int] = []
     sala_nome: Optional[str] = None

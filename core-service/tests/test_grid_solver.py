@@ -56,7 +56,7 @@ def montar_escola(sala_fixa=False, tipo_sala_ciencias=None):
                 ItemInput(
                     disciplina=disc,
                     aulas_semanais=qtd,
-                    professor=prof,
+                    professores=[prof],
                     area=inferir_area(disc),
                     aula_dobrada=inferir_aula_dobrada(disc),
                     tipo_sala=tipo_sala_ciencias if disc == "Ciências" else None,
@@ -89,8 +89,9 @@ def verificar_regras(res, turmas):
         idx = SLOTS.index(a.horario)
         assert idx not in por_turma_dia[(a.turma_id, a.dia)], "choque de turma"
         por_turma_dia[(a.turma_id, a.dia)][idx] = a
-        assert idx not in por_prof_dia[(a.professor_chave, a.dia)], "choque de professor"
-        por_prof_dia[(a.professor_chave, a.dia)].add(idx)
+        for chave in a.professor_chaves:
+            assert idx not in por_prof_dia[(chave, a.dia)], "choque de professor"
+            por_prof_dia[(chave, a.dia)].add(idx)
         contagem[(a.turma_id, a.disciplina)][a.dia].append(idx)
 
     for chave, item in itens.items():
@@ -110,8 +111,8 @@ def verificar_regras(res, turmas):
 
     # Primeira x última aula do turno
     for dia in DIAS_SEMANA:
-        primeiros = {s[0].professor_chave for (_, d), s in por_turma_dia.items() if d == dia and 0 in s}
-        ultimos = {s[max(s)].professor_chave for (_, d), s in por_turma_dia.items() if d == dia}
+        primeiros = {c for (_, d), s in por_turma_dia.items() if d == dia and 0 in s for c in s[0].professor_chaves}
+        ultimos = {c for (_, d), s in por_turma_dia.items() if d == dia for c in s[max(s)].professor_chaves}
         assert not primeiros & ultimos, f"mesmo professor na primeira e na última aula em {dia}"
 
     # Planejamento: 4 por semana, fora das aulas, em dia com aula, sem janela
@@ -122,7 +123,7 @@ def verificar_regras(res, turmas):
         assert idx not in por_prof_dia[(p.professor_chave, p.dia)]
         plan_prof_dia[(p.professor_chave, p.dia)].add(idx)
         total_plan[p.professor_chave] += 1
-    profs = {i.professor for i in itens.values()}
+    profs = {c for i in itens.values() for c in i.professores}
     assert all(total_plan[p] == PLANEJAMENTOS_SEMANAIS for p in profs), dict(total_plan)
     for (prof, dia) in plan_prof_dia:
         assert por_prof_dia[(prof, dia)], f"planejamento de {prof} em {dia} sem aula no dia"
@@ -176,8 +177,8 @@ def test_disciplina_sem_area_agrupa_seus_professores_no_planejamento():
     # Duas turmas com Tecnologia (sem área conhecida), cada uma com um professor
     turmas = [
         TurmaInput(i, f"{i}º Ano A", "Manhã", "Anos Finais", None, [
-            ItemInput("Tecnologia", 2, f"tec{i}", inferir_area("Tecnologia"), True),
-            ItemInput("Matemática", 2, f"mat{i}", "Matemática", True),
+            ItemInput("Tecnologia", 2, [f"tec{i}"], inferir_area("Tecnologia"), True),
+            ItemInput("Matemática", 2, [f"mat{i}"], "Matemática", True),
         ])
         for i in (6, 7)
     ]
@@ -192,7 +193,7 @@ def test_indisponibilidade_do_professor():
     professores["eva"].indisponivel = [Intervalo(dia="Seg", horario=h) for h in SLOTS]
     res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
     verificar_regras(res, turmas)
-    assert not any(a.professor_chave == "eva" and a.dia == "Seg" for a in res.aulas)
+    assert not any("eva" in a.professor_chaves and a.dia == "Seg" for a in res.aulas)
     assert not any(p.professor_chave == "eva" and p.dia == "Seg" for p in res.planejamentos)
 
 
@@ -234,7 +235,7 @@ def test_conflito_aponta_regra_responsavel():
 
 def test_disciplina_com_aulas_demais():
     turmas, professores = montar_escola()
-    turmas[0].itens = [ItemInput(disciplina="Matemática", aulas_semanais=11, professor="carlos")]
+    turmas[0].itens = [ItemInput(disciplina="Matemática", aulas_semanais=11, professores=["carlos"])]
     res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
     assert not res.sucesso
     assert "no máximo 10" in res.mensagem
@@ -248,9 +249,22 @@ def test_indisponibilidade_de_outro_nivel_nao_bloqueia_e_preferencia_atrai_aulas
     professores["hugo"].preferencial = [Intervalo(dia="Qua", horario=h) for h in SLOTS]
     res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
     verificar_regras(res, turmas)
-    assert sum(1 for a in res.aulas if a.professor_chave == "hugo" and a.dia == "Qua") == 4
+    assert sum(1 for a in res.aulas if "hugo" in a.professor_chaves and a.dia == "Qua") == 4
 
     professores["eva"].indisponivel = [Intervalo(dia="Seg", horario=h, nivel="Anos Finais") for h in SLOTS]
     res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
     verificar_regras(res, turmas)
-    assert not any(a.professor_chave == "eva" and a.dia == "Seg" for a in res.aulas)
+    assert not any("eva" in a.professor_chaves and a.dia == "Seg" for a in res.aulas)
+
+
+def test_aula_com_dois_professores_reserva_os_dois():
+    turmas, professores = montar_escola()
+    # Atualidades no 6º ano dada em conjunto por Fábio (História) e Ana (Português do 6º/7º)
+    turmas[0].itens.append(
+        ItemInput("Atualidades", 2, ["fabio", "ana"], inferir_area("Atualidades"), inferir_aula_dobrada("Atualidades"))
+    )
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    verificar_regras(res, turmas)  # inclui: nenhum dos dois em outra turma no mesmo horário
+    atualidades = [a for a in res.aulas if a.disciplina == "Atualidades"]
+    assert len(atualidades) == 2
+    assert all(a.professor_chaves == ["fabio", "ana"] for a in atualidades)

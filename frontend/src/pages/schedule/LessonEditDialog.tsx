@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getProfessores } from '@/api/professores'
 import { getSalas } from '@/api/salas'
+import { MultiSelectChips } from '@/components/MultiSelectChips'
 import { SelectField } from '@/components/SelectField'
 import { Button } from '@/components/ui/Button'
 import { weekDays } from '@/lib/schedule'
@@ -22,7 +23,7 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
   const salasQuery = useQuery({ queryKey: ['salas'], queryFn: getSalas })
 
   const [values, setValues] = useState({
-    teacherId: lesson.teacherId != null ? String(lesson.teacherId) : SEM_VALOR,
+    teacherIds: lesson.teachers.flatMap((t) => (t.id != null ? [String(t.id)] : [])),
     room: lesson.room ?? SEM_VALOR,
     day: lesson.day,
     time: lesson.time,
@@ -46,12 +47,9 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
     setError(null)
   }
 
-  const professorOptions = [
-    { value: SEM_VALOR, label: 'Sem professor' },
-    ...(professoresQuery.data ?? [])
-      .filter((p) => p.ativo || p.id === lesson.teacherId)
-      .map((p) => ({ value: String(p.id), label: p.nome })),
-  ]
+  const professorOptions = (professoresQuery.data ?? [])
+    .filter((p) => p.ativo || lesson.teachers.some((t) => t.id === p.id))
+    .map((p) => ({ value: String(p.id), label: p.nome }))
   const salaOptions = [
     { value: SEM_VALOR, label: 'Sem sala' },
     ...(salasQuery.data ?? []).map((s) => ({ value: s.nome, label: s.nome })),
@@ -65,7 +63,7 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
       const result = await updateLesson(lesson.id, {
         day: values.day,
         time: values.time,
-        teacherId: values.teacherId ? Number(values.teacherId) : null,
+        teacherIds: values.teacherIds.map(Number),
         room: values.room || null,
       })
       if (result.ok) close()
@@ -95,12 +93,16 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
         </p>
 
         <div className="mt-5 space-y-4">
-          <SelectField
-            label="Professor"
-            options={professorOptions}
-            value={values.teacherId}
-            onChange={(e) => set('teacherId', e.target.value)}
-          />
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-muted">Professores</p>
+            <MultiSelectChips
+              options={professorOptions}
+              value={values.teacherIds}
+              onChange={(ids) => set('teacherIds', ids)}
+              addLabel={values.teacherIds.length ? '+ professor (aula em conjunto)' : 'Escolher professor'}
+              emptyLabel="Sem professor"
+            />
+          </div>
           <SelectField label="Sala" options={salaOptions} value={values.room} onChange={(e) => set('room', e.target.value)} />
           <div className="grid grid-cols-2 gap-3">
             <SelectField label="Dia" options={weekDays} value={values.day} onChange={(e) => set('day', e.target.value)} />

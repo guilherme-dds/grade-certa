@@ -70,7 +70,7 @@ def test_editar_aula_gera_conflito_e_sugestao(ctx):
 
     # Ana passa a dar Português no mesmo horário em que dá Matemática no 6º ano
     r = client.put(f"/grades/aulas/{aula_port.id}", json={
-        "dia_semana": "Seg", "horario": "07:20 - 08:10", "professor_id": ana.id, "sala_nome": "Quadra",
+        "dia_semana": "Seg", "horario": "07:20 - 08:10", "professor_ids": [ana.id], "sala_nome": "Quadra",
     })
     assert r.status_code == 200, r.text
     assert r.json()["professor_nome"] == "Ana"
@@ -82,7 +82,7 @@ def test_editar_aula_gera_conflito_e_sugestao(ctx):
     assert c["correcao"] == {"dia_semana": "Seg", "horario": "08:10 - 09:00"}
 
     # Aplicar a sugestão resolve
-    r = client.put(f"/grades/aulas/{aula_port.id}", json={**c["correcao"], "professor_id": ana.id, "sala_nome": "Quadra"})
+    r = client.put(f"/grades/aulas/{aula_port.id}", json={**c["correcao"], "professor_ids": [ana.id], "sala_nome": "Quadra"})
     assert r.status_code == 200
     assert client.get(f"/grades/{grade.id}/conflitos").json() == []
 
@@ -124,3 +124,25 @@ def test_disponibilidade_do_professor_e_conflito_de_indisponibilidade(ctx):
     client.put(f"/professores/{ana.id}/disponibilidades", json=[])
     assert client.get(f"/professores/{ana.id}/disponibilidades").json() == []
     assert client.get(f"/grades/{grade.id}/conflitos").json() == []
+
+
+def test_aula_com_varios_professores_detecta_conflito_de_cada_um(ctx):
+    client, db = ctx
+    grade, ana, bia = _grade_basica(db)
+    mat, port = grade.aulas
+    # Matemática passa a ser dada por Ana e Bia juntas, no mesmo horário do Português da Bia
+    r = client.put(f"/grades/aulas/{mat.id}", json={
+        "dia_semana": "Seg", "horario": "07:20 - 08:10", "professor_ids": [ana.id, bia.id], "sala_nome": None,
+    })
+    assert r.status_code == 200, r.text
+    assert [p["nome"] for p in r.json()["professores"]] == ["Ana", "Bia"]
+    assert r.json()["professor_nome"] == "Ana"
+
+    conflitos = client.get(f"/grades/{grade.id}/conflitos").json()
+    assert [(c["tipo"], c["descricao"].split(" ")[0]) for c in conflitos] == [("Professor duplicado", "Bia")]
+
+    # Aulas antigas (sem a coluna professores) continuam aparecendo com o professor principal
+    port.professores = None
+    db.commit()
+    aula = next(a for a in client.get("/grades/", params={"grade_id": grade.id}).json()["aulas"] if a["id"] == port.id)
+    assert aula["professores"] == [{"id": bia.id, "nome": "Bia"}]

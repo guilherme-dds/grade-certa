@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/Button'
-import type { ItemMatriz, TurmaBackend } from '@/api/turmas'
+import { professoresDoItem, type ItemMatriz, type TurmaBackend } from '@/api/turmas'
+import { MultiSelectChips } from '@/components/MultiSelectChips'
 
 export interface TeacherWithSubjects {
   name: string
@@ -25,9 +26,15 @@ export function CurriculumMatrixDialog({
   const dialogRef = useRef<HTMLDialogElement>(null)
 
   // Matriz inicial da turma
+  // Cada item guarda a lista de professores; matrizes antigas têm só "professor"
   const [items, setItems] = useState<ItemMatriz[]>(() =>
-    (turma.matriz_curricular ?? []).map((m) => ({ ...m })),
+    (turma.matriz_curricular ?? []).map((m) => ({
+      disciplina: m.disciplina,
+      aulas_semanais: m.aulas_semanais,
+      professores: professoresDoItem(m),
+    })),
   )
+  const teacherOptions = teachers.map((t) => ({ value: t.name, label: t.name }))
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -52,7 +59,7 @@ export function CurriculumMatrixDialog({
     setItems((prev) => [
       ...prev,
       {
-        professor: defaultTeacher,
+        professores: defaultTeacher ? [defaultTeacher] : [],
         disciplina: defaultSubject,
         aulas_semanais: 4,
       },
@@ -63,25 +70,22 @@ export function CurriculumMatrixDialog({
     setItems((prev) => prev.filter((_, i) => i !== index))
   }
 
-  // Atualiza o professor e ajusta dinamicamente a disciplina para as matérias cadastradas do professor
-  const handleTeacherChange = (index: number, teacherName: string) => {
+  // Disciplinas cadastradas nos perfis dos professores escolhidos (todas, se nenhum tiver)
+  const subjectsFor = (professores: string[]) => {
+    const registered = new Set(
+      professores.flatMap((name) => teachers.find((t) => t.name === name)?.subjects ?? []),
+    )
+    return registered.size > 0 ? [...registered] : availableSubjects
+  }
+
+  // Atualiza os professores e ajusta a disciplina às matérias cadastradas para eles
+  const handleTeachersChange = (index: number, professores: string[]) => {
     setItems((prev) =>
       prev.map((item, i) => {
         if (i !== index) return item
-
-        const teacherObj = teachers.find((t) => t.name === teacherName)
-        const allowed = teacherObj?.subjects ?? []
-
-        let newSubject = item.disciplina
-        if (allowed.length > 0 && !allowed.includes(item.disciplina)) {
-          newSubject = allowed[0]
-        }
-
-        return {
-          ...item,
-          professor: teacherName,
-          disciplina: newSubject,
-        }
+        const allowed = subjectsFor(professores)
+        const disciplina = allowed.includes(item.disciplina) ? item.disciplina : (allowed[0] ?? item.disciplina)
+        return { ...item, professores, disciplina }
       }),
     )
   }
@@ -149,7 +153,7 @@ export function CurriculumMatrixDialog({
               Matriz Curricular — {turma.nome}
             </h3>
             <p className="mt-0.5 text-xs text-muted">
-              Turno: <strong className="font-semibold text-ink">{turma.turno}</strong> · Selecione o professor para visualizar apenas as matérias cadastradas em seu perfil.
+              Turno: <strong className="font-semibold text-ink">{turma.turno}</strong> · Com mais de um professor, eles dão a aula juntos (ou em rodízio) e todos ficam reservados no horário.
             </p>
           </div>
           <div className="rounded-md border border-line-soft bg-paper px-3 py-1.5 text-right">
@@ -171,7 +175,7 @@ export function CurriculumMatrixDialog({
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-line bg-paper/60 text-muted uppercase tracking-wider">
-                <th className="py-2.5 px-3 font-semibold">Professor responsável</th>
+                <th className="py-2.5 px-3 font-semibold">Professores</th>
                 <th className="py-2.5 px-3 font-semibold">Matéria / Disciplina</th>
                 <th className="py-2.5 px-3 font-semibold w-28">Aulas / sem</th>
                 <th className="py-2.5 px-2 text-right w-16">Ação</th>
@@ -179,32 +183,19 @@ export function CurriculumMatrixDialog({
             </thead>
             <tbody className="divide-y divide-line-soft">
               {items.map((item, idx) => {
-                const selectedTeacherObj = teachers.find((t) => t.name === item.professor)
-                const teacherRegisteredSubjects = selectedTeacherObj?.subjects ?? []
-
-                // Se o professor selecionado possuir disciplinas no cadastro, exibe APENAS elas.
-                // Se nenhum professor estiver selecionado ou o professor não tiver matérias, exibe availableSubjects.
-                const allowedSubjects =
-                  item.professor && teacherRegisteredSubjects.length > 0
-                    ? teacherRegisteredSubjects
-                    : availableSubjects
+                const professores = item.professores ?? []
+                const allowedSubjects = subjectsFor(professores)
 
                 return (
                   <tr key={idx} className="hover:bg-paper/30 transition-colors">
-                    {/* Seleção do Professor */}
+                    {/* Professores (mais de um = aula dada em conjunto ou em rodízio) */}
                     <td className="py-2 px-3">
-                      <select
-                        value={item.professor ?? ''}
-                        onChange={(e) => handleTeacherChange(idx, e.target.value)}
-                        className="w-full rounded border border-line bg-white px-2.5 py-1.5 text-xs text-ink font-medium outline-none focus:border-primary"
-                      >
-                        <option value="">(Sem professor alocado)</option>
-                        {teachers.map((t) => (
-                          <option key={t.name} value={t.name}>
-                            {t.name}
-                          </option>
-                        ))}
-                      </select>
+                      <MultiSelectChips
+                        options={teacherOptions}
+                        value={professores}
+                        onChange={(value) => handleTeachersChange(idx, value)}
+                        addLabel={professores.length ? '+ professor' : 'Escolher professor'}
+                      />
                     </td>
 
                     {/* Seleção da Matéria (Apenas do cadastro do professor selecionado) */}

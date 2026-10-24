@@ -19,7 +19,7 @@ import {
   createDisciplina,
   type DisciplinaBackend,
 } from '@/api/disciplinas'
-import { getTurmas } from '@/api/turmas'
+import { getTurmas, professoresDoItem } from '@/api/turmas'
 import { formatDateTime } from '@/lib/schedule'
 import { type NivelEnsino, type Teacher, type TeacherRow } from './teachers/types'
 import { DeleteTeacherDialog } from './teachers/DeleteTeacherDialog'
@@ -64,8 +64,10 @@ export function TeachersPage() {
     const map = new Map<string, number>()
     for (const turma of turmasQuery.data ?? []) {
       for (const item of turma.matriz_curricular ?? []) {
-        const key = item.professor?.trim().toLowerCase()
-        if (key) map.set(key, (map.get(key) ?? 0) + Number(item.aulas_semanais || 0))
+        for (const nome of professoresDoItem(item)) {
+          const key = nome.trim().toLowerCase()
+          map.set(key, (map.get(key) ?? 0) + Number(item.aulas_semanais || 0))
+        }
       }
     }
     return map

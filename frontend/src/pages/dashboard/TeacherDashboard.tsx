@@ -27,7 +27,7 @@ export function TeacherDashboard() {
     )
   }
 
-  const minhasAulas = lessons.filter((l) => professor && l.teacherId === professor.id)
+  const minhasAulas = lessons.filter((l) => professor && l.teachers.some((t) => t.id === professor.id))
   const planejamentos = (activeGrade?.detalhes?.planejamentos ?? []).filter(
     (p) => professor && p.professor_id === professor.id,
   )

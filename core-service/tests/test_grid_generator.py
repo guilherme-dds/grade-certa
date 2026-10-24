@@ -85,3 +85,29 @@ def test_educacao_fisica_usa_a_quadra_fora_dos_horarios_bloqueados(db):
     # Uma turma por vez na quadra
     usos = [(a.dia_semana, a.horario) for a in ed_fisica]
     assert len(usos) == len(set(usos))
+
+
+def test_matriz_com_varios_professores_e_formato_antigo(db):
+    for p in sorted(set(PROFESSOR.values())):
+        db.add(ProfessorDB(nome=p.title(), email=f"{p}@escola.com", carga_maxima_aulas=20))
+    for serie in "6789":
+        grupo = "67" if serie in "67" else "89"
+        # Formato antigo: "professor" (string)
+        matriz = [
+            {"disciplina": d, "aulas_semanais": q, "professor": PROFESSOR.get((d, grupo)) or PROFESSOR[(d, None)]}
+            for d, q in MATRIZ
+        ]
+        if serie == "6":
+            # Formato novo: "professores" (lista), aula dada em conjunto
+            matriz.append({"disciplina": "Atualidades", "aulas_semanais": 2, "professores": ["Fabio", "Ana"]})
+        db.add(TurmaDB(nome=f"{serie}º Ano A", turno="Manhã", nivel_ensino="Anos Finais", matriz_curricular=matriz))
+    db.commit()
+
+    resultado = GridGeneratorService(db).generate("Teste co-docência")
+
+    assert resultado["sucesso"], resultado
+    aulas = db.query(AulaDB).filter(AulaDB.grade_id == resultado["grade_id"]).all()
+    atualidades = [a for a in aulas if a.disciplina_nome == "Atualidades"]
+    assert len(atualidades) == 2
+    assert all([p["nome"] for p in a.professores] == ["Fabio", "Ana"] for a in atualidades)
+    assert all(a.professor_nome == "Fabio" for a in atualidades)

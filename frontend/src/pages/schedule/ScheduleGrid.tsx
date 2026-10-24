@@ -73,8 +73,10 @@ interface LessonCardProps {
 }
 
 function LessonCard({ lesson, editing, dimmed, onSelect }: LessonCardProps) {
-  const detail = lesson.room ? `${shortTeacherName(lesson.teacher)} · ${lesson.room}` : shortTeacherName(lesson.teacher)
-  const description = `${lesson.subject} — ${lesson.teacher ?? 'sem professor'}${lesson.room ? `, ${lesson.room}` : ''}`
+  const names = lesson.teachers.map((t) => t.nome)
+  const teachersShort = names.length ? names.map(shortTeacherName).join(' + ') : shortTeacherName(null)
+  const detail = lesson.room ? `${teachersShort} · ${lesson.room}` : teachersShort
+  const description = `${lesson.subject} — ${names.join(' e ') || 'sem professor'}${lesson.room ? `, ${lesson.room}` : ''}`
   const className = cn(
     'block w-full rounded-[5px] px-2 py-1.5 text-left transition-opacity',
     editing ? 'bg-primary outline-2 outline-offset-2 outline-navy' : getSubjectColor(lesson.subject),

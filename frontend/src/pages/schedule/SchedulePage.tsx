@@ -27,7 +27,7 @@ export function SchedulePage() {
   }, [lessons])
 
   const availableTeachers = useMemo(
-    () => Array.from(new Set(lessons.map((l) => l.teacher).filter((t): t is string => Boolean(t)))).sort(),
+    () => Array.from(new Set(lessons.flatMap((l) => l.teachers.map((t) => t.nome)))).sort(),
     [lessons],
   )
 
@@ -53,7 +53,8 @@ export function SchedulePage() {
       { replace: true },
     )
 
-  const isDimmed = (l: Lesson) => (teacher !== '' && l.teacher !== teacher) || (room !== '' && l.room !== room)
+  const isDimmed = (l: Lesson) =>
+    (teacher !== '' && !l.teachers.some((t) => t.nome === teacher)) || (room !== '' && l.room !== room)
 
   if (isLoading) {
     return (

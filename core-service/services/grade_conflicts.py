@@ -2,6 +2,7 @@
 Detecta conflitos em uma grade já gravada (normalmente causados por edição manual de aulas)
 e sugere um horário livre para a aula que conflita.
 """
+import zlib
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session, joinedload
@@ -36,13 +37,26 @@ class DetectorConflitos:
         return infer_nivel_ensino(turma.nome, turma.nivel_ensino) if turma else None
 
     @staticmethod
-    def _mesmo_professor(a: AulaDB, b: AulaDB) -> bool:
-        if a.professor_id is not None and b.professor_id is not None:
-            return a.professor_id == b.professor_id
-        return bool(a.professor_nome) and normalizar(a.professor_nome) == normalizar(b.professor_nome)
+    def _professores(aula: AulaDB) -> List[Dict[str, Any]]:
+        if aula.professores:
+            return aula.professores
+        # Aulas gravadas antes da coluna `professores`
+        return [{"id": aula.professor_id, "nome": aula.professor_nome}] if aula.professor_nome else []
 
-    def _professor_indisponivel(self, aula: AulaDB, dia: str, horario: str) -> bool:
-        return any(i.aplica(dia, horario, self._nivel(aula)) for i in self.indisp_prof.get(aula.professor_id, []))
+    @classmethod
+    def _professores_em_comum(cls, a: AulaDB, b: AulaDB) -> List[str]:
+        """Nomes dos professores que estão nas duas aulas (por id; sem id, pelo nome)."""
+        def chave(p):
+            return ("id", p["id"]) if p.get("id") is not None else ("nome", normalizar(p["nome"]))
+        de_b = {chave(p) for p in cls._professores(b)}
+        return [p["nome"] for p in cls._professores(a) if chave(p) in de_b]
+
+    def _professores_indisponiveis(self, aula: AulaDB, dia: str, horario: str) -> List[str]:
+        return [
+            p["nome"]
+            for p in self._professores(aula)
+            if any(i.aplica(dia, horario, self._nivel(aula)) for i in self.indisp_prof.get(p.get("id"), []))
+        ]
 
     def _sala_indisponivel(self, aula: AulaDB, dia: str, horario: str) -> bool:
         return any(i.aplica(dia, horario) for i in self.indisp_sala.get(aula.sala_nome or "", []))
@@ -51,11 +65,11 @@ class DetectorConflitos:
         for outra in self.aulas:
             if outra.id == aula.id or outra.dia_semana != dia or not slots_overlap(outra.horario, horario):
                 continue
-            if outra.turma_id == aula.turma_id or self._mesmo_professor(outra, aula):
+            if outra.turma_id == aula.turma_id or self._professores_em_comum(outra, aula):
                 return False
             if aula.sala_nome and outra.sala_nome == aula.sala_nome:
                 return False
-        return not self._professor_indisponivel(aula, dia, horario) and not self._sala_indisponivel(aula, dia, horario)
+        return not self._professores_indisponiveis(aula, dia, horario) and not self._sala_indisponivel(aula, dia, horario)
 
     def _sugestao(self, aula: AulaDB) -> Tuple[Optional[str], Optional[Dict[str, str]]]:
         for dia in DIAS_SEMANA:
@@ -70,7 +84,8 @@ class DetectorConflitos:
     def _conflito(self, tipo: str, gravidade: str, descricao: str, aula: AulaDB, outra: Optional[AulaDB] = None):
         sugestao, correcao = self._sugestao(aula)
         return {
-            "id": f"{tipo}-{aula.id}-{outra.id if outra else 0}",
+            # A descrição entra no id porque a mesma dupla de aulas pode conflitar em mais de um professor
+            "id": f"{tipo}-{aula.id}-{outra.id if outra else 0}-{zlib.crc32(descricao.encode())}",
             "gravidade": gravidade,
             "tipo": tipo,
             "descricao": descricao,
@@ -92,10 +107,10 @@ class DetectorConflitos:
                         "Choque de turma", "alto",
                         f"{a.turma_nome} tem {a.disciplina_nome} e {b.disciplina_nome} ao mesmo tempo ({quando}).", b, a,
                     ))
-                if a.professor_nome and self._mesmo_professor(a, b):
+                for nome in self._professores_em_comum(a, b):
                     conflitos.append(self._conflito(
                         "Professor duplicado", "alto",
-                        f"{b.professor_nome} está em {a.turma_nome} e {b.turma_nome} ao mesmo tempo ({quando}).", b, a,
+                        f"{nome} está em {a.turma_nome} e {b.turma_nome} ao mesmo tempo ({quando}).", b, a,
                     ))
                 if a.sala_nome and a.sala_nome == b.sala_nome:
                     conflitos.append(self._conflito(
@@ -105,10 +120,10 @@ class DetectorConflitos:
 
         for a in self.aulas:
             quando = f"{a.dia_semana}, {a.horario}"
-            if a.professor_id is not None and self._professor_indisponivel(a, a.dia_semana, a.horario):
+            for nome in self._professores_indisponiveis(a, a.dia_semana, a.horario):
                 conflitos.append(self._conflito(
                     "Professor indisponível", "alto",
-                    f"{a.professor_nome} marcou {quando} como indisponível ({a.disciplina_nome}, {a.turma_nome}).", a,
+                    f"{nome} marcou {quando} como indisponível ({a.disciplina_nome}, {a.turma_nome}).", a,
                 ))
             if a.sala_nome and self._sala_indisponivel(a, a.dia_semana, a.horario):
                 conflitos.append(self._conflito(

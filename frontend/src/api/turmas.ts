@@ -3,7 +3,16 @@ import { api } from './client'
 export interface ItemMatriz {
   disciplina: string
   aulas_semanais: number
-  professor?: string
+  /** Professores que dão a aula juntos (ou em rodízio); o gerador reserva todos no horário */
+  professores?: string[]
+  /** Formato antigo, com um professor só (o backend mantém igual ao primeiro de `professores`) */
+  professor?: string | null
+}
+
+/** Professores do item, aceitando matrizes salvas no formato antigo */
+export function professoresDoItem(item: ItemMatriz): string[] {
+  if (item.professores?.length) return item.professores
+  return item.professor ? [item.professor] : []
 }
 
 export interface TurmaBackend {

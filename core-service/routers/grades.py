@@ -134,19 +134,21 @@ def editar_aula(aula_id: int, dados: AulaUpdate, db: Session = Depends(get_db)):
             f"em {choque.dia_semana}, {choque.horario}.",
         )
 
-    professor = None
-    if dados.professor_id is not None:
-        professor = db.query(ProfessorDB).filter(ProfessorDB.id == dados.professor_id).first()
+    professores = []
+    for professor_id in dict.fromkeys(dados.professor_ids):
+        professor = db.query(ProfessorDB).filter(ProfessorDB.id == professor_id).first()
         if not professor:
             raise HTTPException(status_code=400, detail="Professor não encontrado")
+        professores.append(professor)
     if dados.sala_nome and not db.query(SalaDB).filter(SalaDB.nome == dados.sala_nome).first():
         raise HTTPException(status_code=400, detail="Sala não encontrada")
 
     aula.dia_semana = dados.dia_semana
     aula.horario = dados.horario
     aula.ordem = horarios.index(dados.horario) + 1
-    aula.professor_id = professor.id if professor else None
-    aula.professor_nome = professor.nome if professor else None
+    aula.professor_id = professores[0].id if professores else None
+    aula.professor_nome = professores[0].nome if professores else None
+    aula.professores = [{"id": p.id, "nome": p.nome} for p in professores]
     aula.sala_nome = dados.sala_nome or None
     db.commit()
     db.refresh(aula)

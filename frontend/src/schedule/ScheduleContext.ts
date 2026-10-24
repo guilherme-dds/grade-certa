@@ -1,5 +1,5 @@
 import { createContext } from 'react'
-import type { ConflitoGrade, GradeBackend } from '@/api/grades'
+import type { ConflitoGrade, GradeBackend, ProfessorAula } from '@/api/grades'
 
 /** Aula da grade gravada no core-service */
 export interface Lesson {
@@ -9,15 +9,15 @@ export interface Lesson {
   day: string
   time: string
   subject: string
-  teacher: string | null
-  teacherId: number | null
+  /** Professores da aula (mais de um = aula dada em conjunto) */
+  teachers: ProfessorAula[]
   room: string | null
 }
 
 export interface LessonChanges {
   day: string
   time: string
-  teacherId: number | null
+  teacherIds: number[]
   room: string | null
 }
 

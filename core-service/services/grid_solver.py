@@ -92,7 +92,9 @@ class Intervalo:
 class ItemInput:
     disciplina: str
     aulas_semanais: int
-    professor: Optional[str] = None  # chave normalizada do professor
+    # Chaves normalizadas dos professores; mais de um = aula dada em conjunto (ou rodízio),
+    # e todos ficam reservados naquele horário
+    professores: List[str] = field(default_factory=list)
     area: Optional[str] = None
     aula_dobrada: bool = True
     tipo_sala: Optional[str] = None
@@ -131,7 +133,7 @@ class AulaAlocada:
     turma_id: int
     turma_nome: str
     disciplina: str
-    professor_chave: Optional[str]
+    professor_chaves: List[str]
     sala_id: Optional[int]
     dia: str
     horario: str
@@ -226,9 +228,9 @@ def resolver_grade(
                     f"semanais, mas a regra ({regra}) permite no máximo {max_semana}.",
                     avisos,
                 )
-            if item.professor:
-                aulas_por_prof[item.professor] = aulas_por_prof.get(item.professor, 0) + item.aulas_semanais
-            else:
+            for chave in item.professores:
+                aulas_por_prof[chave] = aulas_por_prof.get(chave, 0) + item.aulas_semanais
+            if not item.professores:
                 avisos.append(f"'{item.disciplina}' na turma '{t.nome}' está sem professor.")
 
     for chave, total in aulas_por_prof.items():
@@ -281,9 +283,9 @@ def resolver_grade(
                     ordem, horario = slot["ordem"], slot["horario"]
                     var = model.NewBoolVar(f"x_t{t.id}_i{idx}_{dia}_s{ordem}")
                     x[(t.id, idx, dia, ordem)] = var
-                    if item.professor:
-                        prof_aulas.setdefault(item.professor, {}).setdefault(dia, []).append((var, horario))
-                        prof_aulas_nivel.setdefault(item.professor, []).append((var, dia, horario, slot["nivel"]))
+                    for chave in item.professores:
+                        prof_aulas.setdefault(chave, {}).setdefault(dia, []).append((var, horario))
+                        prof_aulas_nivel.setdefault(chave, []).append((var, dia, horario, slot["nivel"]))
 
                     if len(candidatas) == 1:
                         opcoes = [(candidatas[0], var)]
@@ -388,22 +390,21 @@ def resolver_grade(
     for t in turmas:
         slots = turma_slots[t.id]
         for idx, item in enumerate(t.itens):
-            if not item.professor:
-                continue
-            for dia in DIAS_SEMANA:
-                for pos, s in enumerate(slots):
-                    var = x[(t.id, idx, dia, s["ordem"])]
-                    turno = s["turno"]
-                    eh_primeiro = pos == 0 or slots[pos - 1]["turno"] != turno
-                    prox = slots[pos + 1] if pos + 1 < len(slots) and slots[pos + 1]["turno"] == turno else None
-                    if eh_primeiro:
-                        aulas_primeiro.setdefault((item.professor, dia, turno), []).append(var)
-                    ult = _flag(ultima, item.professor, dia, turno, "ult")
-                    if prox is None:
-                        model.AddImplication(var, ult)
-                    else:
-                        # é a última aula da turma se o horário seguinte estiver vago
-                        model.AddBoolOr([var.Not(), occ[(t.id, dia, prox["ordem"])], ult])
+            for chave, dia, (pos, s) in (
+                (c, d, ps) for c in item.professores for d in DIAS_SEMANA for ps in enumerate(slots)
+            ):
+                var = x[(t.id, idx, dia, s["ordem"])]
+                turno = s["turno"]
+                eh_primeiro = pos == 0 or slots[pos - 1]["turno"] != turno
+                prox = slots[pos + 1] if pos + 1 < len(slots) and slots[pos + 1]["turno"] == turno else None
+                if eh_primeiro:
+                    aulas_primeiro.setdefault((chave, dia, turno), []).append(var)
+                ult = _flag(ultima, chave, dia, turno, "ult")
+                if prox is None:
+                    model.AddImplication(var, ult)
+                else:
+                    # é a última aula da turma se o horário seguinte estiver vago
+                    model.AddBoolOr([var.Not(), occ[(t.id, dia, prox["ordem"])], ult])
     for k, vars_primeiro in aulas_primeiro.items():
         # sem choque de professor, ele dá no máximo uma primeira aula por turno: soma == "deu a primeira"
         model.Add(sum(vars_primeiro) + _flag(ultima, *k, "ult") <= 1).OnlyEnforceIf(lits["primeira_ultima"])
@@ -417,11 +418,9 @@ def resolver_grade(
     # ("Tecnologia") vira um grupo próprio com os demais professores dela
     areas_prof: Dict[str, set] = {}
     for t in turmas:
-        for item in t.itens:
-            if not item.professor:
-                continue
-            areas_prof.setdefault(item.professor, set()).add(item.area or normalizar(item.disciplina))
-            por_turno = linha_tempo.setdefault(item.professor, {})
+        for item, chave in ((i, c) for i in t.itens for c in i.professores):
+            areas_prof.setdefault(chave, set()).add(item.area or normalizar(item.disciplina))
+            por_turno = linha_tempo.setdefault(chave, {})
             for s in turma_slots[t.id]:
                 lista = por_turno.setdefault(s["turno"], [])
                 if s["horario"] not in lista:
@@ -594,7 +593,7 @@ def resolver_grade(
                             turma_id=t.id,
                             turma_nome=t.nome,
                             disciplina=item.disciplina,
-                            professor_chave=item.professor,
+                            professor_chaves=list(item.professores),
                             sala_id=sala_id,
                             dia=dia,
                             horario=s["horario"],

@@ -49,8 +49,11 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
         day: aula.dia_semana,
         time: aula.horario,
         subject: aula.disciplina_nome,
-        teacher: aula.professor_nome ?? null,
-        teacherId: aula.professor_id ?? null,
+        teachers: aula.professores?.length
+          ? aula.professores
+          : aula.professor_nome
+            ? [{ id: aula.professor_id ?? null, nome: aula.professor_nome }]
+            : [],
         room: aula.sala_nome ?? null,
       })),
     [activeGrade],
@@ -72,7 +75,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
         await editarAula(id, {
           dia_semana: changes.day,
           horario: changes.time,
-          professor_id: changes.teacherId,
+          professor_ids: changes.teacherIds,
           sala_nome: changes.room,
         })
         // Recarrega a grade e os conflitos já com a alteração gravada
@@ -93,7 +96,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
       return updateLesson(lesson.id, {
         day: conflict.correcao.dia_semana,
         time: conflict.correcao.horario,
-        teacherId: lesson.teacherId,
+        teacherIds: lesson.teachers.flatMap((t) => (t.id != null ? [t.id] : [])),
         room: lesson.room,
       })
     },

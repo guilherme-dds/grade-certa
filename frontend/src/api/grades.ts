@@ -6,12 +6,20 @@ export interface AulaBackend {
   turma_nome: string
   disciplina_nome: string
   disciplina_id?: number | null
+  /** Primeiro professor da aula (formato antigo) */
   professor_id?: number | null
   professor_nome?: string | null
+  /** Todos os professores da aula (mais de um = aula dada em conjunto) */
+  professores?: ProfessorAula[]
   sala_nome?: string | null
   dia_semana: string
   horario: string
   ordem: number
+}
+
+export interface ProfessorAula {
+  id: number | null
+  nome: string
 }
 
 export interface GradeBackend {
@@ -81,7 +89,7 @@ export interface ConflitoGrade {
 export interface AulaUpdate {
   dia_semana: string
   horario: string
-  professor_id: number | null
+  professor_ids: number[]
   sala_nome: string | null
 }
 
