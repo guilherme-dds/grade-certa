@@ -44,32 +44,37 @@ export interface PlanejamentoGrade {
 }
 
 export interface DetalhesGrade {
+  /** Resultado do gerador (sucesso ou motivo da falha) */
+  mensagem?: string
   solver_status?: string
   tempo_resolucao_seg?: number
+  tempo_limite_seg?: number
   turmas_processadas?: number
   planejamentos?: PlanejamentoGrade[]
+  /** Horários vagos entre duas aulas/planejamentos do professor que o gerador não conseguiu evitar */
+  janelas?: JanelaProfessor[]
   avisos?: string[]
+  regras_em_conflito?: string[]
 }
+
+export interface JanelaProfessor {
+  professor: string
+  professor_id?: number | null
+  dia_semana: string
+  horario: string
+}
+
+/** "gerando" enquanto o solver roda; depois "sucesso", "inviavel", "tempo_esgotado" ou "erro" */
+export type StatusGrade = 'gerando' | 'sucesso' | 'inviavel' | 'tempo_esgotado' | 'erro' | string
 
 export interface GradeResumo {
   id: number
   nome: string
-  status: string
+  status: StatusGrade
   ano_semestre?: string
   criado_em?: string
   total_aulas: number
   detalhes?: DetalhesGrade
-}
-
-export interface ResultadoGeracaoGrade {
-  sucesso: boolean
-  status: string
-  mensagem: string
-  grade_id?: number | null
-  total_aulas: number
-  tempo_seg?: number
-  planejamentos_compartilhados?: string
-  avisos?: string[]
 }
 
 export type GravidadeConflito = 'alto' | 'medio'
@@ -99,12 +104,18 @@ export interface HorariosEscola {
 }
 
 /**
- * Dispara o algoritmo de geração automática de horários no backend (Google OR-Tools CP-SAT).
- * @param nome Nome descritivo da grade a ser gerada (opcional).
+ * Inicia a geração automática (Google OR-Tools CP-SAT) em segundo plano. A grade volta com
+ * status "gerando"; acompanhe com `getStatusGrade`.
  */
-export async function gerarGrade(nome?: string): Promise<ResultadoGeracaoGrade> {
-  const params = nome ? { nome } : {}
-  const { data } = await api.post<ResultadoGeracaoGrade>('/grades/gerar-grade', null, { params })
+export async function gerarGrade(nome: string, tempoLimiteSeg: number): Promise<GradeResumo> {
+  const { data } = await api.post<GradeResumo>('/grades/gerar-grade', null, {
+    params: { nome, tempo_limite_seg: tempoLimiteSeg },
+  })
+  return data
+}
+
+export async function getStatusGrade(gradeId: number): Promise<GradeResumo> {
+  const { data } = await api.get<GradeResumo>(`/grades/${gradeId}/status`)
   return data
 }
 

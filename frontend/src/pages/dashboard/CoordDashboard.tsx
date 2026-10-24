@@ -14,7 +14,8 @@ export function CoordDashboard() {
 
   const ativos = (professoresQuery.data ?? []).filter((p) => p.ativo)
   const semDisponibilidade = ativos.filter((p) => !p.disponibilidade_atualizada_em).length
-  const ultimaGrade = historicoQuery.data?.[0]
+  const ultimaGeracao = historicoQuery.data?.[0]
+  const ultimaGrade = historicoQuery.data?.find((g) => g.status === 'sucesso')
 
   return (
     <div className="space-y-6">
@@ -38,7 +39,7 @@ export function CoordDashboard() {
         />
         <StatCard
           label="Última geração"
-          value={ultimaGrade ? formatDateTime(ultimaGrade.criado_em) : '—'}
+          value={ultimaGeracao ? formatDateTime(ultimaGeracao.criado_em) : '—'}
           size="md"
         />
       </StatGrid>

@@ -108,6 +108,7 @@ export function SchedulePage() {
   const turmaLessons = lessons.filter((l) => l.classGroup === classGroup)
   const turmaSlots = turmaLessons.length ? horariosTurmas[turmaLessons[0].turmaId] : undefined
   const planejamentos = (activeGrade?.detalhes?.planejamentos ?? []).filter((p) => p.professor === teacher)
+  const janelas = (activeGrade?.detalhes?.janelas ?? []).filter((j) => j.professor === teacher)
 
   return (
     <>
@@ -169,6 +170,13 @@ export function SchedulePage() {
           {planejamentos
             .map((p) => `${p.dia_semana} ${p.horario}${p.compartilhado ? ' (compartilhado)' : ''}`)
             .join(' · ')}
+        </p>
+      )}
+
+      {teacher && janelas.length > 0 && (
+        <p className="mt-1.5 text-[12.5px] text-warning">
+          <span className="font-semibold">Janelas de {teacher}:</span>{' '}
+          {janelas.map((j) => `${j.dia_semana} ${j.horario}`).join(' · ')}
         </p>
       )}
 

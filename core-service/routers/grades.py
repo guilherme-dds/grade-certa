@@ -1,16 +1,21 @@
+import logging
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
 from typing import Optional
 
-from database.connection import get_db
+from database.connection import SessionLocal, get_db
 from database.models import AulaDB, GradeDB, ProfessorDB, SalaDB, TurmaDB
 from models.grade import Aula, AulaUpdate, Grade
 from services.grade_conflicts import DetectorConflitos, horarios_da_turma
-from services.grid_generator import GridGeneratorService
+from services.grid_generator import TEMPO_LIMITE_SEG, TEMPO_MAXIMO_SEG, GridGeneratorService
 from services.time_slots import DIAS_SEMANA, TIME_SLOTS_BY_NIVEL, slots_overlap
 
 router = APIRouter(prefix="/grades", tags=["grades"])
+logger = logging.getLogger(__name__)
+
+# Sessão usada pela geração em segundo plano (os testes trocam por uma sessão SQLite)
+session_factory = SessionLocal
 
 
 def semestre_atual() -> str:
@@ -18,23 +23,70 @@ def semestre_atual() -> str:
     return f"{hoje.year}.{1 if hoje.month <= 6 else 2}"
 
 
-@router.post("/gerar-grade")
+def _resumo(g: GradeDB) -> dict:
+    return {
+        "id": g.id,
+        "nome": g.nome,
+        "status": g.status,
+        "ano_semestre": g.ano_semestre,
+        "criado_em": g.criado_em,
+        "total_aulas": g.total_aulas,
+        "detalhes": g.detalhes,
+    }
+
+
+def executar_geracao(grade_id: int, tempo_limite_seg: float) -> None:
+    """Roda o solver fora da requisição e grava o resultado (ou o erro) na grade."""
+    db = session_factory()
+    try:
+        grade = db.get(GradeDB, grade_id)
+        GridGeneratorService(db).generate(grade=grade, tempo_limite_seg=tempo_limite_seg)
+    except Exception:
+        logger.exception("Falha na geração da grade %s", grade_id)
+        db.rollback()
+        grade = db.get(GradeDB, grade_id)
+        grade.status = "erro"
+        grade.detalhes = {**(grade.detalhes or {}), "mensagem": "Erro inesperado ao gerar a grade."}
+        db.commit()
+    finally:
+        db.close()
+
+
+@router.post("/gerar-grade", status_code=status.HTTP_202_ACCEPTED)
 def gerar_grade(
+    background_tasks: BackgroundTasks,
     nome: Optional[str] = Query("Grade Horária Automática", description="Nome descritivo da grade"),
     ano_semestre: Optional[str] = Query(None, description="Ex: 2026.2 (padrão: semestre atual)"),
+    tempo_limite_seg: float = Query(TEMPO_LIMITE_SEG, ge=10, le=TEMPO_MAXIMO_SEG, description="Tempo máximo do solver"),
     db: Session = Depends(get_db),
 ):
     """
-    Executa o algoritmo de geração automática de horários via Google OR-Tools CP-SAT.
+    Inicia a geração automática (Google OR-Tools CP-SAT) em segundo plano e devolve a
+    grade com status "gerando". Acompanhe por GET /grades/{id}/status.
     """
-    service = GridGeneratorService(db)
-    resultado = service.generate(nome_grade=nome, ano_semestre=ano_semestre or semestre_atual())
-    if not resultado["sucesso"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=resultado["mensagem"],
-        )
-    return resultado
+    if db.query(GradeDB).filter(GradeDB.status == "gerando").first():
+        raise HTTPException(status_code=409, detail="Já existe uma geração em andamento. Aguarde ela terminar.")
+    grade = GradeDB(
+        nome=nome,
+        status="gerando",
+        ano_semestre=ano_semestre or semestre_atual(),
+        total_aulas=0,
+        detalhes={"tempo_limite_seg": tempo_limite_seg},
+    )
+    db.add(grade)
+    db.commit()
+    db.refresh(grade)
+    background_tasks.add_task(executar_geracao, grade.id, tempo_limite_seg)
+    return _resumo(grade)
+
+
+@router.get("/{grade_id}/status")
+def status_grade(grade_id: int, db: Session = Depends(get_db)):
+    """Situação de uma geração: "gerando", "sucesso", "inviavel", "tempo_esgotado" ou "erro"."""
+    grade = db.get(GradeDB, grade_id)
+    if not grade:
+        raise HTTPException(status_code=404, detail="Grade não encontrada")
+    return _resumo(grade)
 
 
 @router.get("/horarios")
@@ -47,7 +99,8 @@ def _carregar_grade(db: Session, grade_id: Optional[int]) -> Optional[GradeDB]:
     query = db.query(GradeDB).options(joinedload(GradeDB.aulas))
     if grade_id:
         return query.filter(GradeDB.id == grade_id).first()
-    return query.order_by(GradeDB.id.desc()).first()
+    # Sem id: a última grade gerada com sucesso (gerações em andamento ou que falharam ficam de fora)
+    return query.filter(GradeDB.status == "sucesso").order_by(GradeDB.id.desc()).first()
 
 
 @router.get("/", response_model=Grade)
@@ -76,19 +129,7 @@ def listar_historico_grades(db: Session = Depends(get_db)):
     """
     Lista o histórico de todas as grades geradas.
     """
-    grades = db.query(GradeDB).order_by(GradeDB.id.desc()).all()
-    return [
-        {
-            "id": g.id,
-            "nome": g.nome,
-            "status": g.status,
-            "ano_semestre": g.ano_semestre,
-            "criado_em": g.criado_em,
-            "total_aulas": g.total_aulas,
-            "detalhes": g.detalhes,
-        }
-        for g in grades
-    ]
+    return [_resumo(g) for g in db.query(GradeDB).order_by(GradeDB.id.desc()).all()]
 
 
 @router.get("/{grade_id}/conflitos")

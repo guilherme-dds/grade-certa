@@ -27,6 +27,8 @@ def ctx():
     for r in (grades, professores, salas, turmas):
         app.include_router(r.router)
     app.dependency_overrides[get_db] = _db
+    # A geração em segundo plano abre a própria sessão
+    grades.session_factory = Session
     return TestClient(app), Session()
 
 
@@ -174,3 +176,57 @@ def test_turma_manha_e_tardes_salva_dias(ctx):
 
     r = client.post("/turmas/", json={**turma, "tardes": ["Sábado"]})
     assert r.status_code == 422
+
+
+def _turma_para_gerar(db):
+    """6º ano com a matriz de exemplo dos testes do solver (26 aulas, um professor por disciplina)."""
+    from tests.test_grid_solver import MATRIZ, PROFESSOR
+
+    db.add(TurmaDB(nome="6º Ano A", turno="Manhã", nivel_ensino="Anos Finais", matriz_curricular=[
+        {"disciplina": d, "aulas_semanais": q, "professores": [PROFESSOR.get((d, "67")) or PROFESSOR[(d, None)]]}
+        for d, q in MATRIZ
+    ]))
+    db.commit()
+
+
+def test_geracao_em_segundo_plano(ctx):
+    client, db = ctx
+    _turma_para_gerar(db)
+
+    r = client.post("/grades/gerar-grade", params={"nome": "Teste", "tempo_limite_seg": 20})
+    assert r.status_code == 202, r.text
+    assert r.json()["status"] == "gerando"
+    grade_id = r.json()["id"]
+
+    # O TestClient executa a tarefa em segundo plano ao fim da requisição
+    situacao = client.get(f"/grades/{grade_id}/status").json()
+    assert situacao["status"] == "sucesso"
+    assert situacao["detalhes"]["tempo_limite_seg"] == 20
+    assert situacao["total_aulas"] == 26
+    assert client.get("/grades/").json()["id"] == grade_id
+
+
+def test_geracao_inviavel_fica_no_historico_mas_nao_vira_grade_atual(ctx):
+    client, db = ctx
+    _turma_para_gerar(db)
+    ok = client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).json()["id"]
+
+    # 11 aulas de uma disciplina não cabem na regra de no máximo 2 por dia
+    turma = db.query(TurmaDB).first()
+    turma.matriz_curricular = [*turma.matriz_curricular, {"disciplina": "Arte", "aulas_semanais": 11}]
+    db.commit()
+    falha = client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).json()["id"]
+
+    situacao = client.get(f"/grades/{falha}/status").json()
+    assert situacao["status"] == "inviavel"
+    assert "disponibiliza apenas 30" in situacao["detalhes"]["mensagem"]
+    assert [g["id"] for g in client.get("/grades/historico").json()] == [falha, ok]
+    assert client.get("/grades/").json()["id"] == ok
+
+
+def test_uma_geracao_por_vez(ctx):
+    client, db = ctx
+    db.add(GradeDB(nome="Rodando", status="gerando", total_aulas=0))
+    db.commit()
+    r = client.post("/grades/gerar-grade")
+    assert r.status_code == 409

@@ -1,5 +1,5 @@
 import os
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from sqlalchemy.orm import Session, joinedload
 
@@ -17,7 +17,9 @@ from services.grid_solver import (
     resolver_grade,
 )
 
-TEMPO_LIMITE_SEG = float(os.getenv("GRADE_SOLVER_TIMEOUT", "45"))
+# Tempo padrão do solver; a tela pode pedir outro (até TEMPO_MAXIMO_SEG)
+TEMPO_LIMITE_SEG = float(os.getenv("GRADE_SOLVER_TIMEOUT", "120"))
+TEMPO_MAXIMO_SEG = 900
 
 
 class GridGeneratorService:
@@ -32,9 +34,17 @@ class GridGeneratorService:
         inferido = inferir_tipo_sala(nome_disc)
         return inferido if inferido and normalizar(inferido) in tipos_cadastrados else None
 
-    def generate(self, nome_grade: str = "Grade Gerada Automática", ano_semestre: str = "") -> Dict[str, Any]:
+    def generate(
+        self,
+        nome_grade: str = "Grade Gerada Automática",
+        ano_semestre: str = "",
+        tempo_limite_seg: Optional[float] = None,
+        grade: Optional[GradeDB] = None,
+    ) -> Dict[str, Any]:
         """
-        Carrega os cadastros, executa o CP-SAT (services/grid_solver.py) e grava a grade.
+        Carrega os cadastros, executa o CP-SAT (services/grid_solver.py) e grava o resultado
+        em `grade` (criada com status "gerando" pela rota) ou numa grade nova. Sucesso ou
+        falha ficam registrados no histórico: status "sucesso", "inviavel", "tempo_esgotado"...
         Regras aplicadas: matriz curricular, horários por nível de ensino, sem choque de
         turma/professor/sala, indisponibilidade de professores e salas, uma aula dobrada por
         disciplina (Inglês individual), sem janelas, primeira/última aula do turno com
@@ -135,10 +145,27 @@ class GridGeneratorService:
                 )
             )
 
-        resultado = resolver_grade(turmas, professores, salas, tempo_limite_seg=TEMPO_LIMITE_SEG)
+        if grade is None:
+            grade = GradeDB(nome=nome_grade, ano_semestre=ano_semestre or None, status="gerando", total_aulas=0)
+            self.db.add(grade)
+            self.db.flush()
+
+        tempo_limite = tempo_limite_seg or TEMPO_LIMITE_SEG
+        resultado = resolver_grade(turmas, professores, salas, tempo_limite_seg=tempo_limite)
         avisos = avisos_carga + resultado.avisos
+        detalhes = {
+            "mensagem": resultado.mensagem,
+            "solver_status": resultado.solver_status,
+            "tempo_resolucao_seg": resultado.tempo_seg,
+            "tempo_limite_seg": tempo_limite,
+            "turmas_processadas": len([t for t in turmas if t.itens]),
+            "avisos": avisos,
+        }
 
         if not resultado.sucesso:
+            grade.status = resultado.status
+            grade.detalhes = {**detalhes, "regras_em_conflito": resultado.regras_em_conflito}
+            self.db.commit()
             return {
                 "sucesso": False,
                 "status": resultado.status,
@@ -146,7 +173,7 @@ class GridGeneratorService:
                 "regras_em_conflito": resultado.regras_em_conflito,
                 "avisos": avisos,
                 "total_aulas": 0,
-                "grade_id": None,
+                "grade_id": grade.id,
             }
 
         planejamentos = [
@@ -160,21 +187,19 @@ class GridGeneratorService:
             for p in resultado.planejamentos
         ]
 
-        grade_db = GradeDB(
-            nome=nome_grade,
-            status="sucesso",
-            ano_semestre=ano_semestre or None,
-            total_aulas=len(resultado.aulas),
-            detalhes={
-                "solver_status": resultado.solver_status,
-                "tempo_resolucao_seg": resultado.tempo_seg,
-                "turmas_processadas": len([t for t in turmas if t.itens]),
-                "planejamentos": planejamentos,
-                "avisos": avisos,
-            },
-        )
-        self.db.add(grade_db)
-        self.db.flush()
+        grade_db = grade
+        grade_db.status = "sucesso"
+        grade_db.total_aulas = len(resultado.aulas)
+        janelas = [
+            {
+                "professor": professores[chave].nome,
+                "professor_id": professores[chave].id,
+                "dia_semana": dia,
+                "horario": horario,
+            }
+            for chave, dia, horario in resultado.janelas
+        ]
+        grade_db.detalhes = {**detalhes, "planejamentos": planejamentos, "janelas": janelas}
 
         self.db.add_all(
             [

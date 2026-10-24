@@ -42,6 +42,16 @@ for ddl in (
     except Exception:
         pass
 
+# Uma geração que estava rodando quando o serviço parou não vai terminar
+try:
+    with engine.connect() as conn:
+        conn.execute(text(
+            "UPDATE grades SET status = 'erro' WHERE status = 'gerando'"
+        ))
+        conn.commit()
+except Exception:
+    pass
+
 app = FastAPI(
     title="Grade Certa - Core Service",
     description="Microsserviço principal responsável pela gestão de entidades e geração da grade de horários.",

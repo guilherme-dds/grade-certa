@@ -369,3 +369,16 @@ def test_tarde_fixa_fora_dos_dias_escolhidos():
     res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
     assert not res.sucesso
     assert "não é um horário de aula da turma" in res.mensagem
+
+
+def test_janela_inevitavel_e_permitida_e_informada():
+    turmas, professores = montar_escola()
+    # Ana tem aulas fixas no 1º e no 3º horário de segunda e não pode no 2º: sobra uma janela
+    turmas[0].itens.append(
+        ItemInput("Oficina", 2, ["ana"], None, True, horarios_fixos=[("Seg", SLOTS[0]), ("Seg", SLOTS[2])])
+    )
+    professores["ana"].indisponivel = [Intervalo(dia="Seg", horario=SLOTS[1])]
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    assert res.sucesso, res.mensagem
+    assert res.janelas == [("ana", "Seg", SLOTS[1])]
+    assert "1 janela(s)" in res.mensagem

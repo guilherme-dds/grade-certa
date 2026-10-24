@@ -12,7 +12,10 @@ export function AdminDashboard() {
   const professores = useQuery({ queryKey: ['professores'], queryFn: () => getProfessores() }).data ?? []
   const turmas = useQuery({ queryKey: ['turmas'], queryFn: getTurmas }).data ?? []
   const salas = useQuery({ queryKey: ['salas'], queryFn: getSalas }).data ?? []
-  const historico = useQuery({ queryKey: ['historicoGrades'], queryFn: getHistoricoGrades }).data ?? []
+  // Só as gerações que terminaram com grade (as que falharam também ficam no histórico)
+  const historico = (useQuery({ queryKey: ['historicoGrades'], queryFn: getHistoricoGrades }).data ?? []).filter(
+    (g) => g.status === 'sucesso',
+  )
 
   const agora = new Date()
   const gradesNoMes = historico.filter((g) => {

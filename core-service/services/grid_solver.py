@@ -29,7 +29,6 @@ REGRAS = {
     "salas": "ocupação e horários indisponíveis das salas",
     "aulas_dobradas": "uma aula dobrada por disciplina e o restante individual",
     "sem_janela_turma": "turma sem horário vago entre aulas",
-    "sem_janela_professor": "professor sem janela entre aulas",
     "primeira_ultima": "quem dá a primeira aula do turno não dá a última",
     "planejamento": f"{PLANEJAMENTOS_SEMANAIS} horários de planejamento por professor",
     "horarios_fixos": "aulas com dia e horário fixos",
@@ -172,6 +171,8 @@ class SolverResult:
     mensagem: str
     aulas: List[AulaAlocada] = field(default_factory=list)
     planejamentos: List[PlanejamentoAlocado] = field(default_factory=list)
+    # (professor, dia, horário) vagos entre duas presenças que não foi possível evitar
+    janelas: List[Tuple[str, str, str]] = field(default_factory=list)
     avisos: List[str] = field(default_factory=list)
     regras_em_conflito: List[str] = field(default_factory=list)
     solver_status: Optional[str] = None
@@ -455,6 +456,10 @@ def resolver_grade(
             for chave, dia, (pos, s) in (
                 (c, d, ps) for c in item.professores for d in DIAS_SEMANA for ps in enumerate(slots)
             ):
+                # Aula com horário fixo foi decidida pela escola e não entra na regra
+                # (ex.: o rodízio do laboratório abre e fecha a tarde de quarta)
+                if (dia, s["horario"]) in item.horarios_fixos:
+                    continue
                 var = x[(t.id, idx, dia, s["ordem"])]
                 turno = s["turno"]
                 eh_primeiro = pos == 0 or slots[pos - 1]["turno"] != turno
@@ -493,6 +498,8 @@ def resolver_grade(
 
     # plan[(prof, dia, turno, horario)]
     plan: Dict[Tuple[str, str, str, str], cp_model.IntVar] = {}
+    # janelas[(prof, dia, horario)] = horário vago entre duas presenças do professor
+    janelas: Dict[Tuple[str, str, str], cp_model.IntVar] = {}
     for chave, por_turno in linha_tempo.items():
         indisponivel = professores[chave].indisponivel
         plans_semana = []
@@ -537,8 +544,9 @@ def resolver_grade(
                 for h in horarios:
                     model.Add(plan[(chave, dia, turno, h)] <= da_aula).OnlyEnforceIf(lits["planejamento"])
 
-                # Sem janela: entre dois horários com presença, todo horário intermediário
-                # (ou algum que se sobreponha a ele) precisa ter aula ou planejamento
+                # Janela: horário vago (sem aula nem planejamento, nem outro que se sobreponha a
+                # ele) entre dois horários com presença. É permitida, mas evitada acima de tudo
+                # (ver objetivo); cada janela que sobrar aparece no resultado
                 cobertura = []
                 for j, hj in enumerate(horarios):
                     sobrepostos = [pres[k] for k, hk in enumerate(horarios) if slots_overlap(hj, hk)]
@@ -549,14 +557,19 @@ def resolver_grade(
                         model.AddMaxEquality(c, sobrepostos)
                         cobertura.append(c)
                 n = len(horarios)
-                for i in range(n):
-                    for k in range(i + 2, n):
-                        for j in range(i + 1, k):
-                            if slots_overlap(horarios[i], horarios[j]) or slots_overlap(horarios[j], horarios[k]):
-                                continue
-                            model.Add(pres[i] + pres[k] - cobertura[j] <= 1).OnlyEnforceIf(
-                                lits["sem_janela_professor"]
-                            )
+                for j in range(1, n - 1):
+                    pares = [
+                        (i, k)
+                        for i in range(j)
+                        for k in range(j + 1, n)
+                        if not slots_overlap(horarios[i], horarios[j]) and not slots_overlap(horarios[j], horarios[k])
+                    ]
+                    if not pares:
+                        continue
+                    jan = model.NewBoolVar(f"janela_{chave}_{dia}_{horarios[j]}")
+                    for i, k in pares:
+                        model.Add(jan >= pres[i] + pres[k] - cobertura[j] - 1)
+                    janelas[(chave, dia, horarios[j])] = jan
 
         model.Add(sum(plans_semana) == PLANEJAMENTOS_SEMANAIS).OnlyEnforceIf(lits["planejamento"])
 
@@ -591,8 +604,11 @@ def resolver_grade(
     # Concentrar as tardes vem antes de tudo: uma tarde a mais custa mais que o máximo
     # que planejamento compartilhado e preferências juntos podem render
     peso_tarde = 3 * len(compartilhado) + len(preferidas) + 1
-    if compartilhado or preferidas or tardes_usadas:
-        model.Maximize(3 * sum(compartilhado.values()) + sum(preferidas) - peso_tarde * sum(tardes_usadas))
+    # Janelas de professor pesam mais que tudo o resto junto, tardes incluídas
+    peso_janela = peso_tarde * (len(tardes_usadas) + 1)
+    objetivo_base = 3 * sum(compartilhado.values()) + sum(preferidas) - peso_tarde * sum(tardes_usadas)
+    if compartilhado or preferidas or tardes_usadas or janelas:
+        model.Maximize(objetivo_base - peso_janela * sum(janelas.values()))
 
     # ------------------------------------------------------------------
     # 7. Resolução
@@ -602,11 +618,36 @@ def resolver_grade(
     diagnostico = model.Clone()
     for nome, lit in lits.items():
         model.Add(lit == (0 if nome in regras_desligadas else 1))
+
+    # Fase 1: a primeira grade válida, guiada só pelo objetivo base (sem o peso das janelas).
+    # Com o peso das janelas, escolas grandes não chegam nem à primeira solução no tempo;
+    # sem objetivo nenhum, o CP-SAT desliga as buscas por vizinhança que ajudam a achá-la.
+    busca = model.Clone()
+    busca.ClearObjective()
+    if compartilhado or preferidas or tardes_usadas:
+        busca.Maximize(objetivo_base)
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = tempo_limite_seg
     solver.parameters.num_workers = workers
-    status = solver.Solve(model)
+    solver.parameters.stop_after_first_solution = True
+    status = solver.Solve(busca)
     tempo = round(solver.WallTime(), 3)
+
+    # Fase 2: melhora essa grade (menos janelas, tardes concentradas, preferências) no tempo que sobrou
+    # (sem objetivo, a primeira solução já volta como OPTIMAL)
+    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE) and model.HasObjective():
+        model.ClearHints()
+        for indice, valor in enumerate(solver.ResponseProto().solution):
+            model.Proto().solution_hint.vars.append(indice)
+            model.Proto().solution_hint.values.append(valor)
+        melhoria = cp_model.CpSolver()
+        melhoria.parameters.max_time_in_seconds = max(5.0, tempo_limite_seg - tempo)
+        melhoria.parameters.num_workers = workers
+        status_melhoria = melhoria.Solve(model)
+        tempo = round(tempo + melhoria.WallTime(), 3)
+        # As duas cópias têm as mesmas variáveis, então a extração funciona com qualquer um dos solvers
+        if status_melhoria in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            solver, status = melhoria, status_melhoria
 
     if status == cp_model.INFEASIBLE:
         diagnostico.ClearObjective()
@@ -677,12 +718,20 @@ def resolver_grade(
         if solver.Value(p)
     ]
 
+    janelas_restantes = sorted(k for k, v in janelas.items() if solver.Value(v))
+    mensagem = "Grade gerada com sucesso respeitando todas as regras!"
+    if janelas_restantes:
+        mensagem = (
+            f"Grade gerada com sucesso. {len(janelas_restantes)} janela(s) de professor não puderam ser evitadas."
+        )
+
     return SolverResult(
         sucesso=True,
         status="sucesso",
-        mensagem="Grade gerada com sucesso respeitando todas as regras!",
+        mensagem=mensagem,
         aulas=aulas,
         planejamentos=planejamentos,
+        janelas=janelas_restantes,
         avisos=avisos,
         solver_status=solver.StatusName(status),
         tempo_seg=tempo,

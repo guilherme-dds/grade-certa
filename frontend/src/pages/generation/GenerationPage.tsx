@@ -1,20 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getTurmas, type TurmaBackend } from '@/api/turmas'
 import { getProfessores, type ProfessorBackend } from '@/api/professores'
-import {
-  gerarGrade,
-  getHistoricoGrades,
-  type GradeResumo,
-  type ResultadoGeracaoGrade,
-} from '@/api/grades'
+import { gerarGrade, getHistoricoGrades, getStatusGrade, type GradeResumo, type StatusGrade } from '@/api/grades'
 import { useSchedule } from '@/schedule/useSchedule'
 import { Button } from '@/components/ui/Button'
 import { buttonStyles } from '@/components/ui/buttonStyles'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { StatCard, StatGrid } from '@/components/ui/StatCard'
+import { getApiErrorMessage } from '@/lib/apiError'
 import { cn } from '@/lib/cn'
+import { formatDateTime } from '@/lib/schedule'
 
 /** Mesmo padrão do backend: "2026.2" para o 2º semestre de 2026 */
 function semestreAtual() {
@@ -22,33 +19,48 @@ function semestreAtual() {
   return `${hoje.getFullYear()}.${hoje.getMonth() < 6 ? 1 : 2}`
 }
 
+// Tempo máximo que o solver pode usar (o backend aceita até 15 min)
+const TEMPOS_LIMITE = [
+  { value: '60', label: '1 minuto' },
+  { value: '120', label: '2 minutos' },
+  { value: '300', label: '5 minutos' },
+  { value: '600', label: '10 minutos' },
+  { value: '900', label: '15 minutos' },
+]
+
+const STATUS_LABEL: Record<string, string> = {
+  gerando: 'gerando',
+  sucesso: 'sucesso',
+  inviavel: 'inviável',
+  tempo_esgotado: 'tempo esgotado',
+  erro: 'erro',
+}
+
+const isFalha = (status: StatusGrade) => status !== 'gerando' && status !== 'sucesso'
+
 export function GenerationPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { refreshSchedule } = useSchedule()
 
   const [nomeGrade, setNomeGrade] = useState(`Grade Horária ${semestreAtual()}`)
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [elapsedTime, setElapsedTime] = useState(0)
-  const [lastResult, setLastResult] = useState<ResultadoGeracaoGrade | null>(null)
+  const [tempoLimite, setTempoLimite] = useState('120')
+  const [isStarting, setIsStarting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  // Geração acompanhada nesta tela (iniciada aqui ou já em andamento ao abrir a página)
+  const [geracaoId, setGeracaoId] = useState<number | null>(null)
+  const [elapsed, setElapsed] = useState(0)
 
-  const timerRef = useRef<number | null>(null)
-  const startTimeRef = useRef<number>(0)
-
-  // 1. Busca dados das Turmas
   const { data: turmas = [] } = useQuery<TurmaBackend[]>({
     queryKey: ['turmas'],
     queryFn: () => getTurmas(),
   })
 
-  // 2. Busca dados dos Professores
   const { data: professores = [] } = useQuery<ProfessorBackend[]>({
     queryKey: ['professores'],
     queryFn: () => getProfessores(),
   })
 
-  // 3. Busca Histórico de Grades Geradas
   const {
     data: historico = [],
     isLoading: isLoadingHistorico,
@@ -58,29 +70,44 @@ export function GenerationPage() {
     queryFn: () => getHistoricoGrades(),
   })
 
-  // Limpeza de timer caso o componente desmonte
+  // Ao abrir a página com uma geração rodando (ex.: depois de recarregar), volta a acompanhá-la
+  const emAndamento = historico.find((g) => g.status === 'gerando')
+  const acompanhada = geracaoId ?? emAndamento?.id ?? null
+
+  // Consulta o status a cada 2s enquanto o solver roda
+  const { data: geracao } = useQuery({
+    queryKey: ['statusGrade', acompanhada],
+    queryFn: () => getStatusGrade(acompanhada!),
+    enabled: acompanhada != null,
+    refetchInterval: (query) => (query.state.data?.status === 'gerando' ? 2000 : false),
+  })
+  const isGenerating = isStarting || geracao?.status === 'gerando'
+
   useEffect(() => {
+    if (!isGenerating) return
+    const inicio = Date.now()
+    const timer = window.setInterval(() => setElapsed(Math.round((Date.now() - inicio) / 1000)), 1000)
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
+      clearInterval(timer)
+      setElapsed(0)
     }
-  }, [])
+  }, [isGenerating])
+
+  // Quando a geração termina: atualiza o histórico e, se deu certo, a grade exibida no sistema
+  const statusFinal = geracao && geracao.status !== 'gerando' ? geracao.status : null
+  useEffect(() => {
+    if (!statusFinal || !geracao) return
+    queryClient.invalidateQueries({ queryKey: ['historicoGrades'] })
+    if (statusFinal === 'sucesso') refreshSchedule(geracao.id)
+  }, [statusFinal, geracao, queryClient, refreshSchedule])
 
   // Análise diagnóstica pré-geração
-  const turmasValidas = turmas.filter((t) => {
-    const matriz = t.matriz_curricular || []
-    return matriz.some((item) => Number(item.aulas_semanais) > 0)
-  })
-
-  const turmasSemMatriz = turmas.filter((t) => {
-    const matriz = t.matriz_curricular || []
-    return !matriz.some((item) => Number(item.aulas_semanais) > 0)
-  })
-
-  const totalAulasDemandadas = turmasValidas.reduce((acc, t) => {
-    const matriz = t.matriz_curricular || []
-    return acc + matriz.reduce((sub, item) => sub + Number(item.aulas_semanais || 0), 0)
-  }, 0)
-
+  const turmasValidas = turmas.filter((t) => (t.matriz_curricular || []).some((item) => Number(item.aulas_semanais) > 0))
+  const turmasSemMatriz = turmas.filter((t) => !(t.matriz_curricular || []).some((item) => Number(item.aulas_semanais) > 0))
+  const totalAulasDemandadas = turmasValidas.reduce(
+    (acc, t) => acc + (t.matriz_curricular || []).reduce((sub, item) => sub + Number(item.aulas_semanais || 0), 0),
+    0,
+  )
   const professoresAtivos = professores.filter((p) => p.ativo)
 
   const handleGerar = async () => {
@@ -90,60 +117,23 @@ export function GenerationPage() {
       )
       return
     }
-
-    setIsGenerating(true)
     setErrorMessage(null)
-    setLastResult(null)
-    setElapsedTime(0)
-    startTimeRef.current = Date.now()
-
-    timerRef.current = window.setInterval(() => {
-      const delta = (Date.now() - startTimeRef.current) / 1000
-      setElapsedTime(Number(delta.toFixed(1)))
-    }, 100)
-
+    setIsStarting(true)
     try {
-      const resultado = await gerarGrade(nomeGrade.trim() || 'Grade Horária Automática')
-      if (timerRef.current) clearInterval(timerRef.current)
-      setLastResult(resultado)
-      // Atualiza o histórico e a grade ativa no contexto global
+      const iniciada = await gerarGrade(nomeGrade.trim() || 'Grade Horária Automática', Number(tempoLimite))
+      queryClient.setQueryData(['statusGrade', iniciada.id], iniciada)
+      setGeracaoId(iniciada.id)
       await queryClient.invalidateQueries({ queryKey: ['historicoGrades'] })
-      refetchHistorico()
-      if (resultado.grade_id) {
-        await refreshSchedule(resultado.grade_id)
-      }
-    } catch (err: unknown) {
-      if (timerRef.current) clearInterval(timerRef.current)
-      let msg = 'Ocorreu um erro ao processar a grade horária.'
-      if (typeof err === 'object' && err !== null && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { detail?: string } } }
-        if (axiosErr.response?.data?.detail) {
-          msg = axiosErr.response.data.detail
-        }
-      } else if (err instanceof Error) {
-        msg = err.message
-      }
-      setErrorMessage(msg)
+    } catch (err) {
+      setErrorMessage(getApiErrorMessage(err, 'Não foi possível iniciar a geração da grade.'))
     } finally {
-      setIsGenerating(false)
+      setIsStarting(false)
     }
   }
 
-  const formatData = (isoStr?: string) => {
-    if (!isoStr) return '—'
-    try {
-      const d = new Date(isoStr)
-      return new Intl.DateTimeFormat('pt-BR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      }).format(d)
-    } catch {
-      return isoStr
-    }
-  }
+  const detalhes = geracao?.detalhes
+  const planejamentos = detalhes?.planejamentos ?? []
+  const limiteAtual = detalhes?.tempo_limite_seg ?? Number(tempoLimite)
 
   return (
     <div className="space-y-8">
@@ -162,24 +152,14 @@ export function GenerationPage() {
             suffix={`de ${turmas.length} turmas`}
             tone={turmasValidas.length > 0 ? 'success' : 'danger'}
           />
-          <StatCard
-            label="Aulas Demandadas"
-            value={totalAulasDemandadas}
-            suffix="aulas/semana"
-            tone="default"
-          />
+          <StatCard label="Aulas Demandadas" value={totalAulasDemandadas} suffix="aulas/semana" tone="default" />
           <StatCard
             label="Professores Ativos"
             value={professoresAtivos.length}
             suffix={`de ${professores.length} cadastrados`}
             tone={professoresAtivos.length > 0 ? 'success' : 'warning'}
           />
-          <StatCard
-            label="Grades no Histórico"
-            value={historico.length}
-            suffix="execuções"
-            tone="default"
-          />
+          <StatCard label="Grades no Histórico" value={historico.length} suffix="execuções" tone="default" />
         </StatGrid>
 
         {/* Alerta de turmas sem matriz */}
@@ -195,10 +175,7 @@ export function GenerationPage() {
                 ({turmasSemMatriz.map((t) => t.nome).join(', ')}).
               </span>
             </div>
-            <Link
-              to="/disciplinas"
-              className="font-medium text-warning hover:underline"
-            >
+            <Link to="/disciplinas" className="font-medium text-warning hover:underline">
               Configurar turmas →
             </Link>
           </div>
@@ -217,10 +194,11 @@ export function GenerationPage() {
       <section className="rounded-xl border border-line bg-white p-6 shadow-xs">
         <h2 className="text-base font-semibold text-ink">Executar Otimização da Grade</h2>
         <p className="mt-1 text-xs text-muted">
-          Defina o nome de identificação desta versão da grade e inicie o algoritmo de busca por soluções ótimas.
+          A geração roda em segundo plano: você pode sair desta página e voltar depois. Escolas maiores precisam de mais
+          tempo para o solver encontrar uma grade.
         </p>
 
-        <div className="mt-5 grid max-w-xl gap-4">
+        <div className="mt-5 grid max-w-xl gap-4 sm:grid-cols-[1fr_180px]">
           <div>
             <label htmlFor="nomeGrade" className="block text-xs font-medium text-ink">
               Nome de identificação da grade
@@ -235,8 +213,26 @@ export function GenerationPage() {
               className="mt-1.5 w-full rounded-md border border-line bg-white px-3.5 py-2 text-sm text-ink outline-none transition focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50"
             />
           </div>
+          <div>
+            <label htmlFor="tempoLimite" className="block text-xs font-medium text-ink">
+              Tempo máximo
+            </label>
+            <select
+              id="tempoLimite"
+              value={tempoLimite}
+              disabled={isGenerating}
+              onChange={(e) => setTempoLimite(e.target.value)}
+              className="mt-1.5 w-full rounded-md border border-line bg-white px-3 py-2 text-sm text-ink outline-none focus:border-primary disabled:opacity-50"
+            >
+              {TEMPOS_LIMITE.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <div className="flex flex-wrap items-center gap-3 pt-2">
+          <div className="flex flex-wrap items-center gap-3 pt-2 sm:col-span-2">
             <Button
               onClick={handleGerar}
               disabled={isGenerating || turmasValidas.length === 0}
@@ -252,7 +248,7 @@ export function GenerationPage() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     />
                   </svg>
-                  <span>Processando CP-SAT... ({elapsedTime}s)</span>
+                  <span>Gerando... ({elapsed}s de até {Math.round(limiteAtual / 60)} min)</span>
                 </>
               ) : (
                 <>
@@ -264,42 +260,56 @@ export function GenerationPage() {
               )}
             </Button>
 
-            {historico.length > 0 && !isGenerating && (
-              <Button
-                variant="secondary"
-                onClick={() => navigate('/grade')}
-              >
+            {historico.some((g) => g.status === 'sucesso') && !isGenerating && (
+              <Button variant="secondary" onClick={() => navigate('/grade')}>
                 Visualizar Grade Atual
               </Button>
             )}
           </div>
         </div>
 
-        {/* 3. Feedback de Inviabilidade / Erro */}
+        {/* 3. Erro ao iniciar */}
         {errorMessage && (
+          <div className="mt-6 rounded-lg border border-danger/40 bg-danger-soft p-4 text-[13px] text-danger">
+            {errorMessage}
+          </div>
+        )}
+
+        {/* 4. Geração que não encontrou grade */}
+        {geracao && isFalha(geracao.status) && (
           <div className="mt-6 rounded-lg border border-danger/40 bg-danger-soft p-4 text-[13px] text-danger">
             <div className="flex items-start gap-3">
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-danger text-sm font-bold text-white">
                 ✕
               </span>
               <div className="space-y-2">
-                <h3 className="font-semibold text-danger">Inviabilidade ou Erro na Geração</h3>
-                <p className="text-ink">{errorMessage}</p>
+                <h3 className="font-semibold text-danger">
+                  {geracao.status === 'tempo_esgotado'
+                    ? 'Tempo esgotado'
+                    : geracao.status === 'erro'
+                      ? 'Erro na geração'
+                      : 'Não foi possível montar a grade'}
+                </h3>
+                <p className="text-ink">
+                  {detalhes?.mensagem ?? 'A geração foi interrompida (o serviço pode ter sido reiniciado). Tente novamente.'}
+                </p>
                 <div className="text-xs text-muted">
                   <strong>Sugestões para solucionar:</strong>
                   <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                    {geracao.status === 'tempo_esgotado' && <li>Tente de novo com um tempo máximo maior.</li>}
                     <li>Verifique se o número de aulas demandadas pela turma cabe nos horários semanais do turno.</li>
                     <li>Verifique se algum professor atribuído está com carga máxima menor que a demanda.</li>
                     <li>Confirme se os professores possuem disponibilidade nos dias e turnos das aulas.</li>
                   </ul>
                 </div>
+                <Avisos avisos={detalhes?.avisos} />
               </div>
             </div>
           </div>
         )}
 
-        {/* 4. Feedback de Sucesso */}
-        {lastResult && lastResult.sucesso && (
+        {/* 5. Feedback de Sucesso */}
+        {geracao?.status === 'sucesso' && (
           <div className="mt-6 rounded-lg border border-primary-soft-line bg-primary-soft p-5 text-ink">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -311,9 +321,9 @@ export function GenerationPage() {
                 <div>
                   <h3 className="font-bold text-primary">Grade gerada com sucesso!</h3>
                   <p className="text-xs text-muted">
-                    {lastResult.total_aulas} aulas distribuídas em {lastResult.tempo_seg ?? elapsedTime} segundos.
-                    {lastResult.planejamentos_compartilhados &&
-                      ` Planejamentos compartilhados com colega da mesma área: ${lastResult.planejamentos_compartilhados}.`}
+                    {geracao.total_aulas} aulas distribuídas em {detalhes?.tempo_resolucao_seg ?? '—'} segundos.
+                    {planejamentos.length > 0 &&
+                      ` Planejamentos compartilhados com colega da mesma área: ${planejamentos.filter((p) => p.compartilhado).length}/${planejamentos.length}.`}
                   </p>
                 </div>
               </div>
@@ -322,21 +332,26 @@ export function GenerationPage() {
                 Ver Grade Completa →
               </Link>
             </div>
-            {lastResult.avisos && lastResult.avisos.length > 0 && (
-              <div className="mt-4 border-t border-primary-soft-line pt-3 text-xs">
-                <p className="font-semibold text-warning">Avisos</p>
+            {(detalhes?.janelas?.length ?? 0) > 0 && (
+              <div className="mt-4 border-t border-black/5 pt-3 text-xs">
+                <p className="font-semibold text-warning">
+                  Janelas de professor que não puderam ser evitadas ({detalhes!.janelas!.length})
+                </p>
                 <ul className="mt-1 list-disc space-y-0.5 pl-4 text-muted">
-                  {lastResult.avisos.map((aviso) => (
-                    <li key={aviso}>{aviso}</li>
+                  {detalhes!.janelas!.map((j) => (
+                    <li key={`${j.professor}-${j.dia_semana}-${j.horario}`}>
+                      {j.professor}: {j.dia_semana}, {j.horario}
+                    </li>
                   ))}
                 </ul>
               </div>
             )}
+            <Avisos avisos={detalhes?.avisos} />
           </div>
         )}
       </section>
 
-      {/* 5. Histórico de Execuções */}
+      {/* 6. Histórico de Execuções */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold tracking-wide text-ink uppercase">Histórico de Execuções</h2>
@@ -372,38 +387,41 @@ export function GenerationPage() {
                   <tr key={g.id} className="border-b border-line-soft last:border-b-0 hover:bg-paper/40">
                     <td className="px-4 py-2.5 font-medium text-ink">
                       {g.nome}
-                      {g.detalhes && typeof g.detalhes === 'object' && 'tempo_resolucao_seg' in g.detalhes && (
-                        <span className="ml-2 text-[11px] text-muted">
-                          ({Number(g.detalhes.tempo_resolucao_seg)}s)
-                        </span>
+                      {g.detalhes?.tempo_resolucao_seg != null && (
+                        <span className="ml-2 text-[11px] text-muted">({g.detalhes.tempo_resolucao_seg}s)</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-muted">{g.ano_semestre ?? '—'}</td>
                     <td className="px-4 py-2.5 font-semibold text-ink">{g.total_aulas}</td>
                     <td className="px-4 py-2.5">
                       <span
+                        title={isFalha(g.status) ? g.detalhes?.mensagem : undefined}
                         className={cn(
                           'inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold',
-                          g.status === 'sucesso'
-                            ? 'bg-primary-soft text-primary'
-                            : 'bg-danger-soft text-danger',
+                          g.status === 'sucesso' && 'bg-primary-soft text-primary',
+                          g.status === 'gerando' && 'bg-warning-soft text-warning',
+                          isFalha(g.status) && 'bg-danger-soft text-danger',
                         )}
                       >
-                        {g.status}
+                        {STATUS_LABEL[g.status] ?? g.status}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-muted">{formatData(g.criado_em)}</td>
+                    <td className="px-4 py-2.5 text-muted">{formatDateTime(g.criado_em)}</td>
                     <td className="px-4 py-2.5 text-right">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          await refreshSchedule(g.id)
-                          navigate(`/grade?gradeId=${g.id}`)
-                        }}
-                        className="font-semibold text-primary hover:underline"
-                      >
-                        Visualizar →
-                      </button>
+                      {g.status === 'sucesso' ? (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await refreshSchedule(g.id)
+                            navigate(`/grade?gradeId=${g.id}`)
+                          }}
+                          className="font-semibold text-primary hover:underline"
+                        >
+                          Visualizar →
+                        </button>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -412,6 +430,20 @@ export function GenerationPage() {
           </div>
         )}
       </section>
+    </div>
+  )
+}
+
+function Avisos({ avisos }: { avisos?: string[] }) {
+  if (!avisos?.length) return null
+  return (
+    <div className="mt-4 border-t border-black/5 pt-3 text-xs">
+      <p className="font-semibold text-warning">Avisos</p>
+      <ul className="mt-1 list-disc space-y-0.5 pl-4 text-muted">
+        {avisos.map((aviso) => (
+          <li key={aviso}>{aviso}</li>
+        ))}
+      </ul>
     </div>
   )
 }
