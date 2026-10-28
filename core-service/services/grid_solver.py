@@ -564,7 +564,13 @@ def resolver_grade(
         plans_semana = []
         for dia in DIAS_SEMANA:
             aulas_dia = prof_aulas.get(chave, {}).get(dia, [])
-            for turno, horarios in por_turno.items():
+            # Linha do dia inteiro (manhã e depois tarde), para as janelas entre turnos
+            horarios_dia: List[str] = []
+            pres_dia: List[cp_model.IntVar] = []
+            ocupado_dia: Dict[str, cp_model.IntVar] = {}  # horário -> tem aula que se sobrepõe a ele
+            plan_dia: Dict[str, cp_model.IntVar] = {}
+            for turno in sorted(por_turno, key=["manha", "tarde"].index):
+                horarios = por_turno[turno]
                 pres = []
                 for h in horarios:
                     p = model.NewBoolVar(f"plan_{chave}_{dia}_{h}")
@@ -578,6 +584,8 @@ def resolver_grade(
                     else:
                         model.Add(ocupado == 0)
                     model.Add(p + ocupado <= 1)
+                    ocupado_dia[h] = ocupado
+                    plan_dia[h] = p
 
                     presente = model.NewBoolVar(f"presente_{chave}_{dia}_{h}")
                     model.Add(presente == p + ocupado)
@@ -603,32 +611,32 @@ def resolver_grade(
                 for h in horarios:
                     model.Add(plan[(chave, dia, turno, h)] <= da_aula).OnlyEnforceIf(lits["planejamento"])
 
-                # Janela: horário vago (sem aula nem planejamento, nem outro que se sobreponha a
-                # ele) entre dois horários com presença. É permitida, mas evitada acima de tudo
-                # (ver objetivo); cada janela que sobrar aparece no resultado
-                cobertura = []
-                for j, hj in enumerate(horarios):
-                    sobrepostos = [pres[k] for k, hk in enumerate(horarios) if slots_overlap(hj, hk)]
-                    if len(sobrepostos) == 1:
-                        cobertura.append(sobrepostos[0])
-                    else:
-                        c = model.NewBoolVar(f"cobre_{chave}_{dia}_{hj}")
-                        model.AddMaxEquality(c, sobrepostos)
-                        cobertura.append(c)
-                n = len(horarios)
-                for j in range(1, n - 1):
-                    pares = [
-                        (i, k)
-                        for i in range(j)
-                        for k in range(j + 1, n)
-                        if not slots_overlap(horarios[i], horarios[j]) and not slots_overlap(horarios[j], horarios[k])
-                    ]
-                    if not pares:
-                        continue
-                    jan = model.NewBoolVar(f"janela_{chave}_{dia}_{horarios[j]}")
-                    for i, k in pares:
-                        model.Add(jan >= pres[i] + pres[k] - cobertura[j] - 1)
-                    janelas[(chave, dia, horarios[j])] = jan
+                horarios_dia += horarios
+                pres_dia += pres
+
+            # Janela: horário vago (sem aula nem planejamento, nem outro que se sobreponha a ele)
+            # com presença antes e depois no mesmo dia, inclusive de um turno para o outro
+            # (ex.: aula até 09:00 e de novo às 15:50). O almoço não é horário de aula e não conta.
+            # É permitida, mas evitada acima de tudo (ver objetivo); as que sobram vão no resultado.
+            n = len(horarios_dia)
+            for j in range(1, n - 1):
+                hj = horarios_dia[j]
+                antes = [pres_dia[i] for i in range(j) if not slots_overlap(horarios_dia[i], hj)]
+                depois = [pres_dia[k] for k in range(j + 1, n) if not slots_overlap(hj, horarios_dia[k])]
+                if not antes or not depois:
+                    continue
+                # Coberto só por aula ou planejamento que se sobreponha de fato a este horário
+                # (não por outro horário que apenas encosta numa aula, como 11:10 entre 11:00 e 11:50)
+                sobrepostos = [ocupado_dia[hj]] + [plan_dia[hk] for hk in horarios_dia if slots_overlap(hj, hk)]
+                tem_antes = model.NewBoolVar(f"antes_{chave}_{dia}_{hj}")
+                tem_depois = model.NewBoolVar(f"depois_{chave}_{dia}_{hj}")
+                coberto = model.NewBoolVar(f"cobre_{chave}_{dia}_{hj}")
+                model.AddMaxEquality(tem_antes, antes)
+                model.AddMaxEquality(tem_depois, depois)
+                model.AddMaxEquality(coberto, sobrepostos)
+                jan = model.NewBoolVar(f"janela_{chave}_{dia}_{hj}")
+                model.Add(jan >= tem_antes + tem_depois - coberto - 1)
+                janelas[(chave, dia, hj)] = jan
 
         model.Add(sum(plans_semana) == PLANEJAMENTOS_SEMANAIS).OnlyEnforceIf(lits["planejamento"])
 
