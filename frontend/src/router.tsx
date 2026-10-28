@@ -3,13 +3,13 @@ import { RequireAuth, RequireGuest } from '@/auth/guards'
 import { AppLayout } from '@/layouts/AppLayout'
 import { AuthLayout } from '@/layouts/AuthLayout'
 import { AvailabilityPage } from '@/pages/AvailabilityPage'
-import { ComingSoonPage } from '@/pages/ComingSoonPage'
 import { ConflictsPage } from '@/pages/conflicts/ConflictsPage'
 import { DashboardPage } from '@/pages/dashboard/DashboardPage'
 import { GenerationPage } from '@/pages/generation/GenerationPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { RegisterPage } from '@/pages/RegisterPage'
+import { ReportsPage } from '@/pages/reports/ReportsPage'
 import { SchedulePage } from '@/pages/schedule/SchedulePage'
 import { SubjectsPage } from '@/pages/SubjectsPage'
 import { TeachersPage } from '@/pages/TeachersPage'
@@ -40,7 +40,7 @@ export const router = createBrowserRouter([
           { path: '/geracao', element: <GenerationPage /> },
           { path: '/grade', element: <SchedulePage /> },
           { path: '/conflitos', element: <ConflictsPage /> },
-          { path: '/relatorios', element: <ComingSoonPage title="Relatórios" /> },
+          { path: '/relatorios', element: <ReportsPage /> },
         ],
       },
     ],
