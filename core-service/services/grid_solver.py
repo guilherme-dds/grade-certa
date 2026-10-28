@@ -32,6 +32,8 @@ REGRAS = {
     "primeira_ultima": "quem dá a primeira aula do turno não dá a última",
     "planejamento": f"{PLANEJAMENTOS_SEMANAIS} horários de planejamento por professor",
     "horarios_fixos": "aulas com dia e horário fixos",
+    "manha_completa": "manhãs completas nas turmas de manhã + tardes",
+    "estrutura_tardes": "tardes completas ou meia tarde nas turmas de manhã + tardes",
 }
 
 # Início de palavra (sem acento) que indica a área do conhecimento pelo nome da disciplina.
@@ -232,6 +234,13 @@ def resolver_grade(
             1 for dia in DIAS_SEMANA for s in slots if s["turno"] != "tarde" or dia in t.dias_com_tarde()
         )
         total = sum(i.aulas_semanais for i in t.itens)
+        manha = len(DIAS_SEMANA) * sum(1 for s in slots if s["turno"] == "manha")
+        if tem_tardes_parciais(t.turno) and total < manha:
+            return _inviavel(
+                f"Inviável: a turma '{t.nome}' tem {total} aulas semanais, menos que os {manha} horários "
+                f"das manhãs, que precisam ficar completas no turno '{t.turno}'.",
+                avisos,
+            )
         if total > capacidade:
             return _inviavel(
                 f"Inviável: a turma '{t.nome}' necessita de {total} aulas semanais, mas o nível "
@@ -355,22 +364,50 @@ def resolver_grade(
         for alocacoes in por_dia.values():
             _sem_sobreposicao(model, alocacoes)
 
-    # Turno "Manhã + tardes": só há aula à tarde nos dias escolhidos; sem escolha, o
-    # gerador decide e tenta usar o mínimo de tardes (uma "tarde fechada")
+    # Turno "Manhã + tardes" (Ensino Médio): manhãs completas; cada tarde fica vazia, pela
+    # metade (primeiros horários) ou completa; só há tarde nos dias escolhidos e, sem
+    # escolha, o gerador usa o mínimo de tardes
     tardes_usadas: List[cp_model.IntVar] = []
+    # Aulas regulares em tardes que já têm aula fixa (laboratório, Redação ENEM...): a escola
+    # prefere essas tardes só com a aula fixa e a "tarde fechada" em outro dia
+    regulares_em_tarde_fixa: List[cp_model.IntVar] = []
     for t in turmas:
         if not tem_tardes_parciais(t.turno):
             continue
-        tarde = [s["ordem"] for s in turma_slots[t.id] if s["turno"] == "tarde"]
+        slots = turma_slots[t.id]
+        manha = [s["ordem"] for s in slots if s["turno"] == "manha"]
+        tarde = [s["ordem"] for s in slots if s["turno"] == "tarde"]
+        meia = len(tarde) // 2
+        fixos_tarde = {
+            (dia, h)
+            for item in t.itens
+            for dia, h in item.horarios_fixos
+            if any(s["horario"] == h and s["turno"] == "tarde" for s in slots)
+        }
         for dia in DIAS_SEMANA:
+            for o in manha:
+                model.Add(occ[(t.id, dia, o)] == 1).OnlyEnforceIf(lits["manha_completa"])
             ocupacao = [occ[(t.id, dia, o)] for o in tarde]
             if dia not in t.dias_com_tarde():
                 for o in ocupacao:
                     model.Add(o == 0)
-            elif not t.tardes:
+                continue
+            tarde_meia = model.NewBoolVar(f"meia_tarde_t{t.id}_{dia}")
+            tarde_cheia = model.NewBoolVar(f"tarde_cheia_t{t.id}_{dia}")
+            model.Add(tarde_meia + tarde_cheia <= 1)
+            model.Add(sum(ocupacao) == meia * tarde_meia + len(tarde) * tarde_cheia).OnlyEnforceIf(
+                lits["estrutura_tardes"]
+            )
+            if not t.tardes:
                 usa = model.NewBoolVar(f"tarde_t{t.id}_{dia}")
                 model.AddMaxEquality(usa, ocupacao)
                 tardes_usadas.append(usa)
+            if any(d == dia for d, _ in fixos_tarde):
+                regulares_em_tarde_fixa += [
+                    occ[(t.id, dia, s["ordem"])]
+                    for s in slots
+                    if s["turno"] == "tarde" and (dia, s["horario"]) not in fixos_tarde
+                ]
 
     # Aulas com dia e horário definidos pela escola
     for t in turmas:
@@ -603,11 +640,19 @@ def resolver_grade(
     ]
     # Concentrar as tardes vem antes de tudo: uma tarde a mais custa mais que o máximo
     # que planejamento compartilhado e preferências juntos podem render
-    peso_tarde = 3 * len(compartilhado) + len(preferidas) + 1
+    # Prioridades (cada nível pesa mais que todos os de baixo juntos): janelas de professor,
+    # número de tardes, aulas regulares em tarde com aula fixa, planejamento/preferências
+    peso_fixo = 3 * len(compartilhado) + len(preferidas) + 1
+    peso_tarde = peso_fixo * (len(regulares_em_tarde_fixa) + 1)
     # Janelas de professor pesam mais que tudo o resto junto, tardes incluídas
     peso_janela = peso_tarde * (len(tardes_usadas) + 1)
-    objetivo_base = 3 * sum(compartilhado.values()) + sum(preferidas) - peso_tarde * sum(tardes_usadas)
-    if compartilhado or preferidas or tardes_usadas or janelas:
+    objetivo_base = (
+        3 * sum(compartilhado.values())
+        + sum(preferidas)
+        - peso_fixo * sum(regulares_em_tarde_fixa)
+        - peso_tarde * sum(tardes_usadas)
+    )
+    if compartilhado or preferidas or tardes_usadas or regulares_em_tarde_fixa or janelas:
         model.Maximize(objetivo_base - peso_janela * sum(janelas.values()))
 
     # ------------------------------------------------------------------
@@ -624,7 +669,7 @@ def resolver_grade(
     # sem objetivo nenhum, o CP-SAT desliga as buscas por vizinhança que ajudam a achá-la.
     busca = model.Clone()
     busca.ClearObjective()
-    if compartilhado or preferidas or tardes_usadas:
+    if compartilhado or preferidas or tardes_usadas or regulares_em_tarde_fixa:
         busca.Maximize(objetivo_base)
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = tempo_limite_seg
