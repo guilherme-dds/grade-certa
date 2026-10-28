@@ -31,7 +31,7 @@ REGRAS = {
     "sem_janela_turma": "turma sem horário vago entre aulas",
     "primeira_ultima": "quem dá a primeira aula do turno não dá a última",
     "planejamento": f"{PLANEJAMENTOS_SEMANAIS} horários de planejamento por professor",
-    "horarios_fixos": "aulas com dia e horário fixos",
+    "horarios_fixos": "aulas com dia ou horário fixos",
     "manha_completa": "manhãs completas nas turmas de manhã + tardes",
     "estrutura_tardes": "tardes completas ou meia tarde nas turmas de manhã + tardes",
 }
@@ -107,8 +107,22 @@ class ItemInput:
     aula_dobrada: bool = True
     tipo_sala: Optional[str] = None
     # (dia, horário) em que a aula precisa acontecer, definidos pela escola (ex.: laboratório
-    # na quarta à tarde). As aulas restantes, se houver, o gerador distribui.
-    horarios_fixos: List[Tuple[str, str]] = field(default_factory=list)
+    # na quarta à tarde). Horário None = qualquer horário daquele dia. As aulas restantes,
+    # se houver, o gerador distribui.
+    horarios_fixos: List[Tuple[str, Optional[str]]] = field(default_factory=list)
+
+    def fixos_exatos(self) -> set:
+        return {(dia, h) for dia, h in self.horarios_fixos if h}
+
+    def aulas_minimas_por_dia(self) -> Dict[str, int]:
+        """Quantas aulas o item precisa ter em cada dia por causa dos horários/dias fixos."""
+        minimo: Dict[str, int] = {}
+        for dia, _ in self.fixos_exatos():
+            minimo[dia] = minimo.get(dia, 0) + 1
+        for dia, h in self.horarios_fixos:
+            if not h:
+                minimo[dia] = minimo.get(dia, 0) + 1
+        return minimo
 
 
 @dataclass
@@ -250,12 +264,16 @@ def resolver_grade(
             )
         horarios_turma = {s["horario"] for s in slots}
         for item in t.itens:
-            if len(set(item.horarios_fixos)) > item.aulas_semanais:
+            if sum(item.aulas_minimas_por_dia().values()) > item.aulas_semanais:
                 return _inviavel(
                     f"Inviável: '{item.disciplina}' na turma '{t.nome}' tem mais horários fixos que aulas semanais.",
                     avisos,
                 )
             for dia, horario in item.horarios_fixos:
+                if horario is None:
+                    if dia not in DIAS_SEMANA:
+                        return _inviavel(f"Inviável: '{item.disciplina}' na turma '{t.nome}' está fixa em um dia inválido ({dia}).", avisos)
+                    continue
                 tarde_bloqueada = any(
                     s["horario"] == horario and s["turno"] == "tarde" for s in slots
                 ) and dia not in t.dias_com_tarde()
@@ -381,7 +399,7 @@ def resolver_grade(
         fixos_tarde = {
             (dia, h)
             for item in t.itens
-            for dia, h in item.horarios_fixos
+            for dia, h in item.fixos_exatos()
             if any(s["horario"] == h and s["turno"] == "tarde" for s in slots)
         }
         for dia in DIAS_SEMANA:
@@ -409,12 +427,15 @@ def resolver_grade(
                     if s["turno"] == "tarde" and (dia, s["horario"]) not in fixos_tarde
                 ]
 
-    # Aulas com dia e horário definidos pela escola
+    # Aulas com dia (e horário) definidos pela escola
     for t in turmas:
         ordem_por_horario = {s["horario"]: s["ordem"] for s in turma_slots[t.id]}
         for idx, item in enumerate(t.itens):
-            for dia, horario in set(item.horarios_fixos):
+            for dia, horario in item.fixos_exatos():
                 model.Add(x[(t.id, idx, dia, ordem_por_horario[horario])] == 1).OnlyEnforceIf(lits["horarios_fixos"])
+            for dia, minimo in item.aulas_minimas_por_dia().items():
+                aulas_dia = [x[(t.id, idx, dia, s["ordem"])] for s in turma_slots[t.id]]
+                model.Add(sum(aulas_dia) >= minimo).OnlyEnforceIf(lits["horarios_fixos"])
 
     # ------------------------------------------------------------------
     # 4. Regras com literal (identificáveis em caso de inviabilidade)
@@ -442,8 +463,9 @@ def resolver_grade(
         # Aula dobrada: cada dia tem no máximo um bloco da disciplina, que é uma aula
         # individual ou uma dupla em horários vizinhos do mesmo turno; n blocos duplos na semana
         for idx, item in enumerate(t.itens):
-            # Quem fixou o horário já decidiu a distribuição da disciplina
-            if item.horarios_fixos:
+            # Quem fixou o horário já decidiu a distribuição da disciplina (dia sem horário
+            # fixo continua seguindo a regra da aula dobrada)
+            if item.fixos_exatos():
                 continue
             duplas = _qtd_duplas(item)
             blocos_duplos = []
@@ -495,7 +517,7 @@ def resolver_grade(
             ):
                 # Aula com horário fixo foi decidida pela escola e não entra na regra
                 # (ex.: o rodízio do laboratório abre e fecha a tarde de quarta)
-                if (dia, s["horario"]) in item.horarios_fixos:
+                if (dia, s["horario"]) in item.fixos_exatos():
                     continue
                 var = x[(t.id, idx, dia, s["ordem"])]
                 turno = s["turno"]

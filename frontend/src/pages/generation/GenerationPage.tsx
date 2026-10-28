@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { getTurmas, type TurmaBackend } from '@/api/turmas'
+import { getTurmas, professoresDoItem, type TurmaBackend } from '@/api/turmas'
 import { getProfessores, type ProfessorBackend } from '@/api/professores'
 import { gerarGrade, getHistoricoGrades, getStatusGrade, type GradeResumo, type StatusGrade } from '@/api/grades'
 import { useSchedule } from '@/schedule/useSchedule'
@@ -110,6 +110,13 @@ export function GenerationPage() {
   )
   const professoresAtivos = professores.filter((p) => p.ativo)
 
+  // Aulas que a escola prendeu num dia/horário (ex.: laboratório), para conferir antes de gerar
+  const aulasFixas = turmas.flatMap((t) =>
+    (t.matriz_curricular ?? [])
+      .filter((item) => item.horarios_fixos?.length)
+      .map((item) => ({ turma: t, item })),
+  )
+
   const handleGerar = async () => {
     if (turmasValidas.length === 0) {
       setErrorMessage(
@@ -190,7 +197,56 @@ export function GenerationPage() {
         )}
       </section>
 
-      {/* 2. Painel de Execução do Solver */}
+      {/* 2. Aulas com dia ou horário fixo */}
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold tracking-wide text-ink uppercase">
+          Aulas com dia ou horário fixo ({aulasFixas.length})
+        </h2>
+        {aulasFixas.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-line bg-white p-5 text-xs text-muted">
+            Nenhuma aula fixada. Para prender uma aula num dia ou horário (ex.: laboratório), abra Turmas e salas →
+            Matriz Curricular → Fixar dia/horário.
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-line bg-white">
+            <table className="w-full border-collapse text-left text-[12.5px]">
+              <thead>
+                <tr className="border-b border-line bg-paper text-muted">
+                  <th className="px-4 py-2.5 font-semibold">Turma</th>
+                  <th className="px-4 py-2.5 font-semibold">Disciplina</th>
+                  <th className="px-4 py-2.5 font-semibold">Professores</th>
+                  <th className="px-4 py-2.5 font-semibold">Dia / horário</th>
+                  <th className="px-4 py-2.5 text-right font-semibold">Ação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {aulasFixas.map(({ turma, item }) => (
+                  <tr key={`${turma.id}-${item.disciplina}`} className="border-b border-line-soft last:border-b-0">
+                    <td className="px-4 py-2.5 font-medium text-ink">{turma.nome}</td>
+                    <td className="px-4 py-2.5">
+                      {item.disciplina}
+                      {item.extra && <span className="ml-1.5 text-[11px] text-muted">(extra)</span>}
+                    </td>
+                    <td className="px-4 py-2.5 text-muted">{professoresDoItem(item).join(', ') || 'Sem professor'}</td>
+                    <td className="px-4 py-2.5">
+                      {item.horarios_fixos!
+                        .map((f) => `${f.dia_semana}, ${f.horario ?? 'qualquer horário'}`)
+                        .join(' · ')}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <Link to={`/disciplinas?matriz=${turma.id}`} className="font-semibold text-primary hover:underline">
+                        Editar →
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* 3. Painel de Execução do Solver */}
       <section className="rounded-xl border border-line bg-white p-6 shadow-xs">
         <h2 className="text-base font-semibold text-ink">Executar Otimização da Grade</h2>
         <p className="mt-1 text-xs text-muted">

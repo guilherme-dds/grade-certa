@@ -5,7 +5,8 @@ from services.time_slots import DIAS_SEMANA
 
 class HorarioFixo(BaseModel):
     dia_semana: str
-    horario: str  # "HH:MM - HH:MM", um dos horários de aula da turma
+    # "HH:MM - HH:MM", um dos horários de aula da turma; nulo = qualquer horário do dia
+    horario: Optional[str] = None
 
 
 class ItemMatriz(BaseModel):
@@ -25,8 +26,10 @@ class ItemMatriz(BaseModel):
         nomes = [p.strip() for p in (self.professores or [self.professor or ""]) if p and p.strip()]
         self.professores = list(dict.fromkeys(nomes))
         self.professor = self.professores[0] if self.professores else None
-        if len({(h.dia_semana, h.horario) for h in self.horarios_fixos}) > self.aulas_semanais:
-            raise ValueError(f"'{self.disciplina}' tem mais horários fixos que aulas semanais.")
+        exatos = {(h.dia_semana, h.horario) for h in self.horarios_fixos if h.horario}
+        so_dia = [h for h in self.horarios_fixos if not h.horario]
+        if len(exatos) + len(so_dia) > self.aulas_semanais:
+            raise ValueError(f"'{self.disciplina}' tem mais dias/horários fixos que aulas semanais.")
         return self
 
 class Turma(BaseModel):

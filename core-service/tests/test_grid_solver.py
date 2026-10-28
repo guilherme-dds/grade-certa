@@ -247,7 +247,7 @@ def test_indisponibilidade_de_outro_nivel_nao_bloqueia_e_preferencia_atrai_aulas
     professores["eva"].indisponivel = [Intervalo(dia="Seg", horario=h, nivel="Ensino Médio") for h in SLOTS]
     # Hugo (Inglês, sempre individual) prefere quarta-feira
     professores["hugo"].preferencial = [Intervalo(dia="Qua", horario=h) for h in SLOTS]
-    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=60)
     verificar_regras(res, turmas)
     assert sum(1 for a in res.aulas if "hugo" in a.professor_chaves and a.dia == "Qua") == 4
 
@@ -450,3 +450,17 @@ def test_ensino_medio_manhas_completas_e_tardes_como_a_escola_pediu():
     # 2º EM: tarde fechada em outro dia e a meia tarde na quarta, antes do laboratório
     assert len(tardes["2º EM"]) == 2
     assert tardes["2º EM"]["Qua"].count("Laboratório") == 2 and len(tardes["2º EM"]["Qua"]) == 4
+
+
+def test_dia_fixo_sem_horario():
+    turmas, professores = montar_escola()
+    # Educação Física do 6º ano: uma aula na quinta (o gerador escolhe o horário) e outra fixa sexta 07:20
+    ef = next(i for i in turmas[0].itens if i.disciplina == "Educação Física")
+    ef.horarios_fixos = [("Qui", None)]
+    arte = next(i for i in turmas[0].itens if i.disciplina == "Arte")
+    arte.horarios_fixos = [("Ter", None), ("Ter", None)]  # as duas na terça (aula dobrada)
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    verificar_regras(res, turmas)
+    dias_ef = [a.dia for a in res.aulas if a.turma_id == 1 and a.disciplina == "Educação Física"]
+    assert "Qui" in dias_ef
+    assert [a.dia for a in res.aulas if a.turma_id == 1 and a.disciplina == "Arte"] == ["Ter", "Ter"]

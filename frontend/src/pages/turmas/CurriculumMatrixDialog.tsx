@@ -143,7 +143,7 @@ export function CurriculumMatrixDialog({
     }
     const excedente = items.find((i) => (i.horarios_fixos?.length ?? 0) > i.aulas_semanais)
     if (excedente) {
-      setError(`'${excedente.disciplina}' tem mais horários fixos que aulas semanais.`)
+      setError(`'${excedente.disciplina}' tem mais dias/horários fixos que aulas semanais.`)
       return
     }
 
@@ -272,9 +272,9 @@ export function CurriculumMatrixDialog({
                         onClick={() => toggleExpanded(idx)}
                         aria-expanded={expanded.has(idx)}
                         className="rounded p-1 text-xs text-primary transition-colors hover:bg-primary-soft"
-                        title="Horário fixo e aula extra"
+                        title="Dia/horário fixo e aula extra"
                       >
-                        Opções{opcoesAtivas > 0 && ` (${opcoesAtivas})`}
+                        Fixar dia/horário{opcoesAtivas > 0 && ` (${opcoesAtivas})`}
                       </button>
                       <button
                         type="button"
@@ -349,19 +349,22 @@ interface ItemOptionsProps {
   onChange: (changes: Partial<ItemMatriz>) => void
 }
 
-/** Horários fixos (dia + horário definidos pela escola) e marcação de aula extra de um item. */
+// Valor do seletor para fixar só o dia (o gerador escolhe o horário)
+const QUALQUER_HORARIO = ''
+
+/** Dias/horários fixos (definidos pela escola) e marcação de aula extra de um item. */
 function ItemOptions({ item, slots, onChange }: ItemOptionsProps) {
   const fixos = item.horarios_fixos ?? []
   const [dia, setDia] = useState<string>(weekDays[0])
-  const [horario, setHorario] = useState('')
-  const horarioEscolhido = horario || slots[0] || ''
-  const jaFixado = fixos.some((f) => f.dia_semana === dia && f.horario === horarioEscolhido)
-  const podeFixar = Boolean(horarioEscolhido) && !jaFixado && fixos.length < item.aulas_semanais
+  const [horario, setHorario] = useState(QUALQUER_HORARIO)
+  // Um mesmo dia+horário só pode ser fixado uma vez; "qualquer horário" pode repetir (2 aulas na terça)
+  const jaFixado = horario !== QUALQUER_HORARIO && fixos.some((f) => f.dia_semana === dia && f.horario === horario)
+  const podeFixar = !jaFixado && fixos.length < item.aulas_semanais
 
   const fixar = () =>
-    onChange({ horarios_fixos: [...fixos, { dia_semana: dia, horario: horarioEscolhido }] })
-  const remover = (alvo: HorarioFixo) =>
-    onChange({ horarios_fixos: fixos.filter((f) => f !== alvo) })
+    onChange({ horarios_fixos: [...fixos, { dia_semana: dia, horario: horario || null }] })
+  const remover = (indice: number) => onChange({ horarios_fixos: fixos.filter((_, i) => i !== indice) })
+  const descricao = (f: HorarioFixo) => `${f.dia_semana}, ${f.horario ?? 'qualquer horário'}`
 
   return (
     <div className="space-y-2.5 rounded-md border border-line-soft bg-white p-3">
@@ -375,23 +378,24 @@ function ItemOptions({ item, slots, onChange }: ItemOptionsProps) {
       </label>
 
       <div>
-        <p className="text-xs font-medium text-ink">Horário fixo</p>
+        <p className="text-xs font-medium text-ink">Dia ou horário fixo</p>
         <p className="text-[11px] text-muted">
-          A aula acontece sempre nesses horários. Sem horário fixo, o gerador escolhe.
+          Para aulas que precisam acontecer num dia ou horário específico (ex.: laboratório). Com "qualquer horário",
+          a aula fica naquele dia e o gerador escolhe o horário. Sem nada fixado, o gerador decide tudo.
           {fixos.length > 0 && fixos.length < item.aulas_semanais &&
             ` As outras ${item.aulas_semanais - fixos.length} aula(s) o gerador distribui.`}
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {fixos.map((f) => (
+          {fixos.map((f, i) => (
             <span
-              key={`${f.dia_semana}-${f.horario}`}
+              key={`${f.dia_semana}-${f.horario ?? 'dia'}-${i}`}
               className="inline-flex items-center gap-1 rounded border border-warning/40 bg-warning-soft py-0.5 pr-1 pl-2 text-xs"
             >
-              {f.dia_semana}, {f.horario}
+              {descricao(f)}
               <button
                 type="button"
-                onClick={() => remover(f)}
-                aria-label={`Remover horário fixo ${f.dia_semana} ${f.horario}`}
+                onClick={() => remover(i)}
+                aria-label={`Remover ${descricao(f)}`}
                 className="rounded px-1 text-muted hover:bg-danger-soft hover:text-danger"
               >
                 ×
@@ -411,11 +415,12 @@ function ItemOptions({ item, slots, onChange }: ItemOptionsProps) {
             ))}
           </select>
           <select
-            value={horarioEscolhido}
+            value={horario}
             onChange={(e) => setHorario(e.target.value)}
             aria-label="Horário fixo"
             className="rounded border border-line bg-white px-2 py-1 font-mono text-xs outline-none focus:border-primary"
           >
+            <option value={QUALQUER_HORARIO}>qualquer horário</option>
             {slots.map((h) => (
               <option key={h} value={h}>
                 {h}
@@ -427,7 +432,7 @@ function ItemOptions({ item, slots, onChange }: ItemOptionsProps) {
           </Button>
         </div>
         {fixos.length >= item.aulas_semanais && (
-          <p className="mt-1 text-[11px] text-muted">Todas as aulas desta matéria já têm horário fixo.</p>
+          <p className="mt-1 text-[11px] text-muted">Todas as aulas desta matéria já têm dia ou horário fixo.</p>
         )}
       </div>
     </div>
