@@ -1,10 +1,15 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { deleteGrade, getHistoricoGrades } from '@/api/grades'
 import { useAuth } from '@/auth/useAuth'
+import { Button } from '@/components/ui/Button'
 import { buttonStyles } from '@/components/ui/buttonStyles'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { formatDateTime } from '@/lib/schedule'
 import type { Lesson } from '@/schedule/ScheduleContext'
 import { useSchedule } from '@/schedule/useSchedule'
+import { DeleteGradeDialog } from './DeleteGradeDialog'
 import { LessonEditDialog } from './LessonEditDialog'
 import { ScheduleGrid } from './ScheduleGrid'
 
@@ -12,6 +17,32 @@ export function SchedulePage() {
   const { role } = useAuth()
   const { lessons, activeGrade, horariosTurmas, isLoading, refreshSchedule } = useSchedule()
   const [params, setParams] = useSearchParams()
+  const queryClient = useQueryClient()
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  // Grades geradas com sucesso, para trocar a grade exibida
+  const { data: historico = [] } = useQuery({ queryKey: ['historicoGrades'], queryFn: getHistoricoGrades })
+  const gradesGeradas = historico.filter((g) => g.status === 'sucesso')
+  const gradeOptions = gradesGeradas.map((g) => ({
+    value: String(g.id),
+    label: `${g.nome} (${formatDateTime(g.criado_em)})`,
+  }))
+
+  const handleDeleteGrade = async () => {
+    await deleteGrade(activeGrade!.id!)
+    await queryClient.invalidateQueries({ queryKey: ['historicoGrades'] })
+    // Volta para a grade mais recente que sobrou
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('gradeId')
+        next.delete('aula')
+        return next
+      },
+      { replace: true },
+    )
+    await refreshSchedule()
+  }
 
   const gradeIdParam = params.get('gradeId')
 
@@ -127,6 +158,14 @@ export function SchedulePage() {
         }
         actions={
           <>
+            {gradeOptions.length > 1 && (
+              <FilterChip
+                label="Grade"
+                value={String(activeGrade?.id ?? '')}
+                options={gradeOptions}
+                onChange={(v) => setParam('gradeId', v)}
+              />
+            )}
             <FilterChip
               label="Turma"
               value={classGroup}
@@ -151,6 +190,11 @@ export function SchedulePage() {
               <Link to="/geracao" className={buttonStyles({ variant: 'secondary' })}>
                 Nova Geração
               </Link>
+            )}
+            {canEdit && activeGrade && (
+              <Button variant="secondary" onClick={() => setIsDeleting(true)} className="text-danger">
+                Excluir grade
+              </Button>
             )}
           </>
         }
@@ -187,6 +231,10 @@ export function SchedulePage() {
       </p>
 
       {editing && <LessonEditDialog key={editing.id} lesson={editing} onClose={() => setParam('aula', null)} />}
+
+      {isDeleting && activeGrade && (
+        <DeleteGradeDialog grade={activeGrade} onClose={() => setIsDeleting(false)} onConfirm={handleDeleteGrade} />
+      )}
     </>
   )
 }
@@ -194,7 +242,8 @@ export function SchedulePage() {
 interface FilterChipProps {
   label: string
   value: string
-  options: readonly string[]
+  /** Texto simples (valor = rótulo) ou par valor/rótulo */
+  options: readonly (string | { value: string; label: string })[]
   allLabel?: string
   onChange: (value: string) => void
 }
@@ -210,11 +259,14 @@ function FilterChip({ label, value, options, allLabel, onChange }: FilterChipPro
         className="max-w-40 cursor-pointer bg-transparent py-1 pr-1 font-medium outline-none"
       >
         {allLabel && <option value="">{allLabel}</option>}
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
+        {options.map((option) => {
+          const { value: v, label: l } = typeof option === 'string' ? { value: option, label: option } : option
+          return (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          )
+        })}
       </select>
     </label>
   )

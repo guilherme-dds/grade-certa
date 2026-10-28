@@ -230,3 +230,19 @@ def test_uma_geracao_por_vez(ctx):
     db.commit()
     r = client.post("/grades/gerar-grade")
     assert r.status_code == 409
+
+
+def test_excluir_grade(ctx):
+    client, db = ctx
+    grade, *_ = _grade_basica(db)
+    aula_ids = [a.id for a in grade.aulas]
+    rodando = GradeDB(nome="Rodando", status="gerando", total_aulas=0)
+    db.add(rodando)
+    db.commit()
+
+    assert client.delete(f"/grades/{rodando.id}").status_code == 409
+    assert client.delete(f"/grades/{grade.id}").status_code == 204
+    assert client.delete(f"/grades/{grade.id}").status_code == 404
+    db.expire_all()
+    assert db.query(AulaDB).filter(AulaDB.id.in_(aula_ids)).count() == 0
+    assert [g["id"] for g in client.get("/grades/historico").json()] == [rodando.id]

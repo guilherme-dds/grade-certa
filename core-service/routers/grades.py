@@ -80,6 +80,19 @@ def gerar_grade(
     return _resumo(grade)
 
 
+@router.delete("/{grade_id}", status_code=status.HTTP_204_NO_CONTENT)
+def excluir_grade(grade_id: int, db: Session = Depends(get_db)):
+    """Exclui a grade e suas aulas. Uma geração em andamento não pode ser excluída."""
+    grade = db.get(GradeDB, grade_id)
+    if not grade:
+        raise HTTPException(status_code=404, detail="Grade não encontrada")
+    if grade.status == "gerando":
+        raise HTTPException(status_code=409, detail="A geração desta grade ainda está em andamento.")
+    db.delete(grade)
+    db.commit()
+    return None
+
+
 @router.get("/{grade_id}/status")
 def status_grade(grade_id: int, db: Session = Depends(get_db)):
     """Situação de uma geração: "gerando", "sucesso", "inviavel", "tempo_esgotado" ou "erro"."""
