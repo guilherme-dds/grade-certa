@@ -167,6 +167,25 @@ def test_matriz_salva_horarios_fixos_e_extra(ctx):
     assert r.status_code == 422
 
 
+def test_matriz_guarda_professor_pelo_id(ctx):
+    client, _ = ctx
+    ana = client.post("/professores/", json={"nome": "Ana Souza", "email": "ana@x.com"}).json()
+    item = {"disciplina": "Matemática", "aulas_semanais": 4, "professores": ["ana souza", "Externo"]}
+    turma = client.post("/turmas/", json={"nome": "6º A", "turno": "Manhã", "matriz_curricular": [item]}).json()
+    salvo = turma["matriz_curricular"][0]
+    # Nome cadastrado (sem diferenciar caixa) vira id; o sem cadastro continua como nome
+    assert salvo["professor_ids"] == [ana["id"]]
+    assert salvo["professores"] == ["Externo"] and salvo["professor"] == "Externo"
+
+    # Renomear não quebra o vínculo
+    client.put(f"/professores/{ana['id']}", json={**ana, "nome": "Ana Lima"})
+    assert client.get("/turmas/").json()[0]["matriz_curricular"][0]["professor_ids"] == [ana["id"]]
+
+    # Excluir tira o professor da matriz
+    client.delete(f"/professores/{ana['id']}")
+    assert client.get("/turmas/").json()[0]["matriz_curricular"][0]["professor_ids"] == []
+
+
 def test_turma_manha_e_tardes_salva_dias(ctx):
     client, _ = ctx
     turma = {"nome": "2º EM A", "turno": "Manhã + tardes", "nivel_ensino": "Ensino Médio", "tardes": ["Sex", "Qua"]}

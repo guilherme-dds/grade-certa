@@ -3,7 +3,9 @@ import { api } from './client'
 export interface ItemMatriz {
   disciplina: string
   aulas_semanais: number
-  /** Professores que dão a aula juntos (ou em rodízio); o gerador reserva todos no horário */
+  /** Ids dos professores que dão a aula juntos (ou em rodízio); o gerador reserva todos no horário */
+  professor_ids?: number[]
+  /** Nomes de professores ainda sem cadastro (ao salvar, o backend troca nomes cadastrados pelo id) */
   professores?: string[]
   /** Formato antigo, com um professor só (o backend mantém igual ao primeiro de `professores`) */
   professor?: string | null
@@ -19,10 +21,19 @@ export interface HorarioFixo {
   horario: string | null
 }
 
-/** Professores do item, aceitando matrizes salvas no formato antigo */
-export function professoresDoItem(item: ItemMatriz): string[] {
+/** Nomes dos professores sem cadastro, aceitando matrizes salvas no formato antigo */
+export function nomesSemCadastro(item: ItemMatriz): string[] {
   if (item.professores?.length) return item.professores
   return item.professor ? [item.professor] : []
+}
+
+/** Nomes de todos os professores do item: os cadastrados (pelo id) e os ainda sem cadastro */
+export function professoresDoItem(item: ItemMatriz, nomePorId: Map<number, string>): string[] {
+  const cadastrados = (item.professor_ids ?? []).flatMap((id) => {
+    const nome = nomePorId.get(id)
+    return nome ? [nome] : []
+  })
+  return [...cadastrados, ...nomesSemCadastro(item)]
 }
 
 export interface TurmaBackend {

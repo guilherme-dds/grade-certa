@@ -51,6 +51,23 @@ for ddl in (
     except Exception:
         pass
 
+# Matrizes salvas com o nome do professor passam a guardar o id do cadastro
+try:
+    from database.connection import SessionLocal
+    from database.models import ProfessorDB, TurmaDB
+    from services.grid_solver import normalizar
+    from services.vinculo_professores import vincular_por_id
+
+    with SessionLocal() as db:
+        id_por_nome = {normalizar(p.nome): p.id for p in db.query(ProfessorDB).all()}
+        for turma in db.query(TurmaDB).all():
+            vinculada = vincular_por_id(turma.matriz_curricular, id_por_nome)
+            if vinculada != (turma.matriz_curricular or []):
+                turma.matriz_curricular = vinculada
+        db.commit()
+except Exception:
+    pass
+
 # Uma geração que estava rodando quando o serviço parou não vai terminar
 try:
     with engine.connect() as conn:
