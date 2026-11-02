@@ -1,4 +1,5 @@
 import { api } from './client'
+import type { Jornada } from './configuracoes'
 
 export type NivelEnsinoType = 'Anos Iniciais' | 'Anos Finais' | 'Ensino Médio'
 
@@ -12,6 +13,8 @@ export interface ProfessorBackend {
   ativo: boolean
   /** Última vez que a disponibilidade foi salva (nulo = nunca informada) */
   disponibilidade_atualizada_em?: string | null
+  /** Nulo = segue a jornada padrão da escola */
+  jornada?: Jornada | null
 }
 
 export type TipoDisponibilidade = 'indisponivel' | 'preferencial'

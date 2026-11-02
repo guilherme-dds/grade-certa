@@ -19,13 +19,19 @@ import {
   createDisciplina,
   type DisciplinaBackend,
 } from '@/api/disciplinas'
+import { getJornadaPadrao, type Jornada } from '@/api/configuracoes'
 import { getTurmas, professoresDoItem } from '@/api/turmas'
 import { formatDateTime } from '@/lib/schedule'
 import { type NivelEnsino, type Teacher, type TeacherRow } from './teachers/types'
 import { DeleteTeacherDialog } from './teachers/DeleteTeacherDialog'
+import { resumoJornada } from './teachers/jornada'
+import { JornadaPadraoDialog } from './teachers/JornadaPadraoDialog'
 import { SubjectDialog } from './teachers/SubjectDialog'
 import { TeacherAvailabilityDialog } from './teachers/TeacherAvailabilityDialog'
 import { TeacherDialog } from './teachers/TeacherDialog'
+
+// Até a resposta do core-service chegar (mesmos valores do padrão do backend)
+const JORNADA_INICIAL: Jornada = { almoco_inicio: '11:30', almoco_fim: '14:30', almoco_minutos: 40, max_aulas_dia: 8 }
 
 export function TeachersPage() {
   const queryClient = useQueryClient()
@@ -39,6 +45,7 @@ export function TeachersPage() {
   // Modais
   const [isTeacherDialogOpen, setIsTeacherDialogOpen] = useState(false)
   const [isSubjectDialogOpen, setIsSubjectDialogOpen] = useState(false)
+  const [isJornadaDialogOpen, setIsJornadaDialogOpen] = useState(false)
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null)
   const [deletingTeacher, setDeletingTeacher] = useState<Teacher | null>(null)
   const [availabilityTeacher, setAvailabilityTeacher] = useState<TeacherRow | null>(null)
@@ -58,6 +65,8 @@ export function TeachersPage() {
     queryKey: ['turmas'],
     queryFn: getTurmas,
   })
+
+  const jornadaPadrao = useQuery({ queryKey: ['jornadaPadrao'], queryFn: getJornadaPadrao }).data ?? JORNADA_INICIAL
 
   // Aulas semanais atribuídas a cada professor nas matrizes curriculares (vínculo pelo nome)
   const aulasPorProfessor = useMemo(() => {
@@ -113,6 +122,7 @@ export function TeachersPage() {
         maxWeeklyHours: p.carga_maxima_aulas,
         currentWeeklyHours: aulasPorProfessor.get(p.nome.trim().toLowerCase()) ?? 0,
         status: p.ativo ? 'ativo' : 'inativo',
+        jornada: p.jornada ?? null,
         raw: p,
       }
     })
@@ -212,6 +222,7 @@ export function TeachersPage() {
       disciplinas: disciplineIds,
       carga_maxima_aulas: teacherData.maxWeeklyHours,
       ativo: teacherData.status === 'ativo',
+      jornada: teacherData.jornada,
     }
 
     if (teacherData.id) {
@@ -248,7 +259,15 @@ export function TeachersPage() {
         title="Professores"
         description="Gerencie os docentes cadastrados, níveis de ensino, disciplinas associadas e carga horária semanal."
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setIsJornadaDialogOpen(true)}
+              title={resumoJornada(jornadaPadrao)}
+            >
+              Jornada padrão
+            </Button>
             <Button
               variant="secondary"
               size="sm"
@@ -362,6 +381,9 @@ export function TeachersPage() {
                       {row.raw.disponibilidade_atualizada_em
                         ? `Disponibilidade atualizada em ${formatDateTime(row.raw.disponibilidade_atualizada_em)}`
                         : 'Disponibilidade não informada'}
+                    </p>
+                    <p className="text-[11px] text-muted">
+                      {row.jornada ? `Jornada personalizada: ${resumoJornada(row.jornada)}` : 'Jornada padrão da escola'}
                     </p>
                   </div>
                 ),
@@ -510,6 +532,7 @@ export function TeachersPage() {
         <TeacherDialog
           teacher={editingTeacher}
           availableSubjects={disciplinesList}
+          jornadaPadrao={jornadaPadrao}
           onAddSubject={handleAddSubject}
           onClose={() => {
             setIsTeacherDialogOpen(false)
@@ -517,6 +540,11 @@ export function TeachersPage() {
           }}
           onSave={handleSaveTeacher}
         />
+      )}
+
+      {/* Modal da Jornada Padrão da Escola */}
+      {isJornadaDialogOpen && (
+        <JornadaPadraoDialog jornada={jornadaPadrao} onClose={() => setIsJornadaDialogOpen(false)} />
       )}
 
       {/* Modal de Criar Nova Disciplina (Avulso) */}

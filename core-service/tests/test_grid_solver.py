@@ -2,17 +2,19 @@ from collections import defaultdict
 
 from services.grid_solver import (
     PLANEJAMENTOS_SEMANAIS,
+    Almoco,
     Intervalo,
     ItemInput,
     ProfessorInput,
     SalaInput,
     TurmaInput,
+    _opcoes_almoco,
     inferir_area,
     inferir_aula_dobrada,
     inferir_tipo_sala,
     resolver_grade,
 )
-from services.time_slots import DIAS_SEMANA, get_slots_for_turma
+from services.time_slots import DIAS_SEMANA, get_slots_for_turma, parse_slot_range
 
 TEMPO = 20.0
 
@@ -464,3 +466,77 @@ def test_dia_fixo_sem_horario():
     dias_ef = [a.dia for a in res.aulas if a.turma_id == 1 and a.disciplina == "Educação Física"]
     assert "Qui" in dias_ef
     assert [a.dia for a in res.aulas if a.turma_id == 1 and a.disciplina == "Arte"] == ["Ter", "Ter"]
+
+
+TARDE_AF = [s["horario"] for s in get_slots_for_turma("Tarde", "Anos Finais")]
+
+
+def test_opcoes_de_almoco():
+    # Quem dá aula de manhã e à tarde nos Anos Finais tem só 20 min entre os turnos
+    opcoes = _opcoes_almoco(Almoco("12:00", "14:00", 40), SLOTS + TARDE_AF)
+    horarios = [[(SLOTS + TARDE_AF)[i] for i in vagos] for vagos in opcoes]
+    assert horarios == [["11:50 - 12:40"], ["13:00 - 13:50"]]
+    # Só de manhã: a pausa cabe depois da última aula e não exige nada
+    assert _opcoes_almoco(Almoco("11:30", "14:30", 40), SLOTS) == []
+
+
+def _duas_turmas(fixos_manha, fixos_tarde):
+    """Ana dá as aulas fixas das duas turmas (uma de manhã e outra à tarde)."""
+    turmas = [
+        TurmaInput(1, "6º Ano A", "Manhã", "Anos Finais", None, [
+            ItemInput("Oficina", len(fixos_manha), ["ana"], None, True, horarios_fixos=fixos_manha),
+        ]),
+        TurmaInput(2, "6º Ano B", "Tarde", "Anos Finais", None, [
+            ItemInput("Oficina", len(fixos_tarde), ["ana"], None, True, horarios_fixos=fixos_tarde),
+        ]),
+    ]
+    return turmas, {"ana": ProfessorInput("ana", "Ana")}
+
+
+def test_almoco_que_nao_cabe_aponta_a_regra():
+    turmas, professores = _duas_turmas([("Seg", SLOTS[5])], [("Seg", TARDE_AF[0])])
+    professores["ana"].almoco = Almoco("12:00", "14:00", 40)
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO, regras_desligadas=("sem_janela_turma",))
+    assert res.status == "inviavel"
+    assert "almoco" in res.regras_em_conflito
+
+    # Sem exigência de almoço, a mesma grade é possível
+    professores["ana"].almoco = None
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO, regras_desligadas=("sem_janela_turma",))
+    assert res.sucesso, res.mensagem
+
+
+def test_almoco_fica_livre_e_nao_conta_como_janela():
+    turmas, professores = _duas_turmas([("Seg", SLOTS[3])], [("Seg", TARDE_AF[1])])
+    professores["ana"].almoco = Almoco("11:30", "14:30", 60)
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO, regras_desligadas=("sem_janela_turma",))
+    assert res.sucesso, res.mensagem
+    assert res.janelas == []
+    ocupados = sorted(
+        [parse_slot_range(a.horario) for a in res.aulas] + [parse_slot_range(p.horario) for p in res.planejamentos]
+    )
+    # Há 60 minutos seguidos livres dentro da faixa
+    limites = [690] + [m for faixa in ocupados for m in faixa if 690 <= m <= 870] + [870]
+    livres = [
+        fim - ini
+        for ini, fim in zip(limites, limites[1:])
+        if not any(a < fim and ini < b for a, b in ocupados)
+    ]
+    assert max(livres) >= 60
+
+
+def test_maximo_de_aulas_por_dia():
+    turmas, professores = montar_escola()
+    professores["ana"].max_aulas_dia = 3
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    verificar_regras(res, turmas)
+    por_dia = defaultdict(int)
+    for a in res.aulas:
+        if "ana" in a.professor_chaves:
+            por_dia[a.dia] += 1
+    assert max(por_dia.values()) <= 3
+
+    professores["ana"].max_aulas_dia = 1
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    assert res.status == "inviavel"
+    assert "limite de 1 aulas por dia" in res.mensagem

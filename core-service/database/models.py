@@ -29,6 +29,18 @@ class ProfessorDB(Base):
     ativo = Column(Boolean, default=True)
     # Última vez que a disponibilidade foi salva (nulo = nunca informada)
     disponibilidade_atualizada_em = Column(DateTime, nullable=True)
+    # Almoço e limite diário personalizados (nulo = padrão da escola)
+    jornada = Column(JSON, nullable=True)
+
+
+class ConfiguracaoEscolaDB(Base):
+    __tablename__ = "configuracoes_escola"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    almoco_inicio = Column(String(5), nullable=False)
+    almoco_fim = Column(String(5), nullable=False)
+    almoco_minutos = Column(Integer, nullable=False)
+    max_aulas_dia = Column(Integer, nullable=False)
 
 
 class TurmaDB(Base):

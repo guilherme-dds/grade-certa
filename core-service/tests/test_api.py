@@ -7,7 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from database.connection import Base, get_db
 from database.models import AulaDB, GradeDB, ProfessorDB, SalaDB, TurmaDB
-from routers import grades, professores, salas, turmas
+from routers import configuracoes, grades, professores, salas, turmas
 
 
 @pytest.fixture
@@ -24,7 +24,7 @@ def ctx():
             db.close()
 
     app = FastAPI()
-    for r in (grades, professores, salas, turmas):
+    for r in (configuracoes, grades, professores, salas, turmas):
         app.include_router(r.router)
     app.dependency_overrides[get_db] = _db
     # A geração em segundo plano abre a própria sessão
@@ -246,3 +246,62 @@ def test_excluir_grade(ctx):
     db.expire_all()
     assert db.query(AulaDB).filter(AulaDB.id.in_(aula_ids)).count() == 0
     assert [g["id"] for g in client.get("/grades/historico").json()] == [rodando.id]
+
+
+JORNADA = {"almoco_inicio": "12:00", "almoco_fim": "14:00", "almoco_minutos": 40, "max_aulas_dia": 6}
+
+
+def test_jornada_padrao_e_personalizada(ctx):
+    client, _ = ctx
+    assert client.get("/configuracoes/jornada").json() == {
+        "almoco_inicio": "11:30", "almoco_fim": "14:30", "almoco_minutos": 40, "max_aulas_dia": 8,
+    }
+    assert client.put("/configuracoes/jornada", json={**JORNADA, "almoco_minutos": 121}).status_code == 422
+    assert client.put("/configuracoes/jornada", json={**JORNADA, "almoco_fim": "11:00"}).status_code == 422
+    assert client.put("/configuracoes/jornada", json=JORNADA).status_code == 200
+    assert client.put("/configuracoes/jornada", json=JORNADA).status_code == 200
+    assert client.get("/configuracoes/jornada").json() == JORNADA
+
+    prof = client.post("/professores/", json={"nome": "Ana", "email": "ana@x.com"}).json()
+    assert prof["jornada"] is None
+    prof["jornada"] = {**JORNADA, "almoco_minutos": 60}
+    r = client.put(f"/professores/{prof['id']}", json=prof)
+    assert r.json()["jornada"]["almoco_minutos"] == 60
+    prof["jornada"] = None
+    assert client.put(f"/professores/{prof['id']}", json=prof).json()["jornada"] is None
+
+
+def test_geracao_usa_o_padrao_e_a_personalizacao_do_professor(ctx):
+    client, db = ctx
+    manha = ["07:20 - 08:10", "08:10 - 09:00", "09:00 - 09:50", "10:10 - 11:00", "11:00 - 11:50"]
+
+    def fixos(*horarios):
+        return [{"dia_semana": "Seg", "horario": h} for h in horarios]
+
+    # Ana dá 11:50-12:40 e 13:00-13:50: não sobram 40 minutos entre 12:00 e 14:00
+    db.add_all([
+        ProfessorDB(nome="Ana", email="ana@x.com"),
+        ProfessorDB(nome="Bia", email="bia@x.com"),
+        TurmaDB(nome="6º Ano A", turno="Manhã", nivel_ensino="Anos Finais", matriz_curricular=[
+            {"disciplina": "Oficina", "aulas_semanais": 6, "professores": ["Bia"], "horarios_fixos": [
+                *fixos(*manha), {"dia_semana": "Ter", "horario": manha[0]},  # Bia planeja na terça
+            ]},
+            {"disciplina": "Arte", "aulas_semanais": 1, "professores": ["Ana"], "horarios_fixos": fixos("11:50 - 12:40")},
+        ]),
+        TurmaDB(nome="6º Ano B", turno="Tarde", nivel_ensino="Anos Finais", matriz_curricular=[
+            {"disciplina": "Arte", "aulas_semanais": 1, "professores": ["Ana"], "horarios_fixos": fixos("13:00 - 13:50")},
+        ]),
+    ])
+    db.commit()
+    client.put("/configuracoes/jornada", json=JORNADA)
+
+    falha = client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).json()["id"]
+    situacao = client.get(f"/grades/{falha}/status").json()
+    assert situacao["status"] == "inviavel"
+    assert "almoco" in situacao["detalhes"]["regras_em_conflito"]
+
+    ana = next(p for p in client.get("/professores/").json() if p["nome"] == "Ana")
+    ana["jornada"] = {**JORNADA, "almoco_minutos": 0}
+    client.put(f"/professores/{ana['id']}", json=ana)
+    ok = client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).json()["id"]
+    assert client.get(f"/grades/{ok}/status").json()["status"] == "sucesso"

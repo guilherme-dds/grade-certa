@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database.connection import Base, engine
 import database.models  # Garante que os modelos SQLAlchemy sejam importados
-from routers import professores, turmas, disciplinas, disponibilidades, grades, salas
+from routers import professores, turmas, disciplinas, disponibilidades, grades, salas, configuracoes
 
 from sqlalchemy import text
 
@@ -34,6 +34,7 @@ for ddl in (
     "ALTER TABLE professores ADD COLUMN disponibilidade_atualizada_em DATETIME NULL;",
     "ALTER TABLE aulas ADD COLUMN professores JSON NULL;",
     "ALTER TABLE turmas ADD COLUMN tardes JSON NULL;",
+    "ALTER TABLE professores ADD COLUMN jornada JSON NULL;",
 ):
     try:
         with engine.connect() as conn:
@@ -73,6 +74,7 @@ app.include_router(disciplinas.router)
 app.include_router(disponibilidades.router)
 app.include_router(grades.router)
 app.include_router(salas.router)
+app.include_router(configuracoes.router)
 
 
 @app.get("/")
