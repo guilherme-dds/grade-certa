@@ -4,7 +4,9 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session, joinedload
 
 from database.models import TurmaDB, ProfessorDB, DisciplinaDB, DisponibilidadeDB, GradeDB, AulaDB, SalaDB
+from models.jornada import Jornada
 from services.grid_solver import (
+    Almoco,
     Intervalo,
     ItemInput,
     ProfessorInput,
@@ -16,6 +18,7 @@ from services.grid_solver import (
     normalizar,
     resolver_grade,
 )
+from services.jornada import jornada_padrao
 
 # Tempo padrão do solver; a tela pode pedir outro (até TEMPO_MAXIMO_SEG)
 TEMPO_LIMITE_SEG = float(os.getenv("GRADE_SOLVER_TIMEOUT", "120"))
@@ -48,8 +51,9 @@ class GridGeneratorService:
         Regras aplicadas: matriz curricular, horários por nível de ensino, sem choque de
         turma/professor/sala, indisponibilidade de professores e salas, uma aula dobrada por
         disciplina (Inglês individual), sem janelas, primeira/última aula do turno com
-        professores diferentes e 4 horários de planejamento, de preferência compartilhados
-        com colegas da mesma área.
+        professores diferentes, almoço e limite de aulas por dia (padrão da escola ou
+        personalizados por professor) e 4 horários de planejamento, de preferência
+        compartilhados com colegas da mesma área.
         """
         disciplinas = {normalizar(d.nome): d for d in self.db.query(DisciplinaDB).all()}
         professores_db = self.db.query(ProfessorDB).filter(ProfessorDB.ativo == True).all()
@@ -82,6 +86,7 @@ class GridGeneratorService:
 
         tipos_cadastrados = {normalizar(s.tipo) for s in salas.values()}
 
+        padrao = jornada_padrao(self.db)
         professores: Dict[str, ProfessorInput] = {}
         avisos_carga: List[str] = []
         turmas: List[TurmaInput] = []
@@ -108,6 +113,7 @@ class GridGeneratorService:
                             f"Professor '{prof_nome}' da turma '{t.nome}' não está cadastrado (ou está inativo); "
                             "carga máxima e indisponibilidade não foram verificadas."
                         )
+                    jornada = Jornada(**prof.jornada) if prof and prof.jornada else padrao
                     professores[chave] = ProfessorInput(
                         chave=chave,
                         nome=prof.nome if prof else prof_nome,
@@ -115,6 +121,12 @@ class GridGeneratorService:
                         carga_maxima=prof.carga_maxima_aulas if prof else None,
                         indisponivel=indisp_prof.get(prof.id, []) if prof else [],
                         preferencial=pref_prof.get(prof.id, []) if prof else [],
+                        almoco=(
+                            Almoco(jornada.almoco_inicio, jornada.almoco_fim, jornada.almoco_minutos)
+                            if jornada.almoco_minutos
+                            else None
+                        ),
+                        max_aulas_dia=jornada.max_aulas_dia,
                     )
                 itens.append(
                     ItemInput(
@@ -122,7 +134,7 @@ class GridGeneratorService:
                         aulas_semanais=int(item["aulas_semanais"]),
                         professores=chaves,
                         horarios_fixos=[
-                            (h["dia_semana"], h["horario"]) for h in item.get("horarios_fixos") or []
+                            (h["dia_semana"], h.get("horario") or None) for h in item.get("horarios_fixos") or []
                         ],
                         area=(disc.area if disc and disc.area else inferir_area(nome_disc)),
                         aula_dobrada=(

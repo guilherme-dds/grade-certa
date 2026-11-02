@@ -45,6 +45,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
+      '/api/configuracoes': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
       // Demais chamadas /api/* vão para o auth-service (porta 8000)
       '/api': {
         target: 'http://localhost:8000',

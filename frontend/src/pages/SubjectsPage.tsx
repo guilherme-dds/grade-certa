@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/Button'
 import { DataTable } from '@/components/ui/DataTable'
@@ -38,7 +39,8 @@ export function SubjectsPage() {
   const [isTurmaDialogOpen, setIsTurmaDialogOpen] = useState(false)
   const [editingTurma, setEditingTurma] = useState<TurmaBackend | null>(null)
   const [deletingTurma, setDeletingTurma] = useState<TurmaBackend | null>(null)
-  const [matrixTurma, setMatrixTurma] = useState<TurmaBackend | null>(null)
+  // Matriz aberta fica na URL (?matriz=<id>) para outras telas abrirem direto nela
+  const [params, setParams] = useSearchParams()
   const [isSalaDialogOpen, setIsSalaDialogOpen] = useState(false)
   const [editingSala, setEditingSala] = useState<SalaBackend | null>(null)
   const [deletingSala, setDeletingSala] = useState<SalaBackend | null>(null)
@@ -84,6 +86,18 @@ export function SubjectsPage() {
         subjects: (p.disciplinas ?? []).map((id) => discMap.get(id)).filter((n): n is string => Boolean(n)),
       }))
   }, [professoresQuery.data, disciplinasQuery.data])
+
+  const matrixTurma = turmasQuery.data?.find((t) => String(t.id) === params.get('matriz')) ?? null
+  const setMatrixTurma = (turma: TurmaBackend | null) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (turma?.id) next.set('matriz', String(turma.id))
+        else next.delete('matriz')
+        return next
+      },
+      { replace: true },
+    )
 
   // Mutations
   const createTurmaMutation = useMutation({

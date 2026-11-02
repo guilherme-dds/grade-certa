@@ -19,6 +19,7 @@ def criar_professor(professor: Professor, db: Session = Depends(get_db)):
         disciplinas=professor.disciplinas,
         carga_maxima_aulas=professor.carga_maxima_aulas,
         ativo=professor.ativo,
+        jornada=professor.jornada.model_dump() if professor.jornada else None,
     )
     db.add(db_prof)
     db.commit()
@@ -81,6 +82,7 @@ def atualizar_professor(
     prof.disciplinas = professor_atualizado.disciplinas
     prof.carga_maxima_aulas = professor_atualizado.carga_maxima_aulas
     prof.ativo = professor_atualizado.ativo
+    prof.jornada = professor_atualizado.jornada.model_dump() if professor_atualizado.jornada else None
 
     db.commit()
     db.refresh(prof)

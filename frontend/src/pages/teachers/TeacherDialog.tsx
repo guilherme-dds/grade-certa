@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import type { Jornada } from '@/api/configuracoes'
 import { FormField } from '@/components/FormField'
 import { SelectField } from '@/components/SelectField'
 import { Button } from '@/components/ui/Button'
+import { cn } from '@/lib/cn'
+import { resumoJornada, validarJornada, type JornadaErrors } from './jornada'
+import { JornadaFields } from './JornadaFields'
 import { type NivelEnsino, type Teacher } from './types'
 
 const allNiveis: NivelEnsino[] = ['Anos Iniciais', 'Anos Finais', 'Ensino Médio']
@@ -9,6 +13,7 @@ const allNiveis: NivelEnsino[] = ['Anos Iniciais', 'Anos Finais', 'Ensino Médio
 interface TeacherDialogProps {
   teacher?: Teacher | null
   availableSubjects: string[]
+  jornadaPadrao: Jornada
   onAddSubject: (subjectName: string) => void
   onClose: () => void
   onSave: (teacherData: Omit<Teacher, 'id' | 'currentWeeklyHours'> & { id?: string }) => void
@@ -17,6 +22,7 @@ interface TeacherDialogProps {
 export function TeacherDialog({
   teacher,
   availableSubjects,
+  jornadaPadrao,
   onAddSubject,
   onClose,
   onSave,
@@ -33,6 +39,9 @@ export function TeacherDialog({
   const [status, setStatus] = useState<'ativo' | 'inativo'>(teacher?.status ?? 'ativo')
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>(teacher?.subjects ?? [])
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [jornadaPersonalizada, setJornadaPersonalizada] = useState(Boolean(teacher?.jornada))
+  const [jornada, setJornada] = useState<Jornada>(teacher?.jornada ?? jornadaPadrao)
+  const [jornadaErrors, setJornadaErrors] = useState<JornadaErrors>({})
 
   // Estado para criação inline de disciplina
   const [isAddingSubject, setIsAddingSubject] = useState(false)
@@ -115,7 +124,10 @@ export function TeacherDialog({
       newErrors.maxWeeklyHours = 'Carga horária deve ser entre 1h e 60h.'
     }
 
-    if (Object.keys(newErrors).length > 0) {
+    const errosJornada = jornadaPersonalizada ? validarJornada(jornada) : {}
+    setJornadaErrors(errosJornada)
+
+    if (Object.keys(newErrors).length > 0 || Object.keys(errosJornada).length > 0) {
       setErrors(newErrors)
       return
     }
@@ -128,6 +140,7 @@ export function TeacherDialog({
       subjects: selectedSubjects,
       maxWeeklyHours: Number(maxWeeklyHours),
       status,
+      jornada: jornadaPersonalizada ? jornada : null,
     })
 
     close()
@@ -142,7 +155,7 @@ export function TeacherDialog({
       }}
       onClick={(e) => e.target === e.currentTarget && close()}
       aria-labelledby="teacher-dialog-title"
-      className="m-auto w-[min(520px,calc(100%-2rem))] rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(520px,calc(100%-2rem))] overflow-y-auto rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
     >
       <form onSubmit={handleSubmit} className="p-6">
         <h2 id="teacher-dialog-title" className="text-[17px] font-semibold">
@@ -302,6 +315,38 @@ export function TeacherDialog({
               onChange={(e) => setStatus(e.target.value as 'ativo' | 'inativo')}
             />
           </div>
+
+          <fieldset>
+            <legend className="mb-1.5 block text-xs font-medium text-muted">Almoço e aulas por dia</legend>
+            <div className="flex gap-1 rounded-md bg-paper p-[3px]">
+              {[
+                { personalizada: false, label: 'Padrão da escola' },
+                { personalizada: true, label: 'Personalizado' },
+              ].map((opcao) => (
+                <button
+                  type="button"
+                  key={opcao.label}
+                  aria-pressed={jornadaPersonalizada === opcao.personalizada}
+                  onClick={() => setJornadaPersonalizada(opcao.personalizada)}
+                  className={cn(
+                    'flex-1 rounded py-1.5 text-xs transition-colors',
+                    jornadaPersonalizada === opcao.personalizada
+                      ? 'bg-white font-semibold text-primary shadow-xs'
+                      : 'text-muted hover:text-ink',
+                  )}
+                >
+                  {opcao.label}
+                </button>
+              ))}
+            </div>
+            <div className="mt-3">
+              {jornadaPersonalizada ? (
+                <JornadaFields value={jornada} errors={jornadaErrors} onChange={setJornada} />
+              ) : (
+                <p className="text-xs text-muted">{resumoJornada(jornadaPadrao)}</p>
+              )}
+            </div>
+          </fieldset>
         </div>
 
         <div className="mt-6 flex justify-end gap-2">

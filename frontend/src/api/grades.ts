@@ -155,3 +155,8 @@ export async function editarAula(aulaId: number, payload: AulaUpdate): Promise<A
   const { data } = await api.put<AulaBackend>(`/grades/aulas/${aulaId}`, payload)
   return data
 }
+
+/** Exclui a grade e suas aulas (uma geração em andamento não pode ser excluída). */
+export async function deleteGrade(gradeId: number): Promise<void> {
+  await api.delete(`/grades/${gradeId}`)
+}

@@ -16,6 +16,8 @@ from services.time_slots import (
     DIAS_SEMANA,
     get_slots_for_turma,
     infer_nivel_ensino,
+    parse_slot_range,
+    parse_time_to_minutes,
     slots_overlap,
     tem_tardes_parciais,
 )
@@ -31,7 +33,11 @@ REGRAS = {
     "sem_janela_turma": "turma sem horário vago entre aulas",
     "primeira_ultima": "quem dá a primeira aula do turno não dá a última",
     "planejamento": f"{PLANEJAMENTOS_SEMANAIS} horários de planejamento por professor",
-    "horarios_fixos": "aulas com dia e horário fixos",
+    "horarios_fixos": "aulas com dia ou horário fixos",
+    "manha_completa": "manhãs completas nas turmas de manhã + tardes",
+    "estrutura_tardes": "tardes completas ou meia tarde nas turmas de manhã + tardes",
+    "almoco": "almoço dos professores",
+    "limite_aulas_dia": "máximo de aulas por dia dos professores",
 }
 
 # Início de palavra (sem acento) que indica a área do conhecimento pelo nome da disciplina.
@@ -105,8 +111,22 @@ class ItemInput:
     aula_dobrada: bool = True
     tipo_sala: Optional[str] = None
     # (dia, horário) em que a aula precisa acontecer, definidos pela escola (ex.: laboratório
-    # na quarta à tarde). As aulas restantes, se houver, o gerador distribui.
-    horarios_fixos: List[Tuple[str, str]] = field(default_factory=list)
+    # na quarta à tarde). Horário None = qualquer horário daquele dia. As aulas restantes,
+    # se houver, o gerador distribui.
+    horarios_fixos: List[Tuple[str, Optional[str]]] = field(default_factory=list)
+
+    def fixos_exatos(self) -> set:
+        return {(dia, h) for dia, h in self.horarios_fixos if h}
+
+    def aulas_minimas_por_dia(self) -> Dict[str, int]:
+        """Quantas aulas o item precisa ter em cada dia por causa dos horários/dias fixos."""
+        minimo: Dict[str, int] = {}
+        for dia, _ in self.fixos_exatos():
+            minimo[dia] = minimo.get(dia, 0) + 1
+        for dia, h in self.horarios_fixos:
+            if not h:
+                minimo[dia] = minimo.get(dia, 0) + 1
+        return minimo
 
 
 @dataclass
@@ -127,6 +147,14 @@ class TurmaInput:
 
 
 @dataclass
+class Almoco:
+    """`minutos` seguidos sem aula nem planejamento dentro da faixa `inicio`-`fim` ("HH:MM")."""
+    inicio: str
+    fim: str
+    minutos: int
+
+
+@dataclass
 class ProfessorInput:
     chave: str
     nome: str
@@ -134,6 +162,8 @@ class ProfessorInput:
     carga_maxima: Optional[int] = None
     indisponivel: List[Intervalo] = field(default_factory=list)
     preferencial: List[Intervalo] = field(default_factory=list)
+    almoco: Optional[Almoco] = None
+    max_aulas_dia: Optional[int] = None
 
 
 @dataclass
@@ -202,6 +232,26 @@ def _sem_sobreposicao(model, alocacoes: List[Tuple[cp_model.IntVar, str]], lit=N
                     ct.OnlyEnforceIf(lit)
 
 
+def _opcoes_almoco(almoco: Almoco, horarios: List[str]) -> List[List[int]]:
+    """
+    Formas de encaixar o almoço na linha do dia: cada opção traz os índices de `horarios`
+    que precisam ficar vagos. Vazio = alguma pausa já cabe entre os horários, sem exigir nada.
+    """
+    inicio = parse_time_to_minutes(almoco.inicio)
+    ultimo_inicio = parse_time_to_minutes(almoco.fim) - almoco.minutos
+    faixas = [parse_slot_range(h) for h in horarios]
+    # Uma pausa sempre pode começar no início da faixa ou quando termina uma aula
+    inicios = {inicio} | {fim for _, fim in faixas if inicio <= fim <= ultimo_inicio}
+    opcoes = []
+    for s in sorted(inicios):
+        vagos = [i for i, (a, b) in enumerate(faixas) if a < s + almoco.minutos and s < b]
+        if not vagos:
+            return []
+        if vagos not in opcoes:
+            opcoes.append(vagos)
+    return opcoes
+
+
 def resolver_grade(
     turmas: List[TurmaInput],
     professores: Dict[str, ProfessorInput],
@@ -232,6 +282,13 @@ def resolver_grade(
             1 for dia in DIAS_SEMANA for s in slots if s["turno"] != "tarde" or dia in t.dias_com_tarde()
         )
         total = sum(i.aulas_semanais for i in t.itens)
+        manha = len(DIAS_SEMANA) * sum(1 for s in slots if s["turno"] == "manha")
+        if tem_tardes_parciais(t.turno) and total < manha:
+            return _inviavel(
+                f"Inviável: a turma '{t.nome}' tem {total} aulas semanais, menos que os {manha} horários "
+                f"das manhãs, que precisam ficar completas no turno '{t.turno}'.",
+                avisos,
+            )
         if total > capacidade:
             return _inviavel(
                 f"Inviável: a turma '{t.nome}' necessita de {total} aulas semanais, mas o nível "
@@ -241,12 +298,16 @@ def resolver_grade(
             )
         horarios_turma = {s["horario"] for s in slots}
         for item in t.itens:
-            if len(set(item.horarios_fixos)) > item.aulas_semanais:
+            if sum(item.aulas_minimas_por_dia().values()) > item.aulas_semanais:
                 return _inviavel(
                     f"Inviável: '{item.disciplina}' na turma '{t.nome}' tem mais horários fixos que aulas semanais.",
                     avisos,
                 )
             for dia, horario in item.horarios_fixos:
+                if horario is None:
+                    if dia not in DIAS_SEMANA:
+                        return _inviavel(f"Inviável: '{item.disciplina}' na turma '{t.nome}' está fixa em um dia inválido ({dia}).", avisos)
+                    continue
                 tarde_bloqueada = any(
                     s["horario"] == horario and s["turno"] == "tarde" for s in slots
                 ) and dia not in t.dias_com_tarde()
@@ -275,6 +336,13 @@ def resolver_grade(
             return _inviavel(
                 f"Inviável: o professor '{prof.nome}' recebeu {total} aulas na matriz curricular, "
                 f"acima da carga máxima de {prof.carga_maxima}.",
+                avisos,
+            )
+        if prof.max_aulas_dia is not None and total > prof.max_aulas_dia * len(DIAS_SEMANA):
+            return _inviavel(
+                f"Inviável: o professor '{prof.nome}' recebeu {total} aulas na matriz curricular, "
+                f"mas o limite de {prof.max_aulas_dia} aulas por dia permite no máximo "
+                f"{prof.max_aulas_dia * len(DIAS_SEMANA)} na semana.",
                 avisos,
             )
 
@@ -355,29 +423,60 @@ def resolver_grade(
         for alocacoes in por_dia.values():
             _sem_sobreposicao(model, alocacoes)
 
-    # Turno "Manhã + tardes": só há aula à tarde nos dias escolhidos; sem escolha, o
-    # gerador decide e tenta usar o mínimo de tardes (uma "tarde fechada")
+    # Turno "Manhã + tardes" (Ensino Médio): manhãs completas; cada tarde fica vazia, pela
+    # metade (primeiros horários) ou completa; só há tarde nos dias escolhidos e, sem
+    # escolha, o gerador usa o mínimo de tardes
     tardes_usadas: List[cp_model.IntVar] = []
+    # Aulas regulares em tardes que já têm aula fixa (laboratório, Redação ENEM...): a escola
+    # prefere essas tardes só com a aula fixa e a "tarde fechada" em outro dia
+    regulares_em_tarde_fixa: List[cp_model.IntVar] = []
     for t in turmas:
         if not tem_tardes_parciais(t.turno):
             continue
-        tarde = [s["ordem"] for s in turma_slots[t.id] if s["turno"] == "tarde"]
+        slots = turma_slots[t.id]
+        manha = [s["ordem"] for s in slots if s["turno"] == "manha"]
+        tarde = [s["ordem"] for s in slots if s["turno"] == "tarde"]
+        meia = len(tarde) // 2
+        fixos_tarde = {
+            (dia, h)
+            for item in t.itens
+            for dia, h in item.fixos_exatos()
+            if any(s["horario"] == h and s["turno"] == "tarde" for s in slots)
+        }
         for dia in DIAS_SEMANA:
+            for o in manha:
+                model.Add(occ[(t.id, dia, o)] == 1).OnlyEnforceIf(lits["manha_completa"])
             ocupacao = [occ[(t.id, dia, o)] for o in tarde]
             if dia not in t.dias_com_tarde():
                 for o in ocupacao:
                     model.Add(o == 0)
-            elif not t.tardes:
+                continue
+            tarde_meia = model.NewBoolVar(f"meia_tarde_t{t.id}_{dia}")
+            tarde_cheia = model.NewBoolVar(f"tarde_cheia_t{t.id}_{dia}")
+            model.Add(tarde_meia + tarde_cheia <= 1)
+            model.Add(sum(ocupacao) == meia * tarde_meia + len(tarde) * tarde_cheia).OnlyEnforceIf(
+                lits["estrutura_tardes"]
+            )
+            if not t.tardes:
                 usa = model.NewBoolVar(f"tarde_t{t.id}_{dia}")
                 model.AddMaxEquality(usa, ocupacao)
                 tardes_usadas.append(usa)
+            if any(d == dia for d, _ in fixos_tarde):
+                regulares_em_tarde_fixa += [
+                    occ[(t.id, dia, s["ordem"])]
+                    for s in slots
+                    if s["turno"] == "tarde" and (dia, s["horario"]) not in fixos_tarde
+                ]
 
-    # Aulas com dia e horário definidos pela escola
+    # Aulas com dia (e horário) definidos pela escola
     for t in turmas:
         ordem_por_horario = {s["horario"]: s["ordem"] for s in turma_slots[t.id]}
         for idx, item in enumerate(t.itens):
-            for dia, horario in set(item.horarios_fixos):
+            for dia, horario in item.fixos_exatos():
                 model.Add(x[(t.id, idx, dia, ordem_por_horario[horario])] == 1).OnlyEnforceIf(lits["horarios_fixos"])
+            for dia, minimo in item.aulas_minimas_por_dia().items():
+                aulas_dia = [x[(t.id, idx, dia, s["ordem"])] for s in turma_slots[t.id]]
+                model.Add(sum(aulas_dia) >= minimo).OnlyEnforceIf(lits["horarios_fixos"])
 
     # ------------------------------------------------------------------
     # 4. Regras com literal (identificáveis em caso de inviabilidade)
@@ -387,6 +486,14 @@ def resolver_grade(
         for var, dia, horario, nivel in prof_aulas_nivel.get(chave, []):
             if any(ind.aplica(dia, horario, nivel) for ind in prof.indisponivel):
                 model.Add(var == 0).OnlyEnforceIf(lits["disponibilidade_professor"])
+
+    # Máximo de aulas por dia de cada professor
+    for chave, por_dia in prof_aulas.items():
+        maximo = professores[chave].max_aulas_dia
+        if maximo is None:
+            continue
+        for alocacoes in por_dia.values():
+            model.Add(sum(v for v, _ in alocacoes) <= maximo).OnlyEnforceIf(lits["limite_aulas_dia"])
 
     # Salas: uma turma por vez e respeito aos horários ocupados por outras atividades
     for sid, por_dia in sala_uso.items():
@@ -405,8 +512,9 @@ def resolver_grade(
         # Aula dobrada: cada dia tem no máximo um bloco da disciplina, que é uma aula
         # individual ou uma dupla em horários vizinhos do mesmo turno; n blocos duplos na semana
         for idx, item in enumerate(t.itens):
-            # Quem fixou o horário já decidiu a distribuição da disciplina
-            if item.horarios_fixos:
+            # Quem fixou o horário já decidiu a distribuição da disciplina (dia sem horário
+            # fixo continua seguindo a regra da aula dobrada)
+            if item.fixos_exatos():
                 continue
             duplas = _qtd_duplas(item)
             blocos_duplos = []
@@ -458,7 +566,7 @@ def resolver_grade(
             ):
                 # Aula com horário fixo foi decidida pela escola e não entra na regra
                 # (ex.: o rodízio do laboratório abre e fecha a tarde de quarta)
-                if (dia, s["horario"]) in item.horarios_fixos:
+                if (dia, s["horario"]) in item.fixos_exatos():
                     continue
                 var = x[(t.id, idx, dia, s["ordem"])]
                 turno = s["turno"]
@@ -505,7 +613,13 @@ def resolver_grade(
         plans_semana = []
         for dia in DIAS_SEMANA:
             aulas_dia = prof_aulas.get(chave, {}).get(dia, [])
-            for turno, horarios in por_turno.items():
+            # Linha do dia inteiro (manhã e depois tarde), para as janelas entre turnos
+            horarios_dia: List[str] = []
+            pres_dia: List[cp_model.IntVar] = []
+            ocupado_dia: Dict[str, cp_model.IntVar] = {}  # horário -> tem aula que se sobrepõe a ele
+            plan_dia: Dict[str, cp_model.IntVar] = {}
+            for turno in sorted(por_turno, key=["manha", "tarde"].index):
+                horarios = por_turno[turno]
                 pres = []
                 for h in horarios:
                     p = model.NewBoolVar(f"plan_{chave}_{dia}_{h}")
@@ -519,6 +633,8 @@ def resolver_grade(
                     else:
                         model.Add(ocupado == 0)
                     model.Add(p + ocupado <= 1)
+                    ocupado_dia[h] = ocupado
+                    plan_dia[h] = p
 
                     presente = model.NewBoolVar(f"presente_{chave}_{dia}_{h}")
                     model.Add(presente == p + ocupado)
@@ -544,32 +660,48 @@ def resolver_grade(
                 for h in horarios:
                     model.Add(plan[(chave, dia, turno, h)] <= da_aula).OnlyEnforceIf(lits["planejamento"])
 
-                # Janela: horário vago (sem aula nem planejamento, nem outro que se sobreponha a
-                # ele) entre dois horários com presença. É permitida, mas evitada acima de tudo
-                # (ver objetivo); cada janela que sobrar aparece no resultado
-                cobertura = []
-                for j, hj in enumerate(horarios):
-                    sobrepostos = [pres[k] for k, hk in enumerate(horarios) if slots_overlap(hj, hk)]
-                    if len(sobrepostos) == 1:
-                        cobertura.append(sobrepostos[0])
-                    else:
-                        c = model.NewBoolVar(f"cobre_{chave}_{dia}_{hj}")
-                        model.AddMaxEquality(c, sobrepostos)
-                        cobertura.append(c)
-                n = len(horarios)
-                for j in range(1, n - 1):
-                    pares = [
-                        (i, k)
-                        for i in range(j)
-                        for k in range(j + 1, n)
-                        if not slots_overlap(horarios[i], horarios[j]) and not slots_overlap(horarios[j], horarios[k])
-                    ]
-                    if not pares:
-                        continue
-                    jan = model.NewBoolVar(f"janela_{chave}_{dia}_{horarios[j]}")
-                    for i, k in pares:
-                        model.Add(jan >= pres[i] + pres[k] - cobertura[j] - 1)
-                    janelas[(chave, dia, horarios[j])] = jan
+                horarios_dia += horarios
+                pres_dia += pres
+
+            # Almoço: uma das opções de pausa é escolhida e seus horários ficam vagos
+            pausa_dia: Dict[str, List[cp_model.IntVar]] = {}  # horário -> pausas que o deixam vago
+            almoco = professores[chave].almoco
+            opcoes_almoco = _opcoes_almoco(almoco, horarios_dia) if almoco else []
+            pausas = []
+            for o, vagos in enumerate(opcoes_almoco):
+                pausa = model.NewBoolVar(f"almoco_{chave}_{dia}_{o}")
+                pausas.append(pausa)
+                for i in vagos:
+                    model.Add(pres_dia[i] + pausa <= 1)
+                    pausa_dia.setdefault(horarios_dia[i], []).append(pausa)
+            if pausas:
+                # Uma só: é ela que deixa de contar como janela
+                model.Add(sum(pausas) <= 1)
+                model.Add(sum(pausas) == 1).OnlyEnforceIf(lits["almoco"])
+
+            # Janela: horário vago (sem aula nem planejamento, nem outro que se sobreponha a ele)
+            # com presença antes e depois no mesmo dia, inclusive de um turno para o outro
+            # (ex.: aula até 09:00 e de novo às 15:50). O almoço não é horário de aula e não conta.
+            # É permitida, mas evitada acima de tudo (ver objetivo); as que sobram vão no resultado.
+            n = len(horarios_dia)
+            for j in range(1, n - 1):
+                hj = horarios_dia[j]
+                antes = [pres_dia[i] for i in range(j) if not slots_overlap(horarios_dia[i], hj)]
+                depois = [pres_dia[k] for k in range(j + 1, n) if not slots_overlap(hj, horarios_dia[k])]
+                if not antes or not depois:
+                    continue
+                # Coberto só por aula ou planejamento que se sobreponha de fato a este horário
+                # (não por outro horário que apenas encosta numa aula, como 11:10 entre 11:00 e 11:50)
+                sobrepostos = [ocupado_dia[hj]] + [plan_dia[hk] for hk in horarios_dia if slots_overlap(hj, hk)]
+                tem_antes = model.NewBoolVar(f"antes_{chave}_{dia}_{hj}")
+                tem_depois = model.NewBoolVar(f"depois_{chave}_{dia}_{hj}")
+                coberto = model.NewBoolVar(f"cobre_{chave}_{dia}_{hj}")
+                model.AddMaxEquality(tem_antes, antes)
+                model.AddMaxEquality(tem_depois, depois)
+                model.AddMaxEquality(coberto, sobrepostos)
+                jan = model.NewBoolVar(f"janela_{chave}_{dia}_{hj}")
+                model.Add(jan >= tem_antes + tem_depois - coberto - 1 - sum(pausa_dia.get(hj, [])))
+                janelas[(chave, dia, hj)] = jan
 
         model.Add(sum(plans_semana) == PLANEJAMENTOS_SEMANAIS).OnlyEnforceIf(lits["planejamento"])
 
@@ -603,11 +735,19 @@ def resolver_grade(
     ]
     # Concentrar as tardes vem antes de tudo: uma tarde a mais custa mais que o máximo
     # que planejamento compartilhado e preferências juntos podem render
-    peso_tarde = 3 * len(compartilhado) + len(preferidas) + 1
+    # Prioridades (cada nível pesa mais que todos os de baixo juntos): janelas de professor,
+    # número de tardes, aulas regulares em tarde com aula fixa, planejamento/preferências
+    peso_fixo = 3 * len(compartilhado) + len(preferidas) + 1
+    peso_tarde = peso_fixo * (len(regulares_em_tarde_fixa) + 1)
     # Janelas de professor pesam mais que tudo o resto junto, tardes incluídas
     peso_janela = peso_tarde * (len(tardes_usadas) + 1)
-    objetivo_base = 3 * sum(compartilhado.values()) + sum(preferidas) - peso_tarde * sum(tardes_usadas)
-    if compartilhado or preferidas or tardes_usadas or janelas:
+    objetivo_base = (
+        3 * sum(compartilhado.values())
+        + sum(preferidas)
+        - peso_fixo * sum(regulares_em_tarde_fixa)
+        - peso_tarde * sum(tardes_usadas)
+    )
+    if compartilhado or preferidas or tardes_usadas or regulares_em_tarde_fixa or janelas:
         model.Maximize(objetivo_base - peso_janela * sum(janelas.values()))
 
     # ------------------------------------------------------------------
@@ -624,7 +764,7 @@ def resolver_grade(
     # sem objetivo nenhum, o CP-SAT desliga as buscas por vizinhança que ajudam a achá-la.
     busca = model.Clone()
     busca.ClearObjective()
-    if compartilhado or preferidas or tardes_usadas:
+    if compartilhado or preferidas or tardes_usadas or regulares_em_tarde_fixa:
         busca.Maximize(objetivo_base)
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = tempo_limite_seg

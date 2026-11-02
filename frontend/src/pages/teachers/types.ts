@@ -1,3 +1,4 @@
+import type { Jornada } from '@/api/configuracoes'
 import type { ProfessorBackend } from '@/api/professores'
 import type { NivelEnsino } from '@/lib/schedule'
 
@@ -14,6 +15,8 @@ export interface Teacher {
   /** Soma das aulas semanais atribuídas ao professor nas matrizes curriculares das turmas */
   currentWeeklyHours: number
   status: 'ativo' | 'inativo'
+  /** Nulo = segue a jornada padrão da escola */
+  jornada: Jornada | null
 }
 
 export type TeacherRow = Teacher & { raw: ProfessorBackend }

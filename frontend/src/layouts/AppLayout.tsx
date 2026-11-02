@@ -13,12 +13,12 @@ export function AppLayout() {
     <ScheduleProvider>
       <div className="flex min-h-svh">
         {/* Desktop */}
-        <aside className="sticky top-0 hidden h-svh w-60 shrink-0 md:block">
+        <aside className="sticky top-0 hidden h-svh w-60 shrink-0 md:block print:hidden">
           <Sidebar />
         </aside>
 
         {/* Mobile: barra superior + gaveta */}
-        <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center justify-between bg-navy px-4 md:hidden">
+        <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center justify-between bg-navy px-4 md:hidden print:hidden">
           <span className="font-bold text-white">GradeCerta</span>
           <button
             type="button"
@@ -46,7 +46,7 @@ export function AppLayout() {
           </div>
         )}
 
-        <main className="min-w-0 flex-1 px-4 pt-20 pb-10 md:px-11 md:py-9">
+        <main className="min-w-0 flex-1 px-4 pt-20 pb-10 md:px-11 md:py-9 print:p-0">
           <Outlet />
         </main>
       </div>
