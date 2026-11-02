@@ -4,7 +4,6 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session, joinedload
 
 from database.models import TurmaDB, ProfessorDB, DisciplinaDB, DisponibilidadeDB, GradeDB, AulaDB, SalaDB
-from models.jornada import Jornada
 from services.grid_solver import (
     Almoco,
     Intervalo,
@@ -18,7 +17,7 @@ from services.grid_solver import (
     normalizar,
     resolver_grade,
 )
-from services.jornada import jornada_padrao
+from services.jornada import jornada_do_professor, jornada_padrao
 from services.vinculo_professores import professores_do_item, vincular_por_id
 
 # Tempo padrão do solver; a tela pode pedir outro (até TEMPO_MAXIMO_SEG)
@@ -94,7 +93,7 @@ class GridGeneratorService:
         turmas: List[TurmaInput] = []
 
         def professor_input(chave: str, nome: str, prof: Optional[ProfessorDB]) -> ProfessorInput:
-            jornada = Jornada(**prof.jornada) if prof and prof.jornada else padrao
+            jornada = jornada_do_professor(prof, padrao)
             return ProfessorInput(
                 chave=chave,
                 nome=nome,

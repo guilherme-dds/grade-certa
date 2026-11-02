@@ -128,7 +128,7 @@ def test_professor_pelo_id_renomeado_e_inativo(db):
     fabio = db.get(ProfessorDB, id_de["Fabio"])
     fabio.nome = "Fábio Renomeado"
     fabio.ativo = False
-    db.add(DisponibilidadeDB(professor_id=fabio.id, dia_semana="Segunda", horario_inicio="07:00", horario_fim="12:00"))
+    db.add(DisponibilidadeDB(professor_id=fabio.id, dia_semana="Seg", horario_inicio="07:00", horario_fim="12:00"))
     db.commit()
 
     resultado = GridGeneratorService(db).generate("Teste vínculo por id")
@@ -139,4 +139,4 @@ def test_professor_pelo_id_renomeado_e_inativo(db):
     do_fabio = [a for a in aulas if any(p["id"] == fabio.id for p in a.professores)]
     assert do_fabio and all(a.professor_nome == "Fábio Renomeado" for a in do_fabio)
     # Inativo, mas na matriz: a indisponibilidade continua valendo
-    assert not any(a.dia_semana == "Segunda" for a in do_fabio)
+    assert not any(a.dia_semana == "Seg" and a.horario < "12:00" for a in do_fabio)

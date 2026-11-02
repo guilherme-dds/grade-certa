@@ -7,6 +7,7 @@ from typing import Optional
 from database.connection import SessionLocal, get_db
 from database.models import AulaDB, GradeDB, ProfessorDB, SalaDB, TurmaDB
 from models.grade import Aula, AulaUpdate, Grade
+from services.agenda_professores import recalcular_agenda
 from services.grade_conflicts import DetectorConflitos, horarios_da_turma
 from services.grid_generator import TEMPO_LIMITE_SEG, TEMPO_MAXIMO_SEG, GridGeneratorService
 from services.time_slots import DIAS_SEMANA, TIME_SLOTS_BY_NIVEL, slots_overlap
@@ -159,6 +160,7 @@ def editar_aula(aula_id: int, dados: AulaUpdate, db: Session = Depends(get_db)):
     """
     Reatribui dia, horário, professor e sala de uma aula. Recusa apenas choque com outra
     aula da mesma turma; os demais problemas aparecem em /grades/{id}/conflitos.
+    Planejamentos e janelas dos professores são refeitos a partir das aulas.
     """
     aula = db.query(AulaDB).filter(AulaDB.id == aula_id).first()
     if not aula:
@@ -204,6 +206,8 @@ def editar_aula(aula_id: int, dados: AulaUpdate, db: Session = Depends(get_db)):
     aula.professor_nome = professores[0].nome if professores else None
     aula.professores = [{"id": p.id, "nome": p.nome} for p in professores]
     aula.sala_nome = dados.sala_nome or None
+    db.flush()
+    recalcular_agenda(db, db.query(GradeDB).filter(GradeDB.id == aula.grade_id).first())
     db.commit()
     db.refresh(aula)
     return aula
