@@ -2,7 +2,6 @@ import { createBrowserRouter } from 'react-router'
 import { RequireAuth, RequireGuest } from '@/auth/guards'
 import { AppLayout } from '@/layouts/AppLayout'
 import { AuthLayout } from '@/layouts/AuthLayout'
-import { AvailabilityPage } from '@/pages/AvailabilityPage'
 import { ConflictsPage } from '@/pages/conflicts/ConflictsPage'
 import { DashboardPage } from '@/pages/dashboard/DashboardPage'
 import { GenerationPage } from '@/pages/generation/GenerationPage'
@@ -37,7 +36,6 @@ export const router = createBrowserRouter([
           { path: '/', element: <DashboardPage /> },
           { path: '/professores', element: <TeachersPage /> },
           { path: '/disciplinas', element: <SubjectsPage /> },
-          { path: '/disponibilidade', element: <AvailabilityPage /> },
           { path: '/geracao', element: <GenerationPage /> },
           { path: '/grade', element: <SchedulePage /> },
           { path: '/conflitos', element: <ConflictsPage /> },

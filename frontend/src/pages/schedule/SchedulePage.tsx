@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { deleteGrade, getHistoricoGrades } from '@/api/grades'
-import { useAuth } from '@/auth/useAuth'
 import { Button } from '@/components/ui/Button'
 import { buttonStyles } from '@/components/ui/buttonStyles'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -14,7 +13,6 @@ import { LessonEditDialog } from './LessonEditDialog'
 import { ScheduleGrid } from './ScheduleGrid'
 
 export function SchedulePage() {
-  const { role } = useAuth()
   const { lessons, activeGrade, horariosTurmas, isLoading, refreshSchedule } = useSchedule()
   const [params, setParams] = useSearchParams()
   const queryClient = useQueryClient()
@@ -70,8 +68,7 @@ export function SchedulePage() {
   const classGroup = availableTurmas.find((c) => c === params.get('turma')) ?? availableTurmas[0] ?? ''
   const teacher = params.get('professor') ?? ''
   const room = params.get('sala') ?? ''
-  const canEdit = role === 'coordenacao'
-  const editing = canEdit ? lessons.find((l) => String(l.id) === params.get('aula')) : undefined
+  const editing = lessons.find((l) => String(l.id) === params.get('aula'))
 
   const setParam = (key: string, value: string | null) =>
     setParams(
@@ -103,11 +100,9 @@ export function SchedulePage() {
           title="Grade Horária"
           description="Visualização dos horários semanais distribuídos por turma e professor."
           actions={
-            canEdit && (
-              <Link to="/geracao" className={buttonStyles()}>
-                Gerar Grade Automática
-              </Link>
-            )
+            <Link to="/geracao" className={buttonStyles()}>
+              Gerar Grade Automática
+            </Link>
           }
         />
         <div className="rounded-xl border border-dashed border-line bg-white p-12 text-center shadow-xs">
@@ -124,13 +119,11 @@ export function SchedulePage() {
             Ainda não há horários gerados salvos no sistema. Acesse o gerador inteligente para montar a distribuição
             semanal de aulas automaticamente com Google OR-Tools.
           </p>
-          {canEdit && (
-            <div className="mt-6">
-              <Link to="/geracao" className={buttonStyles()}>
-                Ir para Geração Automática →
-              </Link>
-            </div>
-          )}
+          <div className="mt-6">
+            <Link to="/geracao" className={buttonStyles()}>
+              Ir para Geração Automática →
+            </Link>
+          </div>
         </div>
       </div>
     )
@@ -186,12 +179,10 @@ export function SchedulePage() {
               allLabel="Todas"
               onChange={(v) => setParam('sala', v)}
             />
-            {canEdit && (
-              <Link to="/geracao" className={buttonStyles({ variant: 'secondary' })}>
-                Nova Geração
-              </Link>
-            )}
-            {canEdit && activeGrade && (
+            <Link to="/geracao" className={buttonStyles({ variant: 'secondary' })}>
+              Nova Geração
+            </Link>
+            {activeGrade && (
               <Button variant="secondary" onClick={() => setIsDeleting(true)} className="text-danger">
                 Excluir grade
               </Button>
@@ -205,7 +196,7 @@ export function SchedulePage() {
         timeSlots={turmaSlots}
         editingId={editing?.id}
         isDimmed={isDimmed}
-        onSelect={canEdit ? (lesson) => setParam('aula', String(lesson.id)) : undefined}
+        onSelect={(lesson) => setParam('aula', String(lesson.id))}
       />
 
       {teacher && planejamentos.length > 0 && (
@@ -225,9 +216,7 @@ export function SchedulePage() {
       )}
 
       <p className="mt-3.5 text-[12.5px] text-muted">
-        {canEdit
-          ? 'Clique em uma célula para reatribuir professor, sala ou horário. Célula em destaque: edição em andamento.'
-          : 'Visualização somente leitura. Alterações na grade são feitas pela coordenação.'}
+        Clique em uma célula para reatribuir professor, sala ou horário. Célula em destaque: edição em andamento.
       </p>
 
       {editing && <LessonEditDialog key={editing.id} lesson={editing} onClose={() => setParam('aula', null)} />}

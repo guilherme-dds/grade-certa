@@ -4,13 +4,11 @@ import { getMe, login as loginRequest } from '@/api/auth'
 import { UNAUTHORIZED_EVENT } from '@/api/client'
 import type { LoginRequest } from '@/api/types'
 import { AuthContext, meQueryKey, type AuthContextValue } from './AuthContext'
-import { getUserRole, type Role } from './roles'
 import { tokenStorage } from './tokenStorage'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const [token, setToken] = useState(() => tokenStorage.get())
-  const [previewRole, setPreviewRole] = useState<Role | null>(null)
 
   const meQuery = useQuery({
     queryKey: meQueryKey,
@@ -23,7 +21,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     tokenStorage.clear()
     setToken(null)
-    setPreviewRole(null)
     queryClient.clear()
   }, [queryClient])
 
@@ -44,17 +41,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AuthContextValue>(() => {
     const user = token ? (meQuery.data ?? null) : null
-    const role = user ? ((import.meta.env.DEV && previewRole) || getUserRole(user)) : null
     return {
       user,
-      role,
       isAuthenticated: user !== null,
       isLoading: Boolean(token) && meQuery.isPending,
       login,
       logout,
-      setPreviewRole,
     }
-  }, [token, meQuery.data, meQuery.isPending, previewRole, login, logout])
+  }, [token, meQuery.data, meQuery.isPending, login, logout])
 
   return <AuthContext value={value}>{children}</AuthContext>
 }
