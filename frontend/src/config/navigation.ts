@@ -16,6 +16,7 @@ export const navItems: NavItem[] = [
   { to: '/grade', label: 'Grade gerada', roles: ['coordenacao', 'professor'] },
   { to: '/conflitos', label: 'Conflitos', roles: ['coordenacao'] },
   { to: '/relatorios', label: 'Relatórios', roles: ['admin', 'coordenacao'] },
+  { to: '/usuarios', label: 'Usuários', roles: ['admin', 'coordenacao'] },
 ]
 
 export function navItemsFor(role: Role) {

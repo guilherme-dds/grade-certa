@@ -1,10 +1,17 @@
-from fastapi import FastAPI
+import os
+
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database.connection import Base, engine
 import database.models  # Garante que os modelos SQLAlchemy sejam importados
 from routers import professores, turmas, disciplinas, disponibilidades, grades, salas, configuracoes
+from services.autenticacao import usuario_autenticado
 
 from sqlalchemy import text
+
+# O token do login é validado com a mesma chave do auth-service
+if not os.getenv("SECRET_KEY"):
+    raise RuntimeError("A variável SECRET_KEY não está definida no arquivo .env ou no ambiente.")
 
 # Cria automaticamente as tabelas no MySQL se não existirem
 Base.metadata.create_all(bind=engine)
@@ -68,14 +75,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Inclui as rotas separadas
-app.include_router(professores.router)
-app.include_router(turmas.router)
-app.include_router(disciplinas.router)
-app.include_router(disponibilidades.router)
-app.include_router(grades.router)
-app.include_router(salas.router)
-app.include_router(configuracoes.router)
+# Todas as rotas exigem login (token do auth-service)
+for modulo in (professores, turmas, disciplinas, disponibilidades, grades, salas, configuracoes):
+    app.include_router(modulo.router, dependencies=[Depends(usuario_autenticado)])
 
 
 @app.get("/")
