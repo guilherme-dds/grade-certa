@@ -52,6 +52,13 @@ def _grade_basica(db):
     return grade, ana, bia
 
 
+def _choques(client, grade_id):
+    """Conflitos da grade sem a regra de primeira/última aula: nas turmas de uma aula só
+    do `_grade_basica`, a mesma aula é a primeira e a última do turno."""
+    conflitos = client.get(f"/grades/{grade_id}/conflitos").json()
+    return [c for c in conflitos if c["tipo"] != "Primeira e última aula"]
+
+
 def test_horarios_e_grade_trazem_horarios_das_turmas(ctx):
     client, db = ctx
     grade, *_ = _grade_basica(db)
@@ -68,7 +75,7 @@ def test_editar_aula_gera_conflito_e_sugestao(ctx):
     client, db = ctx
     grade, ana, _ = _grade_basica(db)
     aula_port = grade.aulas[1]
-    assert client.get(f"/grades/{grade.id}/conflitos").json() == []
+    assert _choques(client, grade.id) == []
 
     # Ana passa a dar Português no mesmo horário em que dá Matemática no 6º ano
     r = client.put(f"/grades/aulas/{aula_port.id}", json={
@@ -77,7 +84,7 @@ def test_editar_aula_gera_conflito_e_sugestao(ctx):
     assert r.status_code == 200, r.text
     assert r.json()["professor_nome"] == "Ana"
 
-    conflitos = client.get(f"/grades/{grade.id}/conflitos").json()
+    conflitos = _choques(client, grade.id)
     assert [c["tipo"] for c in conflitos] == ["Professor duplicado"]
     c = conflitos[0]
     assert c["aula_id"] == aula_port.id
@@ -86,7 +93,7 @@ def test_editar_aula_gera_conflito_e_sugestao(ctx):
     # Aplicar a sugestão resolve
     r = client.put(f"/grades/aulas/{aula_port.id}", json={**c["correcao"], "professor_ids": [ana.id], "sala_nome": "Quadra"})
     assert r.status_code == 200
-    assert client.get(f"/grades/{grade.id}/conflitos").json() == []
+    assert _choques(client, grade.id) == []
 
 
 def test_editar_aula_recusa_choque_de_turma_e_horario_invalido(ctx):
@@ -119,13 +126,13 @@ def test_disponibilidade_do_professor_e_conflito_de_indisponibilidade(ctx):
     assert len(client.get(f"/professores/{ana.id}/disponibilidades").json()) == 2
     assert client.get(f"/professores/{ana.id}").json()["disponibilidade_atualizada_em"] is not None
 
-    conflitos = client.get(f"/grades/{grade.id}/conflitos").json()
+    conflitos = _choques(client, grade.id)
     assert [c["tipo"] for c in conflitos] == ["Professor indisponível"]
 
     # Salvar de novo substitui a lista
     client.put(f"/professores/{ana.id}/disponibilidades", json=[])
     assert client.get(f"/professores/{ana.id}/disponibilidades").json() == []
-    assert client.get(f"/grades/{grade.id}/conflitos").json() == []
+    assert _choques(client, grade.id) == []
 
 
 def test_aula_com_varios_professores_detecta_conflito_de_cada_um(ctx):
@@ -140,7 +147,7 @@ def test_aula_com_varios_professores_detecta_conflito_de_cada_um(ctx):
     assert [p["nome"] for p in r.json()["professores"]] == ["Ana", "Bia"]
     assert r.json()["professor_nome"] == "Ana"
 
-    conflitos = client.get(f"/grades/{grade.id}/conflitos").json()
+    conflitos = _choques(client, grade.id)
     assert [(c["tipo"], c["descricao"].split(" ")[0]) for c in conflitos] == [("Professor duplicado", "Bia")]
 
     # Aulas antigas (sem a coluna professores) continuam aparecendo com o professor principal
