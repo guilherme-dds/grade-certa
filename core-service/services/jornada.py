@@ -14,4 +14,5 @@ def jornada_padrao(db: Session) -> Jornada:
         almoco_fim=config.almoco_fim,
         almoco_minutos=config.almoco_minutos,
         max_aulas_dia=config.max_aulas_dia,
+        max_horas_dia=config.max_horas_dia,
     )

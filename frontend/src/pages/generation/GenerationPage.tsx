@@ -146,7 +146,7 @@ export function GenerationPage() {
     <div className="space-y-8">
       <PageHeader
         title="Geração Automática de Grade"
-        description="Resolvedor matemático via Google OR-Tools CP-SAT. Distribui aulas respeitando matrizes curriculares, níveis de ensino, indisponibilidades de professores e salas, aulas dobradas, ausência de janelas, almoço e limite de aulas por dia e 4 horários de planejamento por professor."
+        description="Resolvedor matemático via Google OR-Tools CP-SAT. Distribui aulas respeitando matrizes curriculares, níveis de ensino, indisponibilidades de professores e salas, aulas dobradas, ausência de janelas, almoço, limite de aulas e de horas por dia e 4 horários de planejamento por professor."
       />
 
       {/* 1. Diagnóstico Pré-Geração */}
@@ -356,7 +356,7 @@ export function GenerationPage() {
                     <li>Verifique se o número de aulas demandadas pela turma cabe nos horários semanais do turno.</li>
                     <li>Verifique se algum professor atribuído está com carga máxima menor que a demanda.</li>
                     <li>Confirme se os professores possuem disponibilidade nos dias e turnos das aulas.</li>
-                    <li>Revise a jornada padrão ou personalizada em Professores (almoço e máximo de aulas por dia).</li>
+                    <li>Revise a jornada padrão ou personalizada em Professores (almoço, máximo de aulas e de horas por dia).</li>
                   </ul>
                 </div>
                 <Avisos avisos={detalhes?.avisos} />

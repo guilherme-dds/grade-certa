@@ -540,3 +540,26 @@ def test_maximo_de_aulas_por_dia():
     res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
     assert res.status == "inviavel"
     assert "limite de 1 aulas por dia" in res.mensagem
+
+
+def test_duracao_maxima_do_dia():
+    # 07:20 de manhã e 17:30-18:20 à tarde: 11 horas entre a primeira e a última aula
+    turmas, professores = _duas_turmas([("Seg", SLOTS[0])], [("Seg", TARDE_AF[5])])
+    professores["ana"].max_minutos_dia = 9 * 60
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO, regras_desligadas=("sem_janela_turma",))
+    assert res.status == "inviavel"
+    assert "duracao_dia" in res.regras_em_conflito
+
+    # Na escola de exemplo (só manhã), Ana fica no máximo 3 horas por dia, planejamento incluído
+    turmas, professores = montar_escola()
+    professores["ana"].max_minutos_dia = 3 * 60
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    verificar_regras(res, turmas)
+    por_dia = defaultdict(list)
+    for a in res.aulas:
+        if "ana" in a.professor_chaves:
+            por_dia[a.dia].append(parse_slot_range(a.horario))
+    for p in res.planejamentos:
+        if p.professor_chave == "ana":
+            por_dia[p.dia].append(parse_slot_range(p.horario))
+    assert all(max(f for _, f in faixas) - min(i for i, _ in faixas) <= 3 * 60 for faixas in por_dia.values())

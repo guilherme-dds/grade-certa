@@ -51,7 +51,7 @@ class GridGeneratorService:
         Regras aplicadas: matriz curricular, horários por nível de ensino, sem choque de
         turma/professor/sala, indisponibilidade de professores e salas, uma aula dobrada por
         disciplina (Inglês individual), sem janelas, primeira/última aula do turno com
-        professores diferentes, almoço e limite de aulas por dia (padrão da escola ou
+        professores diferentes, almoço, limite de aulas e de horas por dia (padrão da escola ou
         personalizados por professor) e 4 horários de planejamento, de preferência
         compartilhados com colegas da mesma área.
         """
@@ -127,6 +127,7 @@ class GridGeneratorService:
                             else None
                         ),
                         max_aulas_dia=jornada.max_aulas_dia,
+                        max_minutos_dia=round(jornada.max_horas_dia * 60) if jornada.max_horas_dia else None,
                     )
                 itens.append(
                     ItemInput(

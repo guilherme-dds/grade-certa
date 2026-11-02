@@ -31,7 +31,7 @@ import { TeacherAvailabilityDialog } from './teachers/TeacherAvailabilityDialog'
 import { TeacherDialog } from './teachers/TeacherDialog'
 
 // Até a resposta do core-service chegar (mesmos valores do padrão do backend)
-const JORNADA_INICIAL: Jornada = { almoco_inicio: '11:30', almoco_fim: '14:30', almoco_minutos: 40, max_aulas_dia: 8 }
+const JORNADA_INICIAL: Jornada = { almoco_inicio: '11:30', almoco_fim: '14:30', almoco_minutos: 40, max_aulas_dia: 8, max_horas_dia: 9 }
 
 export function TeachersPage() {
   const queryClient = useQueryClient()

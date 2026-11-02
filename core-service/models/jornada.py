@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel, Field, model_validator
 
 from services.time_slots import parse_time_to_minutes
@@ -14,6 +16,8 @@ class Jornada(BaseModel):
     # 0 = sem exigência de almoço
     almoco_minutos: int = Field(default=40, ge=0, le=240)
     max_aulas_dia: int = Field(default=8, ge=1, le=12)
+    # Da primeira à última atividade do dia (aula ou planejamento); nulo = sem limite
+    max_horas_dia: Optional[float] = Field(default=9, ge=1, le=14)
 
     @model_validator(mode="after")
     def _almoco_cabe_na_faixa(self):

@@ -38,6 +38,7 @@ REGRAS = {
     "estrutura_tardes": "tardes completas ou meia tarde nas turmas de manhã + tardes",
     "almoco": "almoço dos professores",
     "limite_aulas_dia": "máximo de aulas por dia dos professores",
+    "duracao_dia": "duração máxima do dia dos professores",
 }
 
 # Início de palavra (sem acento) que indica a área do conhecimento pelo nome da disciplina.
@@ -164,6 +165,8 @@ class ProfessorInput:
     preferencial: List[Intervalo] = field(default_factory=list)
     almoco: Optional[Almoco] = None
     max_aulas_dia: Optional[int] = None
+    # Da primeira à última atividade do dia (aula ou planejamento)
+    max_minutos_dia: Optional[int] = None
 
 
 @dataclass
@@ -662,6 +665,15 @@ def resolver_grade(
 
                 horarios_dia += horarios
                 pres_dia += pres
+
+            # Duração do dia: duas presenças mais distantes que o limite não podem acontecer juntas
+            maximo = professores[chave].max_minutos_dia
+            if maximo:
+                faixas = [parse_slot_range(h) for h in horarios_dia]
+                for i, (ini_i, fim_i) in enumerate(faixas):
+                    for k, (ini_k, fim_k) in enumerate(faixas):
+                        if k > i and max(fim_i, fim_k) - min(ini_i, ini_k) > maximo:
+                            model.Add(pres_dia[i] + pres_dia[k] <= 1).OnlyEnforceIf(lits["duracao_dia"])
 
             # Almoço: uma das opções de pausa é escolhida e seus horários ficam vagos
             pausa_dia: Dict[str, List[cp_model.IntVar]] = {}  # horário -> pausas que o deixam vago

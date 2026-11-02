@@ -7,7 +7,8 @@ export function resumoJornada(j: Jornada) {
   const almoco = j.almoco_minutos
     ? `Almoço de ${j.almoco_minutos} min entre ${j.almoco_inicio} e ${j.almoco_fim}`
     : 'Sem exigência de almoço'
-  return `${almoco} · até ${j.max_aulas_dia} aulas por dia`
+  const horas = j.max_horas_dia ? ` · dia de até ${String(j.max_horas_dia).replace('.', ',')} h` : ''
+  return `${almoco} · até ${j.max_aulas_dia} aulas por dia${horas}`
 }
 
 export function validarJornada(j: Jornada): JornadaErrors {
@@ -21,5 +22,6 @@ export function validarJornada(j: Jornada): JornadaErrors {
   if (j.almoco_minutos < 0 || j.almoco_minutos > 240) erros.almoco_minutos = 'Entre 0 e 240 minutos.'
   else if (faixa > 0 && j.almoco_minutos > faixa) erros.almoco_minutos = 'Não cabe na faixa informada.'
   if (j.max_aulas_dia < 1 || j.max_aulas_dia > 12) erros.max_aulas_dia = 'Entre 1 e 12 aulas.'
+  if (j.max_horas_dia != null && (j.max_horas_dia < 1 || j.max_horas_dia > 14)) erros.max_horas_dia = 'Entre 1 e 14 horas.'
   return erros
 }

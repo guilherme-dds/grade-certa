@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, JSON, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Boolean, JSON, DateTime, Float, ForeignKey, Text
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database.connection import Base
@@ -41,6 +41,7 @@ class ConfiguracaoEscolaDB(Base):
     almoco_fim = Column(String(5), nullable=False)
     almoco_minutos = Column(Integer, nullable=False)
     max_aulas_dia = Column(Integer, nullable=False)
+    max_horas_dia = Column(Float, nullable=True)
 
 
 class TurmaDB(Base):

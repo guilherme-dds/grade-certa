@@ -248,14 +248,15 @@ def test_excluir_grade(ctx):
     assert [g["id"] for g in client.get("/grades/historico").json()] == [rodando.id]
 
 
-JORNADA = {"almoco_inicio": "12:00", "almoco_fim": "14:00", "almoco_minutos": 40, "max_aulas_dia": 6}
+JORNADA = {"almoco_inicio": "12:00", "almoco_fim": "14:00", "almoco_minutos": 40, "max_aulas_dia": 6, "max_horas_dia": 10.5}
 
 
 def test_jornada_padrao_e_personalizada(ctx):
     client, _ = ctx
     assert client.get("/configuracoes/jornada").json() == {
-        "almoco_inicio": "11:30", "almoco_fim": "14:30", "almoco_minutos": 40, "max_aulas_dia": 8,
+        "almoco_inicio": "11:30", "almoco_fim": "14:30", "almoco_minutos": 40, "max_aulas_dia": 8, "max_horas_dia": 9,
     }
+    assert client.put("/configuracoes/jornada", json={**JORNADA, "max_horas_dia": 20}).status_code == 422
     assert client.put("/configuracoes/jornada", json={**JORNADA, "almoco_minutos": 121}).status_code == 422
     assert client.put("/configuracoes/jornada", json={**JORNADA, "almoco_fim": "11:00"}).status_code == 422
     assert client.put("/configuracoes/jornada", json=JORNADA).status_code == 200

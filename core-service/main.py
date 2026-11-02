@@ -35,6 +35,7 @@ for ddl in (
     "ALTER TABLE aulas ADD COLUMN professores JSON NULL;",
     "ALTER TABLE turmas ADD COLUMN tardes JSON NULL;",
     "ALTER TABLE professores ADD COLUMN jornada JSON NULL;",
+    "ALTER TABLE configuracoes_escola ADD COLUMN max_horas_dia FLOAT NULL DEFAULT 9;",
 ):
     try:
         with engine.connect() as conn:
