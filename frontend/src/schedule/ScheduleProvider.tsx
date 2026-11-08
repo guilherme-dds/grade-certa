@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { editarAula, getConflitos, getGrade, type ConflitoGrade, type GradeBackend } from '@/api/grades'
+import {
+  desfazerAlteracao,
+  editarAula,
+  getAlteracoes,
+  getConflitos,
+  getGrade,
+  type AlteracaoGrade,
+  type ConflitoGrade,
+  type GradeBackend,
+} from '@/api/grades'
 import { getApiErrorMessage } from '@/lib/apiError'
 import {
   ScheduleContext,
@@ -12,6 +21,7 @@ import {
 export function ScheduleProvider({ children }: { children: ReactNode }) {
   const [activeGrade, setActiveGrade] = useState<GradeBackend | null>(null)
   const [conflicts, setConflicts] = useState<ConflitoGrade[]>([])
+  const [changes, setChanges] = useState<AlteracaoGrade[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   const load = useCallback(async (gradeId?: number) => {
@@ -19,7 +29,9 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     // O backend responde id 0 quando ainda não há grade gerada
     const exists = Boolean(grade?.id)
     setActiveGrade(exists ? grade : null)
-    setConflicts(exists ? await getConflitos(grade.id!) : [])
+    const [conflitos, alteracoes] = exists ? await Promise.all([getConflitos(grade.id!), getAlteracoes(grade.id!)]) : [[], []]
+    setConflicts(conflitos)
+    setChanges(alteracoes)
   }, [])
 
   const refreshSchedule = useCallback(
@@ -103,18 +115,42 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     [conflicts, lessons, updateLesson],
   )
 
+  const undoLastChange = useCallback(async (): Promise<UpdateResult> => {
+    if (!activeGradeId) return { ok: false, error: 'Nenhuma grade selecionada.' }
+    try {
+      await desfazerAlteracao(activeGradeId)
+      await load(activeGradeId)
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: getApiErrorMessage(err, 'Não foi possível desfazer a alteração.') }
+    }
+  }, [load, activeGradeId])
+
   const value = useMemo<ScheduleContextValue>(
     () => ({
       lessons,
       conflicts,
+      changes,
       isLoading,
       activeGrade,
       horariosTurmas,
       refreshSchedule,
       updateLesson,
       applySuggestion,
+      undoLastChange,
     }),
-    [lessons, conflicts, isLoading, activeGrade, horariosTurmas, refreshSchedule, updateLesson, applySuggestion],
+    [
+      lessons,
+      conflicts,
+      changes,
+      isLoading,
+      activeGrade,
+      horariosTurmas,
+      refreshSchedule,
+      updateLesson,
+      applySuggestion,
+      undoLastChange,
+    ],
   )
 
   return <ScheduleContext value={value}>{children}</ScheduleContext>

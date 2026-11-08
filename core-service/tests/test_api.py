@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 from database.connection import Base, get_db
 from database.models import AulaDB, GradeDB, ProfessorDB, SalaDB, TurmaDB
 from routers import configuracoes, grades, professores, salas, turmas
+from services.worker_geracao import MAX_TENTATIVAS, processar_pendentes
 
 
 @pytest.fixture
@@ -27,8 +28,6 @@ def ctx():
     for r in (configuracoes, grades, professores, salas, turmas):
         app.include_router(r.router)
     app.dependency_overrides[get_db] = _db
-    # A geração em segundo plano abre a própria sessão
-    grades.session_factory = Session
     return TestClient(app), Session()
 
 
@@ -52,6 +51,13 @@ def _grade_basica(db):
     return grade, ana, bia
 
 
+def _choques(client, grade_id):
+    """Conflitos da grade sem a regra de primeira/última aula: nas turmas de uma aula só
+    do `_grade_basica`, a mesma aula é a primeira e a última do turno."""
+    conflitos = client.get(f"/grades/{grade_id}/conflitos").json()
+    return [c for c in conflitos if c["tipo"] != "Primeira e última aula"]
+
+
 def test_horarios_e_grade_trazem_horarios_das_turmas(ctx):
     client, db = ctx
     grade, *_ = _grade_basica(db)
@@ -68,7 +74,7 @@ def test_editar_aula_gera_conflito_e_sugestao(ctx):
     client, db = ctx
     grade, ana, _ = _grade_basica(db)
     aula_port = grade.aulas[1]
-    assert client.get(f"/grades/{grade.id}/conflitos").json() == []
+    assert _choques(client, grade.id) == []
 
     # Ana passa a dar Português no mesmo horário em que dá Matemática no 6º ano
     r = client.put(f"/grades/aulas/{aula_port.id}", json={
@@ -77,7 +83,7 @@ def test_editar_aula_gera_conflito_e_sugestao(ctx):
     assert r.status_code == 200, r.text
     assert r.json()["professor_nome"] == "Ana"
 
-    conflitos = client.get(f"/grades/{grade.id}/conflitos").json()
+    conflitos = _choques(client, grade.id)
     assert [c["tipo"] for c in conflitos] == ["Professor duplicado"]
     c = conflitos[0]
     assert c["aula_id"] == aula_port.id
@@ -86,7 +92,102 @@ def test_editar_aula_gera_conflito_e_sugestao(ctx):
     # Aplicar a sugestão resolve
     r = client.put(f"/grades/aulas/{aula_port.id}", json={**c["correcao"], "professor_ids": [ana.id], "sala_nome": "Quadra"})
     assert r.status_code == 200
-    assert client.get(f"/grades/{grade.id}/conflitos").json() == []
+    assert _choques(client, grade.id) == []
+
+
+def test_simular_edicao_mostra_conflitos_sem_gravar(ctx):
+    client, db = ctx
+    grade, ana, bia = _grade_basica(db)
+    aula_port = grade.aulas[1]
+    edicao = {"dia_semana": "Seg", "horario": "07:20 - 08:10", "professor_ids": [ana.id], "sala_nome": None}
+
+    r = client.post(f"/grades/aulas/{aula_port.id}/simular", json=edicao)
+    assert r.status_code == 200, r.text
+    novos = [c for c in r.json()["novos"] if c["tipo"] != "Primeira e última aula"]
+    assert [c["tipo"] for c in novos] == ["Professor duplicado"]
+
+    # Nada foi gravado
+    aula = next(a for a in client.get("/grades/", params={"grade_id": grade.id}).json()["aulas"] if a["id"] == aula_port.id)
+    assert aula["professores"] == [{"id": bia.id, "nome": "Bia"}]
+    assert _choques(client, grade.id) == []
+
+    # Salvando, o conflito aparece; voltar para a Bia o resolve
+    client.put(f"/grades/aulas/{aula_port.id}", json=edicao)
+    r = client.post(f"/grades/aulas/{aula_port.id}/simular", json={**edicao, "professor_ids": [bia.id]})
+    assert "Professor duplicado" in [c["tipo"] for c in r.json()["resolvidos"]]
+
+    # Choque na mesma turma continua recusado
+    db.add(AulaDB(grade_id=grade.id, turma_id=aula_port.turma_id, turma_nome="7º Ano A", disciplina_nome="Arte",
+                  dia_semana="Ter", horario="07:20 - 08:10", ordem=1))
+    db.commit()
+    r = client.post(f"/grades/aulas/{aula_port.id}/simular", json={**edicao, "dia_semana": "Ter"})
+    assert r.status_code == 409
+
+
+def test_desfazer_edicoes_na_ordem_inversa(ctx):
+    client, db = ctx
+    grade, ana, bia = _grade_basica(db)
+    port = grade.aulas[1]
+    grade.detalhes = {"planejamentos": [{"professor": "Bia", "professor_id": bia.id, "dia_semana": "Seg",
+                                         "horario": "08:10 - 09:00", "compartilhado": False}], "janelas": []}
+    db.commit()
+    agenda_original = grade.detalhes
+
+    def aula():
+        return next(a for a in client.get("/grades/", params={"grade_id": grade.id}).json()["aulas"] if a["id"] == port.id)
+
+    original = aula()
+    client.put(f"/grades/aulas/{port.id}", json={"dia_semana": "Ter", "horario": "08:10 - 09:00", "professor_ids": [bia.id]})
+    client.put(f"/grades/aulas/{port.id}", json={"dia_semana": "Ter", "horario": "08:10 - 09:00",
+                                                 "professor_ids": [ana.id], "sala_nome": "Quadra"})
+    # Salvar sem mudar nada não entra no histórico
+    client.put(f"/grades/aulas/{port.id}", json={"dia_semana": "Ter", "horario": "08:10 - 09:00",
+                                                 "professor_ids": [ana.id], "sala_nome": "Quadra"})
+
+    alteracoes = client.get(f"/grades/{grade.id}/alteracoes").json()
+    assert [a["descricao"] for a in alteracoes] == [
+        "Português (7º Ano A): Bia → Ana; sala nenhuma → Quadra",
+        "Português (7º Ano A): Seg 07:20 - 08:10 → Ter 08:10 - 09:00",
+    ]
+
+    r = client.post(f"/grades/{grade.id}/desfazer")
+    assert r.json() == {"desfeita": alteracoes[0]["descricao"]}
+    assert aula()["professor_nome"] == "Bia" and aula()["sala_nome"] is None and aula()["dia_semana"] == "Ter"
+
+    client.post(f"/grades/{grade.id}/desfazer")
+    assert aula() == original
+    db.expire_all()
+    assert db.get(GradeDB, grade.id).detalhes == agenda_original
+
+    assert client.get(f"/grades/{grade.id}/alteracoes").json() == []
+    assert client.post(f"/grades/{grade.id}/desfazer").status_code == 404
+
+
+def test_duplicar_grade_e_editar_a_copia(ctx):
+    client, db = ctx
+    grade, ana, bia = _grade_basica(db)
+    grade.detalhes = {"planejamentos": [], "janelas": []}
+    db.commit()
+    port = grade.aulas[1]
+    client.put(f"/grades/aulas/{port.id}", json={"dia_semana": "Ter", "horario": "07:20 - 08:10", "professor_ids": [bia.id]})
+
+    r = client.post(f"/grades/{grade.id}/duplicar")
+    assert r.status_code == 201, r.text
+    copia = r.json()
+    assert copia["nome"] == "G (cópia)" and copia["status"] == "sucesso" and copia["detalhes"]["copia_de"] == grade.id
+    assert client.post(f"/grades/{grade.id}/duplicar", params={"nome": "Teste"}).json()["nome"] == "Teste"
+
+    aulas_copia = client.get("/grades/", params={"grade_id": copia["id"]}).json()["aulas"]
+    assert [(a["disciplina_nome"], a["dia_semana"]) for a in aulas_copia] == [("Matemática", "Seg"), ("Português", "Ter")]
+    # A cópia começa sem histórico, e editá-la não muda a original
+    assert client.get(f"/grades/{copia['id']}/alteracoes").json() == []
+    port_copia = next(a for a in aulas_copia if a["disciplina_nome"] == "Português")
+    client.put(f"/grades/aulas/{port_copia['id']}", json={"dia_semana": "Qua", "horario": "07:20 - 08:10",
+                                                          "professor_ids": [bia.id]})
+    original = client.get("/grades/", params={"grade_id": grade.id}).json()["aulas"]
+    assert next(a for a in original if a["id"] == port.id)["dia_semana"] == "Ter"
+
+    assert client.post("/grades/999/duplicar").status_code == 404
 
 
 def test_editar_aula_recusa_choque_de_turma_e_horario_invalido(ctx):
@@ -119,13 +220,13 @@ def test_disponibilidade_do_professor_e_conflito_de_indisponibilidade(ctx):
     assert len(client.get(f"/professores/{ana.id}/disponibilidades").json()) == 2
     assert client.get(f"/professores/{ana.id}").json()["disponibilidade_atualizada_em"] is not None
 
-    conflitos = client.get(f"/grades/{grade.id}/conflitos").json()
+    conflitos = _choques(client, grade.id)
     assert [c["tipo"] for c in conflitos] == ["Professor indisponível"]
 
     # Salvar de novo substitui a lista
     client.put(f"/professores/{ana.id}/disponibilidades", json=[])
     assert client.get(f"/professores/{ana.id}/disponibilidades").json() == []
-    assert client.get(f"/grades/{grade.id}/conflitos").json() == []
+    assert _choques(client, grade.id) == []
 
 
 def test_aula_com_varios_professores_detecta_conflito_de_cada_um(ctx):
@@ -140,7 +241,7 @@ def test_aula_com_varios_professores_detecta_conflito_de_cada_um(ctx):
     assert [p["nome"] for p in r.json()["professores"]] == ["Ana", "Bia"]
     assert r.json()["professor_nome"] == "Ana"
 
-    conflitos = client.get(f"/grades/{grade.id}/conflitos").json()
+    conflitos = _choques(client, grade.id)
     assert [(c["tipo"], c["descricao"].split(" ")[0]) for c in conflitos] == [("Professor duplicado", "Bia")]
 
     # Aulas antigas (sem a coluna professores) continuam aparecendo com o professor principal
@@ -167,6 +268,25 @@ def test_matriz_salva_horarios_fixos_e_extra(ctx):
     assert r.status_code == 422
 
 
+def test_matriz_guarda_professor_pelo_id(ctx):
+    client, _ = ctx
+    ana = client.post("/professores/", json={"nome": "Ana Souza", "email": "ana@x.com"}).json()
+    item = {"disciplina": "Matemática", "aulas_semanais": 4, "professores": ["ana souza", "Externo"]}
+    turma = client.post("/turmas/", json={"nome": "6º A", "turno": "Manhã", "matriz_curricular": [item]}).json()
+    salvo = turma["matriz_curricular"][0]
+    # Nome cadastrado (sem diferenciar caixa) vira id; o sem cadastro continua como nome
+    assert salvo["professor_ids"] == [ana["id"]]
+    assert salvo["professores"] == ["Externo"] and salvo["professor"] == "Externo"
+
+    # Renomear não quebra o vínculo
+    client.put(f"/professores/{ana['id']}", json={**ana, "nome": "Ana Lima"})
+    assert client.get("/turmas/").json()[0]["matriz_curricular"][0]["professor_ids"] == [ana["id"]]
+
+    # Excluir tira o professor da matriz
+    client.delete(f"/professores/{ana['id']}")
+    assert client.get("/turmas/").json()[0]["matriz_curricular"][0]["professor_ids"] == []
+
+
 def test_turma_manha_e_tardes_salva_dias(ctx):
     client, _ = ctx
     turma = {"nome": "2º EM A", "turno": "Manhã + tardes", "nivel_ensino": "Ensino Médio", "tardes": ["Sex", "Qua"]}
@@ -189,6 +309,11 @@ def _turma_para_gerar(db):
     db.commit()
 
 
+def _rodar_worker(db):
+    """O que o worker faz a cada ciclo: gera as grades na fila."""
+    return processar_pendentes(sessionmaker(bind=db.get_bind()))
+
+
 def test_geracao_em_segundo_plano(ctx):
     client, db = ctx
     _turma_para_gerar(db)
@@ -198,7 +323,9 @@ def test_geracao_em_segundo_plano(ctx):
     assert r.json()["status"] == "gerando"
     grade_id = r.json()["id"]
 
-    # O TestClient executa a tarefa em segundo plano ao fim da requisição
+    # Na fila até o worker pegar
+    assert client.get(f"/grades/{grade_id}/status").json()["status"] == "gerando"
+    assert _rodar_worker(db) == 1
     situacao = client.get(f"/grades/{grade_id}/status").json()
     assert situacao["status"] == "sucesso"
     assert situacao["detalhes"]["tempo_limite_seg"] == 20
@@ -210,12 +337,14 @@ def test_geracao_inviavel_fica_no_historico_mas_nao_vira_grade_atual(ctx):
     client, db = ctx
     _turma_para_gerar(db)
     ok = client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).json()["id"]
+    _rodar_worker(db)
 
     # 11 aulas de uma disciplina não cabem na regra de no máximo 2 por dia
     turma = db.query(TurmaDB).first()
     turma.matriz_curricular = [*turma.matriz_curricular, {"disciplina": "Arte", "aulas_semanais": 11}]
     db.commit()
     falha = client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).json()["id"]
+    _rodar_worker(db)
 
     situacao = client.get(f"/grades/{falha}/status").json()
     assert situacao["status"] == "inviavel"
@@ -230,6 +359,25 @@ def test_uma_geracao_por_vez(ctx):
     db.commit()
     r = client.post("/grades/gerar-grade")
     assert r.status_code == 409
+
+
+def test_worker_refaz_geracao_interrompida_e_desiste_depois_do_limite(ctx):
+    client, db = ctx
+    _turma_para_gerar(db)
+    # Interrompida uma vez (o worker caiu no meio): é refeita do zero
+    retomada = GradeDB(nome="Interrompida", status="gerando", total_aulas=0,
+                       detalhes={"tempo_limite_seg": 20, "tentativas": 1})
+    # Já interrompida no limite: vira erro sem rodar de novo
+    desistida = GradeDB(nome="Derrubou o worker", status="gerando", total_aulas=0,
+                        detalhes={"tempo_limite_seg": 20, "tentativas": MAX_TENTATIVAS})
+    db.add_all([retomada, desistida])
+    db.commit()
+
+    assert _rodar_worker(db) == 2
+    assert client.get(f"/grades/{retomada.id}/status").json()["status"] == "sucesso"
+    situacao = client.get(f"/grades/{desistida.id}/status").json()
+    assert situacao["status"] == "erro" and "interrompida" in situacao["detalhes"]["mensagem"]
+    assert _rodar_worker(db) == 0
 
 
 def test_excluir_grade(ctx):
@@ -248,14 +396,15 @@ def test_excluir_grade(ctx):
     assert [g["id"] for g in client.get("/grades/historico").json()] == [rodando.id]
 
 
-JORNADA = {"almoco_inicio": "12:00", "almoco_fim": "14:00", "almoco_minutos": 40, "max_aulas_dia": 6}
+JORNADA = {"almoco_inicio": "12:00", "almoco_fim": "14:00", "almoco_minutos": 40, "max_aulas_dia": 6, "max_horas_dia": 10.5}
 
 
 def test_jornada_padrao_e_personalizada(ctx):
     client, _ = ctx
     assert client.get("/configuracoes/jornada").json() == {
-        "almoco_inicio": "11:30", "almoco_fim": "14:30", "almoco_minutos": 40, "max_aulas_dia": 8,
+        "almoco_inicio": "11:30", "almoco_fim": "14:30", "almoco_minutos": 40, "max_aulas_dia": 8, "max_horas_dia": 9,
     }
+    assert client.put("/configuracoes/jornada", json={**JORNADA, "max_horas_dia": 20}).status_code == 422
     assert client.put("/configuracoes/jornada", json={**JORNADA, "almoco_minutos": 121}).status_code == 422
     assert client.put("/configuracoes/jornada", json={**JORNADA, "almoco_fim": "11:00"}).status_code == 422
     assert client.put("/configuracoes/jornada", json=JORNADA).status_code == 200
@@ -296,6 +445,7 @@ def test_geracao_usa_o_padrao_e_a_personalizacao_do_professor(ctx):
     client.put("/configuracoes/jornada", json=JORNADA)
 
     falha = client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).json()["id"]
+    _rodar_worker(db)
     situacao = client.get(f"/grades/{falha}/status").json()
     assert situacao["status"] == "inviavel"
     assert "almoco" in situacao["detalhes"]["regras_em_conflito"]
@@ -304,4 +454,5 @@ def test_geracao_usa_o_padrao_e_a_personalizacao_do_professor(ctx):
     ana["jornada"] = {**JORNADA, "almoco_minutos": 0}
     client.put(f"/professores/{ana['id']}", json=ana)
     ok = client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).json()["id"]
+    _rodar_worker(db)
     assert client.get(f"/grades/{ok}/status").json()["status"] == "sucesso"

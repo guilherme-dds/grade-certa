@@ -3,7 +3,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from database.connection import Base
-from database.models import AulaDB, DisciplinaDB, ProfessorDB, SalaDB, TurmaDB
+from database.models import AulaDB, DisciplinaDB, DisponibilidadeDB, ProfessorDB, SalaDB, TurmaDB
 from services.grid_generator import GridGeneratorService
 from tests.test_grid_solver import MATRIZ, PROFESSOR
 
@@ -111,3 +111,32 @@ def test_matriz_com_varios_professores_e_formato_antigo(db):
     assert len(atualidades) == 2
     assert all([p["nome"] for p in a.professores] == ["Fabio", "Ana"] for a in atualidades)
     assert all(a.professor_nome == "Fabio" for a in atualidades)
+
+
+def test_professor_pelo_id_renomeado_e_inativo(db):
+    for p in sorted(set(PROFESSOR.values())):
+        db.add(ProfessorDB(nome=p.title(), email=f"{p}@escola.com", carga_maxima_aulas=20))
+    db.commit()
+    id_de = {p.nome: p.id for p in db.query(ProfessorDB).all()}
+    for serie in "6789":
+        grupo = "67" if serie in "67" else "89"
+        matriz = [
+            {"disciplina": d, "aulas_semanais": q, "professor_ids": [id_de[(PROFESSOR.get((d, grupo)) or PROFESSOR[(d, None)]).title()]]}
+            for d, q in MATRIZ
+        ]
+        db.add(TurmaDB(nome=f"{serie}º Ano A", turno="Manhã", nivel_ensino="Anos Finais", matriz_curricular=matriz))
+    fabio = db.get(ProfessorDB, id_de["Fabio"])
+    fabio.nome = "Fábio Renomeado"
+    fabio.ativo = False
+    db.add(DisponibilidadeDB(professor_id=fabio.id, dia_semana="Seg", horario_inicio="07:00", horario_fim="12:00"))
+    db.commit()
+
+    resultado = GridGeneratorService(db).generate("Teste vínculo por id")
+
+    assert resultado["sucesso"], resultado
+    assert any("'Fábio Renomeado' está inativo" in a for a in resultado["avisos"])
+    aulas = db.query(AulaDB).filter(AulaDB.grade_id == resultado["grade_id"]).all()
+    do_fabio = [a for a in aulas if any(p["id"] == fabio.id for p in a.professores)]
+    assert do_fabio and all(a.professor_nome == "Fábio Renomeado" for a in do_fabio)
+    # Inativo, mas na matriz: a indisponibilidade continua valendo
+    assert not any(a.dia_semana == "Seg" and a.horario < "12:00" for a in do_fabio)

@@ -1,5 +1,5 @@
 import { createContext } from 'react'
-import type { ConflitoGrade, GradeBackend, ProfessorAula } from '@/api/grades'
+import type { AlteracaoGrade, ConflitoGrade, GradeBackend, ProfessorAula } from '@/api/grades'
 
 /** Aula da grade gravada no core-service */
 export interface Lesson {
@@ -26,6 +26,8 @@ export type UpdateResult = { ok: true } | { ok: false; error: string }
 export interface ScheduleContextValue {
   lessons: Lesson[]
   conflicts: ConflitoGrade[]
+  /** Edições manuais da grade exibida, da mais recente para a mais antiga */
+  changes: AlteracaoGrade[]
   isLoading: boolean
   /** Grade exibida (nula se nenhuma foi gerada) */
   activeGrade: GradeBackend | null
@@ -36,6 +38,8 @@ export interface ScheduleContextValue {
   updateLesson: (id: number, changes: LessonChanges) => Promise<UpdateResult>
   /** Move a aula do conflito para o horário livre sugerido pelo backend. */
   applySuggestion: (conflictId: string) => Promise<UpdateResult>
+  /** Desfaz a última edição manual da grade exibida. */
+  undoLastChange: () => Promise<UpdateResult>
 }
 
 export const ScheduleContext = createContext<ScheduleContextValue | null>(null)

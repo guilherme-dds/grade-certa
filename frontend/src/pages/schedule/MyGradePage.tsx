@@ -20,7 +20,7 @@ export function MyGradePage() {
         <div className="max-w-xl rounded-lg border border-line bg-white px-6 py-8">
           <p className="text-sm font-semibold">Seu usuário não está vinculado a um professor</p>
           <p className="mt-1 text-[13px] text-muted">
-            Peça à coordenação para cadastrar um professor com o e-mail {user?.email}.
+            Para ver seus horários aqui, cadastre em Professores um professor com o e-mail {user?.email}.
           </p>
         </div>
       </>

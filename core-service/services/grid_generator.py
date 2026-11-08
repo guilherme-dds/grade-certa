@@ -4,7 +4,6 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session, joinedload
 
 from database.models import TurmaDB, ProfessorDB, DisciplinaDB, DisponibilidadeDB, GradeDB, AulaDB, SalaDB
-from models.jornada import Jornada
 from services.grid_solver import (
     Almoco,
     Intervalo,
@@ -18,7 +17,8 @@ from services.grid_solver import (
     normalizar,
     resolver_grade,
 )
-from services.jornada import jornada_padrao
+from services.jornada import jornada_do_professor, jornada_padrao
+from services.vinculo_professores import professores_do_item, vincular_por_id
 
 # Tempo padrão do solver; a tela pode pedir outro (até TEMPO_MAXIMO_SEG)
 TEMPO_LIMITE_SEG = float(os.getenv("GRADE_SOLVER_TIMEOUT", "120"))
@@ -51,13 +51,14 @@ class GridGeneratorService:
         Regras aplicadas: matriz curricular, horários por nível de ensino, sem choque de
         turma/professor/sala, indisponibilidade de professores e salas, uma aula dobrada por
         disciplina (Inglês individual), sem janelas, primeira/última aula do turno com
-        professores diferentes, almoço e limite de aulas por dia (padrão da escola ou
+        professores diferentes, almoço, limite de aulas e de horas por dia (padrão da escola ou
         personalizados por professor) e 4 horários de planejamento, de preferência
         compartilhados com colegas da mesma área.
         """
         disciplinas = {normalizar(d.nome): d for d in self.db.query(DisciplinaDB).all()}
-        professores_db = self.db.query(ProfessorDB).filter(ProfessorDB.ativo == True).all()
-        prof_by_key = {normalizar(p.nome): p for p in professores_db if p.nome}
+        # Todos os cadastrados: um professor inativo que continua na matriz mantém as restrições
+        prof_by_id = {p.id: p for p in self.db.query(ProfessorDB).all()}
+        id_por_nome = {normalizar(p.nome): p.id for p in prof_by_id.values() if p.nome}
 
         indisp_prof: Dict[int, List[Intervalo]] = {}
         pref_prof: Dict[int, List[Intervalo]] = {}
@@ -90,44 +91,63 @@ class GridGeneratorService:
         professores: Dict[str, ProfessorInput] = {}
         avisos_carga: List[str] = []
         turmas: List[TurmaInput] = []
+
+        def professor_input(chave: str, nome: str, prof: Optional[ProfessorDB]) -> ProfessorInput:
+            jornada = jornada_do_professor(prof, padrao)
+            return ProfessorInput(
+                chave=chave,
+                nome=nome,
+                id=prof.id if prof else None,
+                carga_maxima=prof.carga_maxima_aulas if prof else None,
+                indisponivel=indisp_prof.get(prof.id, []) if prof else [],
+                preferencial=pref_prof.get(prof.id, []) if prof else [],
+                almoco=(
+                    Almoco(jornada.almoco_inicio, jornada.almoco_fim, jornada.almoco_minutos)
+                    if jornada.almoco_minutos
+                    else None
+                ),
+                max_aulas_dia=jornada.max_aulas_dia,
+                max_minutos_dia=round(jornada.max_horas_dia * 60) if jornada.max_horas_dia else None,
+            )
+
         for t in self.db.query(TurmaDB).all():
             itens: List[ItemInput] = []
-            for item in t.matriz_curricular or []:
-                if not isinstance(item, dict) or int(item.get("aulas_semanais", 0) or 0) <= 0:
+            # Nomes de professores cadastrados viram id (matrizes salvas antes do vínculo por id)
+            for item in vincular_por_id(t.matriz_curricular, id_por_nome):
+                if int(item.get("aulas_semanais", 0) or 0) <= 0:
                     continue
                 nome_disc = item.get("disciplina") or "Sem nome"
                 disc = disciplinas.get(normalizar(nome_disc))
-                # Formato atual: lista "professores"; matrizes antigas têm só "professor"
-                nomes = item.get("professores") or [item.get("professor")]
+                ids, sem_cadastro = professores_do_item(item)
                 chaves: List[str] = []
-                for prof_nome in (n.strip() for n in nomes if n and n.strip()):
+                for prof_id in ids:
+                    prof = prof_by_id.get(prof_id)
+                    if prof is None:
+                        avisos_carga.append(
+                            f"Um professor excluído do cadastro estava em '{nome_disc}' da turma '{t.nome}'; "
+                            "a aula foi distribuída sem ele."
+                        )
+                        continue
+                    chave = f"id:{prof.id}"
+                    chaves.append(chave)
+                    if chave not in professores:
+                        professores[chave] = professor_input(chave, prof.nome, prof)
+                        if not prof.ativo:
+                            avisos_carga.append(
+                                f"O professor '{prof.nome}' está inativo, mas continua na matriz curricular "
+                                f"(ex.: '{nome_disc}' da turma '{t.nome}')."
+                            )
+                for prof_nome in sem_cadastro:
                     chave = normalizar(prof_nome)
                     if chave in chaves:
                         continue
                     chaves.append(chave)
-                    if chave in professores:
-                        continue
-                    prof = prof_by_key.get(chave)
-                    if prof is None:
+                    if chave not in professores:
                         avisos_carga.append(
-                            f"Professor '{prof_nome}' da turma '{t.nome}' não está cadastrado (ou está inativo); "
-                            "carga máxima e indisponibilidade não foram verificadas."
+                            f"Professor '{prof_nome}' da turma '{t.nome}' não está cadastrado; "
+                            "carga máxima, indisponibilidade e jornada não foram verificadas."
                         )
-                    jornada = Jornada(**prof.jornada) if prof and prof.jornada else padrao
-                    professores[chave] = ProfessorInput(
-                        chave=chave,
-                        nome=prof.nome if prof else prof_nome,
-                        id=prof.id if prof else None,
-                        carga_maxima=prof.carga_maxima_aulas if prof else None,
-                        indisponivel=indisp_prof.get(prof.id, []) if prof else [],
-                        preferencial=pref_prof.get(prof.id, []) if prof else [],
-                        almoco=(
-                            Almoco(jornada.almoco_inicio, jornada.almoco_fim, jornada.almoco_minutos)
-                            if jornada.almoco_minutos
-                            else None
-                        ),
-                        max_aulas_dia=jornada.max_aulas_dia,
-                    )
+                        professores[chave] = professor_input(chave, prof_nome, None)
                 itens.append(
                     ItemInput(
                         disciplina=nome_disc,

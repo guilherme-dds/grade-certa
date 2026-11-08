@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { deleteGrade, getHistoricoGrades } from '@/api/grades'
-import { useAuth } from '@/auth/useAuth'
+import { deleteGrade, duplicarGrade, getHistoricoGrades } from '@/api/grades'
 import { Button } from '@/components/ui/Button'
 import { buttonStyles } from '@/components/ui/buttonStyles'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -10,15 +9,32 @@ import { formatDateTime } from '@/lib/schedule'
 import type { Lesson } from '@/schedule/ScheduleContext'
 import { useSchedule } from '@/schedule/useSchedule'
 import { DeleteGradeDialog } from './DeleteGradeDialog'
+import { DuplicateGradeDialog } from './DuplicateGradeDialog'
 import { LessonEditDialog } from './LessonEditDialog'
 import { ScheduleGrid } from './ScheduleGrid'
 
 export function SchedulePage() {
-  const { role } = useAuth()
-  const { lessons, activeGrade, horariosTurmas, isLoading, refreshSchedule } = useSchedule()
+  const { lessons, activeGrade, horariosTurmas, isLoading, refreshSchedule, changes, undoLastChange } = useSchedule()
   const [params, setParams] = useSearchParams()
   const queryClient = useQueryClient()
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isDuplicating, setIsDuplicating] = useState(false)
+  const [isUndoing, setIsUndoing] = useState(false)
+  // Resultado do último "desfazer"; some quando o histórico muda (nova edição ou outra grade)
+  const [undoResult, setUndoResult] = useState<{ ok: boolean; text: string; changesLeft: number } | null>(null)
+  const undoMessage = undoResult?.changesLeft === changes.length ? undoResult : null
+
+  const handleUndo = async () => {
+    const desfeita = changes[0]
+    setIsUndoing(true)
+    const result = await undoLastChange()
+    setIsUndoing(false)
+    setUndoResult(
+      result.ok
+        ? { ok: true, text: `Desfeito: ${desfeita.descricao}`, changesLeft: changes.length - 1 }
+        : { ok: false, text: result.error, changesLeft: changes.length },
+    )
+  }
 
   // Grades geradas com sucesso, para trocar a grade exibida
   const { data: historico = [] } = useQuery({ queryKey: ['historicoGrades'], queryFn: getHistoricoGrades })
@@ -42,6 +58,12 @@ export function SchedulePage() {
       { replace: true },
     )
     await refreshSchedule()
+  }
+
+  const handleDuplicateGrade = async (nome: string) => {
+    const copia = await duplicarGrade(activeGrade!.id!, nome)
+    await queryClient.invalidateQueries({ queryKey: ['historicoGrades'] })
+    setParam('gradeId', String(copia.id))
   }
 
   const gradeIdParam = params.get('gradeId')
@@ -70,8 +92,7 @@ export function SchedulePage() {
   const classGroup = availableTurmas.find((c) => c === params.get('turma')) ?? availableTurmas[0] ?? ''
   const teacher = params.get('professor') ?? ''
   const room = params.get('sala') ?? ''
-  const canEdit = role === 'coordenacao'
-  const editing = canEdit ? lessons.find((l) => String(l.id) === params.get('aula')) : undefined
+  const editing = lessons.find((l) => String(l.id) === params.get('aula'))
 
   const setParam = (key: string, value: string | null) =>
     setParams(
@@ -103,11 +124,9 @@ export function SchedulePage() {
           title="Grade Horária"
           description="Visualização dos horários semanais distribuídos por turma e professor."
           actions={
-            canEdit && (
-              <Link to="/geracao" className={buttonStyles()}>
-                Gerar Grade Automática
-              </Link>
-            )
+            <Link to="/geracao" className={buttonStyles()}>
+              Gerar Grade Automática
+            </Link>
           }
         />
         <div className="rounded-xl border border-dashed border-line bg-white p-12 text-center shadow-xs">
@@ -124,18 +143,17 @@ export function SchedulePage() {
             Ainda não há horários gerados salvos no sistema. Acesse o gerador inteligente para montar a distribuição
             semanal de aulas automaticamente com Google OR-Tools.
           </p>
-          {canEdit && (
-            <div className="mt-6">
-              <Link to="/geracao" className={buttonStyles()}>
-                Ir para Geração Automática →
-              </Link>
-            </div>
-          )}
+          <div className="mt-6">
+            <Link to="/geracao" className={buttonStyles()}>
+              Ir para Geração Automática →
+            </Link>
+          </div>
         </div>
       </div>
     )
   }
 
+  const origem = historico.find((g) => g.id === activeGrade?.detalhes?.copia_de)
   const turmaLessons = lessons.filter((l) => l.classGroup === classGroup)
   const turmaSlots = turmaLessons.length ? horariosTurmas[turmaLessons[0].turmaId] : undefined
   const planejamentos = (activeGrade?.detalhes?.planejamentos ?? []).filter((p) => p.professor === teacher)
@@ -149,6 +167,7 @@ export function SchedulePage() {
           activeGrade
             ? [
                 activeGrade.nome,
+                origem && `cópia de ${origem.nome}`,
                 activeGrade.ano_semestre && `Semestre ${activeGrade.ano_semestre}`,
                 `${lessons.length} aulas alocadas no total`,
               ]
@@ -186,12 +205,15 @@ export function SchedulePage() {
               allLabel="Todas"
               onChange={(v) => setParam('sala', v)}
             />
-            {canEdit && (
-              <Link to="/geracao" className={buttonStyles({ variant: 'secondary' })}>
-                Nova Geração
-              </Link>
+            <Link to="/geracao" className={buttonStyles({ variant: 'secondary' })}>
+              Nova Geração
+            </Link>
+            {activeGrade && (
+              <Button variant="secondary" onClick={() => setIsDuplicating(true)}>
+                Duplicar grade
+              </Button>
             )}
-            {canEdit && activeGrade && (
+            {activeGrade && (
               <Button variant="secondary" onClick={() => setIsDeleting(true)} className="text-danger">
                 Excluir grade
               </Button>
@@ -200,12 +222,26 @@ export function SchedulePage() {
         }
       />
 
+      {(changes.length > 0 || undoMessage) && (
+        <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-white px-3 py-2 text-[12.5px]">
+          <p className={undoMessage && !undoMessage.ok ? 'text-danger' : 'text-muted'} role="status">
+            {undoMessage ? undoMessage.text : `Última alteração: ${changes[0].descricao}`}
+            {changes.length > 0 && ` · ${changes.length} alteraç${changes.length > 1 ? 'ões' : 'ão'} manual(is) nesta grade`}
+          </p>
+          {changes.length > 0 && (
+            <Button variant="secondary" size="sm" onClick={handleUndo} disabled={isUndoing}>
+              {isUndoing ? 'Desfazendo…' : 'Desfazer última alteração'}
+            </Button>
+          )}
+        </div>
+      )}
+
       <ScheduleGrid
         lessons={turmaLessons}
         timeSlots={turmaSlots}
         editingId={editing?.id}
         isDimmed={isDimmed}
-        onSelect={canEdit ? (lesson) => setParam('aula', String(lesson.id)) : undefined}
+        onSelect={(lesson) => setParam('aula', String(lesson.id))}
       />
 
       {teacher && planejamentos.length > 0 && (
@@ -225,12 +261,19 @@ export function SchedulePage() {
       )}
 
       <p className="mt-3.5 text-[12.5px] text-muted">
-        {canEdit
-          ? 'Clique em uma célula para reatribuir professor, sala ou horário. Célula em destaque: edição em andamento.'
-          : 'Visualização somente leitura. Alterações na grade são feitas pela coordenação.'}
+        Clique em uma célula para reatribuir professor, sala ou horário. Célula em destaque: edição em andamento.
+        Para manter a grade como foi gerada, duplique antes de editar e edite a cópia.
       </p>
 
       {editing && <LessonEditDialog key={editing.id} lesson={editing} onClose={() => setParam('aula', null)} />}
+
+      {isDuplicating && activeGrade && (
+        <DuplicateGradeDialog
+          grade={activeGrade}
+          onClose={() => setIsDuplicating(false)}
+          onConfirm={handleDuplicateGrade}
+        />
+      )}
 
       {isDeleting && activeGrade && (
         <DeleteGradeDialog grade={activeGrade} onClose={() => setIsDeleting(false)} onConfirm={handleDeleteGrade} />

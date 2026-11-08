@@ -43,6 +43,17 @@ export function JornadaFields({ value, errors, onChange }: JornadaFieldsProps) {
         onChange={(e) => onChange({ ...value, max_aulas_dia: Number(e.target.value) })}
         error={errors.max_aulas_dia}
       />
+      <FormField
+        label="Máximo de horas no dia (vazio = sem limite)"
+        type="number"
+        min={1}
+        max={14}
+        step={0.5}
+        placeholder="sem limite"
+        value={value.max_horas_dia ?? ''}
+        onChange={(e) => onChange({ ...value, max_horas_dia: e.target.value === '' ? null : Number(e.target.value) })}
+        error={errors.max_horas_dia}
+      />
     </div>
   )
 }

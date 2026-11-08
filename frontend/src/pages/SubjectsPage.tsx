@@ -79,12 +79,19 @@ export function SubjectsPage() {
       if (d.id) discMap.set(d.id, d.nome)
     })
 
-    return (professoresQuery.data ?? [])
-      .filter((p) => p.ativo)
-      .map((p) => ({
-        name: p.nome,
-        subjects: (p.disciplinas ?? []).map((id) => discMap.get(id)).filter((n): n is string => Boolean(n)),
-      }))
+    // Inativos também vão: a matriz pode mantê-los, mas só os ativos aparecem para escolha
+    return (professoresQuery.data ?? []).flatMap((p) =>
+      p.id
+        ? [
+            {
+              id: p.id,
+              name: p.nome,
+              active: p.ativo,
+              subjects: (p.disciplinas ?? []).map((id) => discMap.get(id)).filter((n): n is string => Boolean(n)),
+            },
+          ]
+        : [],
+    )
   }, [professoresQuery.data, disciplinasQuery.data])
 
   const matrixTurma = turmasQuery.data?.find((t) => String(t.id) === params.get('matriz')) ?? null

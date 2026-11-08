@@ -73,7 +73,7 @@ export function JornadaPadraoDialog({ jornada, onClose }: JornadaPadraoDialogPro
           <JornadaFields value={value} errors={errors} onChange={setValue} />
           <p className="mt-2 text-xs text-muted">
             Com duração 0, o almoço deixa de ser exigido. O professor fica sem aula e sem planejamento durante esses
-            minutos, em algum momento da faixa.
+            minutos, em algum momento da faixa. As horas do dia contam da primeira à última aula ou planejamento.
           </p>
         </div>
 

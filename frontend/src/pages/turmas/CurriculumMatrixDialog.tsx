@@ -1,14 +1,27 @@
 import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/Button'
-import { professoresDoItem, type HorarioFixo, type ItemMatriz, type TurmaBackend } from '@/api/turmas'
+import { nomesSemCadastro, type HorarioFixo, type ItemMatriz, type TurmaBackend } from '@/api/turmas'
 import { MultiSelectChips } from '@/components/MultiSelectChips'
 import { horariosDaTurma, weekDays } from '@/lib/schedule'
 import { useHorarios } from '@/schedule/useHorarios'
 
 export interface TeacherWithSubjects {
+  id: number
   name: string
+  active: boolean
   subjects: string[]
 }
+
+// Valores do seletor de professores: o id do cadastro ou, para nomes sem cadastro, "nome:<nome>"
+const PREFIXO_NOME = 'nome:'
+const valoresDoItem = (item: ItemMatriz) => [
+  ...(item.professor_ids ?? []).map(String),
+  ...(item.professores ?? []).map((n) => PREFIXO_NOME + n),
+]
+const professoresDosValores = (valores: string[]) => ({
+  professor_ids: valores.filter((v) => !v.startsWith(PREFIXO_NOME)).map(Number),
+  professores: valores.filter((v) => v.startsWith(PREFIXO_NOME)).map((v) => v.slice(PREFIXO_NOME.length)),
+})
 
 interface CurriculumMatrixDialogProps {
   turma: TurmaBackend
@@ -28,17 +41,28 @@ export function CurriculumMatrixDialog({
   const dialogRef = useRef<HTMLDialogElement>(null)
 
   // Matriz inicial da turma
-  // Cada item guarda a lista de professores; matrizes antigas têm só "professor"
+  // Cada item guarda os ids dos professores cadastrados e os nomes ainda sem cadastro
   const [items, setItems] = useState<ItemMatriz[]>(() =>
     (turma.matriz_curricular ?? []).map((m) => ({
       disciplina: m.disciplina,
       aulas_semanais: m.aulas_semanais,
-      professores: professoresDoItem(m),
+      professor_ids: m.professor_ids ?? [],
+      professores: nomesSemCadastro(m),
       horarios_fixos: m.horarios_fixos ?? [],
       extra: m.extra ?? false,
     })),
   )
-  const teacherOptions = teachers.map((t) => ({ value: t.name, label: t.name }))
+  // Ativos para escolha; inativos e nomes sem cadastro só aparecem se já estão na matriz
+  const emUso = new Set(items.flatMap(valoresDoItem))
+  const teacherOptions = [
+    ...teachers
+      .filter((t) => t.active || emUso.has(String(t.id)))
+      .map((t) => ({ value: String(t.id), label: t.active ? t.name : `${t.name} (inativo)` })),
+    ...[...emUso]
+      .filter((v) => v.startsWith(PREFIXO_NOME))
+      .map((v) => ({ value: v, label: `${v.slice(PREFIXO_NOME.length)} (não cadastrado)` })),
+  ]
+  const activeTeachers = teachers.filter((t) => t.active)
   const horariosQuery = useHorarios()
   const turmaSlots = horariosQuery.data ? horariosDaTurma(turma, horariosQuery.data) : []
   // Linhas com o painel de opções (horário fixo / aula extra) aberto
@@ -71,14 +95,14 @@ export function CurriculumMatrixDialog({
   }
 
   const handleAddItem = () => {
-    const defaultTeacher = teachers[0]?.name ?? ''
-    const teacherObj = teachers.find((t) => t.name === defaultTeacher)
-    const defaultSubject = teacherObj?.subjects[0] ?? availableSubjects[0] ?? ''
+    const defaultTeacher = activeTeachers[0]
+    const defaultSubject = defaultTeacher?.subjects[0] ?? availableSubjects[0] ?? ''
 
     setItems((prev) => [
       ...prev,
       {
-        professores: defaultTeacher ? [defaultTeacher] : [],
+        professor_ids: defaultTeacher ? [defaultTeacher.id] : [],
+        professores: [],
         disciplina: defaultSubject,
         aulas_semanais: 4,
       },
@@ -92,21 +116,22 @@ export function CurriculumMatrixDialog({
   }
 
   // Disciplinas cadastradas nos perfis dos professores escolhidos (todas, se nenhum tiver)
-  const subjectsFor = (professores: string[]) => {
+  const subjectsFor = (professorIds: number[]) => {
     const registered = new Set(
-      professores.flatMap((name) => teachers.find((t) => t.name === name)?.subjects ?? []),
+      professorIds.flatMap((id) => teachers.find((t) => t.id === id)?.subjects ?? []),
     )
     return registered.size > 0 ? [...registered] : availableSubjects
   }
 
   // Atualiza os professores e ajusta a disciplina às matérias cadastradas para eles
-  const handleTeachersChange = (index: number, professores: string[]) => {
+  const handleTeachersChange = (index: number, valores: string[]) => {
     setItems((prev) =>
       prev.map((item, i) => {
         if (i !== index) return item
-        const allowed = subjectsFor(professores)
+        const professores = professoresDosValores(valores)
+        const allowed = subjectsFor(professores.professor_ids)
         const disciplina = allowed.includes(item.disciplina) ? item.disciplina : (allowed[0] ?? item.disciplina)
-        return { ...item, professores, disciplina }
+        return { ...item, ...professores, disciplina }
       }),
     )
   }
@@ -213,8 +238,8 @@ export function CurriculumMatrixDialog({
             </thead>
             <tbody className="divide-y divide-line-soft">
               {items.map((item, idx) => {
-                const professores = item.professores ?? []
-                const allowedSubjects = subjectsFor(professores)
+                const professores = valoresDoItem(item)
+                const allowedSubjects = subjectsFor(item.professor_ids ?? [])
 
                 const fixos = item.horarios_fixos ?? []
                 const opcoesAtivas = fixos.length + (item.extra ? 1 : 0)

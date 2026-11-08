@@ -55,6 +55,8 @@ export interface DetalhesGrade {
   janelas?: JanelaProfessor[]
   avisos?: string[]
   regras_em_conflito?: string[]
+  /** Id da grade de que esta é cópia */
+  copia_de?: number
 }
 
 export interface JanelaProfessor {
@@ -153,6 +155,46 @@ export async function getConflitos(gradeId: number): Promise<ConflitoGrade[]> {
 /** Reatribui dia, horário, professor e sala de uma aula (recusa choque na mesma turma). */
 export async function editarAula(aulaId: number, payload: AulaUpdate): Promise<AulaBackend> {
   const { data } = await api.put<AulaBackend>(`/grades/aulas/${aulaId}`, payload)
+  return data
+}
+
+export interface SimulacaoEdicao {
+  /** Conflitos que a edição criaria */
+  novos: ConflitoGrade[]
+  /** Conflitos atuais que a edição resolveria */
+  resolvidos: ConflitoGrade[]
+}
+
+/** Conflitos que a edição causaria, sem gravar nada (recusa choque na mesma turma, como a edição). */
+export async function simularEdicao(aulaId: number, payload: AulaUpdate): Promise<SimulacaoEdicao> {
+  const { data } = await api.post<SimulacaoEdicao>(`/grades/aulas/${aulaId}/simular`, payload)
+  return data
+}
+
+/** Edição manual de uma aula guardada no histórico da grade */
+export interface AlteracaoGrade {
+  id: number
+  aula_id: number
+  /** Ex.: "Matemática (6º Ano A): Seg 07:20 - 08:10 → Ter 08:10 - 09:00" */
+  descricao: string
+  criado_em: string
+}
+
+/** Edições manuais da grade, da mais recente para a mais antiga. */
+export async function getAlteracoes(gradeId: number): Promise<AlteracaoGrade[]> {
+  const { data } = await api.get<AlteracaoGrade[]>(`/grades/${gradeId}/alteracoes`)
+  return data
+}
+
+/** Desfaz a última edição manual (aula e agenda dos professores voltam como estavam). */
+export async function desfazerAlteracao(gradeId: number): Promise<{ desfeita: string }> {
+  const { data } = await api.post<{ desfeita: string }>(`/grades/${gradeId}/desfazer`)
+  return data
+}
+
+/** Cópia da grade (aulas, planejamentos e janelas) para editar sem perder a original. */
+export async function duplicarGrade(gradeId: number, nome: string): Promise<GradeResumo> {
+  const { data } = await api.post<GradeResumo>(`/grades/${gradeId}/duplicar`, null, { params: { nome } })
   return data
 }
 

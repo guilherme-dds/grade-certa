@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from database.connection import get_db
-from database.models import DisponibilidadeDB, ProfessorDB
+from database.models import DisponibilidadeDB, ProfessorDB, TurmaDB
 from models.disponibilidade import Disponibilidade, DisponibilidadeItem
 from models.professor import Professor
 
@@ -98,6 +98,16 @@ def deletar_professor(professor_id: int, db: Session = Depends(get_db)):
         )
 
     db.query(DisponibilidadeDB).filter(DisponibilidadeDB.professor_id == professor_id).delete()
+    # Sai das matrizes curriculares; o gerador avisa se alguma aula ficar sem professor
+    for turma in db.query(TurmaDB).all():
+        matriz = turma.matriz_curricular or []
+        if any(professor_id in (item.get("professor_ids") or []) for item in matriz if isinstance(item, dict)):
+            turma.matriz_curricular = [
+                {**item, "professor_ids": [i for i in item.get("professor_ids") or [] if i != professor_id]}
+                if isinstance(item, dict)
+                else item
+                for item in matriz
+            ]
     db.delete(prof)
     db.commit()
     return {"mensagem": f"Professor {professor_id} removido com sucesso"}

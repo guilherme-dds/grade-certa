@@ -20,7 +20,7 @@ import {
   type DisciplinaBackend,
 } from '@/api/disciplinas'
 import { getJornadaPadrao, type Jornada } from '@/api/configuracoes'
-import { getTurmas, professoresDoItem } from '@/api/turmas'
+import { getTurmas } from '@/api/turmas'
 import { formatDateTime } from '@/lib/schedule'
 import { type NivelEnsino, type Teacher, type TeacherRow } from './teachers/types'
 import { DeleteTeacherDialog } from './teachers/DeleteTeacherDialog'
@@ -31,7 +31,7 @@ import { TeacherAvailabilityDialog } from './teachers/TeacherAvailabilityDialog'
 import { TeacherDialog } from './teachers/TeacherDialog'
 
 // Até a resposta do core-service chegar (mesmos valores do padrão do backend)
-const JORNADA_INICIAL: Jornada = { almoco_inicio: '11:30', almoco_fim: '14:30', almoco_minutos: 40, max_aulas_dia: 8 }
+const JORNADA_INICIAL: Jornada = { almoco_inicio: '11:30', almoco_fim: '14:30', almoco_minutos: 40, max_aulas_dia: 8, max_horas_dia: 9 }
 
 export function TeachersPage() {
   const queryClient = useQueryClient()
@@ -68,14 +68,13 @@ export function TeachersPage() {
 
   const jornadaPadrao = useQuery({ queryKey: ['jornadaPadrao'], queryFn: getJornadaPadrao }).data ?? JORNADA_INICIAL
 
-  // Aulas semanais atribuídas a cada professor nas matrizes curriculares (vínculo pelo nome)
+  // Aulas semanais atribuídas a cada professor nas matrizes curriculares (vínculo pelo id)
   const aulasPorProfessor = useMemo(() => {
-    const map = new Map<string, number>()
+    const map = new Map<number, number>()
     for (const turma of turmasQuery.data ?? []) {
       for (const item of turma.matriz_curricular ?? []) {
-        for (const nome of professoresDoItem(item)) {
-          const key = nome.trim().toLowerCase()
-          map.set(key, (map.get(key) ?? 0) + Number(item.aulas_semanais || 0))
+        for (const id of item.professor_ids ?? []) {
+          map.set(id, (map.get(id) ?? 0) + Number(item.aulas_semanais || 0))
         }
       }
     }
@@ -120,7 +119,7 @@ export function TeachersPage() {
           : ['Anos Finais']) as NivelEnsino[],
         subjects: subjectNames,
         maxWeeklyHours: p.carga_maxima_aulas,
-        currentWeeklyHours: aulasPorProfessor.get(p.nome.trim().toLowerCase()) ?? 0,
+        currentWeeklyHours: (p.id ? aulasPorProfessor.get(p.id) : undefined) ?? 0,
         status: p.ativo ? 'ativo' : 'inativo',
         jornada: p.jornada ?? null,
         raw: p,

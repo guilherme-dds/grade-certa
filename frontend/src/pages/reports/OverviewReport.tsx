@@ -109,9 +109,6 @@ export function OverviewReport({ lessons, conflitos, cargas, ocupacoes, avisos }
             </tbody>
           </table>
         </div>
-        <p className="mt-3 text-[12px] text-muted">
-          Planejamentos e janelas vêm da geração e não são recalculados após edição manual da grade.
-        </p>
         <GenerationWarnings avisos={avisos} />
       </section>
     </div>
