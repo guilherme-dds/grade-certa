@@ -10,6 +10,7 @@ import { LoginPage } from '@/pages/LoginPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { RegisterPage } from '@/pages/RegisterPage'
 import { ReportsPage } from '@/pages/reports/ReportsPage'
+import { MyGradePage } from '@/pages/schedule/MyGradePage'
 import { SchedulePage } from '@/pages/schedule/SchedulePage'
 import { SubjectsPage } from '@/pages/SubjectsPage'
 import { TeachersPage } from '@/pages/TeachersPage'
@@ -39,6 +40,7 @@ export const router = createBrowserRouter([
           { path: '/disponibilidade', element: <AvailabilityPage /> },
           { path: '/geracao', element: <GenerationPage /> },
           { path: '/grade', element: <SchedulePage /> },
+          { path: '/minha-grade', element: <MyGradePage /> },
           { path: '/conflitos', element: <ConflictsPage /> },
           { path: '/relatorios', element: <ReportsPage /> },
         ],

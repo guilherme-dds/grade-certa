@@ -34,3 +34,25 @@
     @apply bg-primary text-white;
   }
 }
+
+/* Relatórios: "Exportar PDF" usa a impressão do navegador */
+@page {
+  size: A4 landscape;
+  margin: 12mm;
+}
+
+@media print {
+  body {
+    background: white;
+    print-color-adjust: exact;
+  }
+
+  /* Cabe a semana inteira em uma folha na maioria dos casos */
+  main {
+    zoom: 0.85;
+  }
+
+  tr {
+    break-inside: avoid;
+  }
+}

@@ -2,6 +2,8 @@ import type { JanelaProfessor, PlanejamentoGrade } from '@/api/grades'
 import { cn } from '@/lib/cn'
 import { getSubjectColor, weekDays } from '@/lib/schedule'
 import type { Lesson } from '@/schedule/ScheduleContext'
+import { ReportSection } from './ReportSection'
+import { nomesOrdenados } from './reportMetrics'
 
 interface TeacherScheduleReportProps {
   professor: string
@@ -22,19 +24,20 @@ export function TeacherScheduleReport({ professor, lessons, planejamentos, janel
     new Set([...aulas.map((a) => a.time), ...planos.map((p) => p.horario), ...vagos.map((j) => j.horario)]),
   ).sort()
 
-  const turmas = Array.from(new Set(aulas.map((a) => a.classGroup))).sort()
+  const turmas = nomesOrdenados(aulas.map((a) => a.classGroup))
   const compartilhados = planos.filter((p) => p.compartilhado).length
 
   return (
-    <section className="rounded-lg border border-line bg-white p-5 print:break-after-page print:border-0 print:p-0">
-      <header className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-lg font-bold">{professor}</h2>
-        <p className="text-[12.5px] text-muted">
+    <ReportSection
+      title={professor}
+      summary={
+        <>
           {aulas.length} aulas · {planos.length} planejamentos
           {planos.length > 0 && ` (${compartilhados} compartilhados)`} ·{' '}
           {vagos.length === 0 ? 'sem janelas' : `${vagos.length} janela(s)`}
-        </p>
-      </header>
+        </>
+      }
+    >
       {turmas.length > 0 && <p className="mb-3 text-[12.5px] text-muted">Turmas: {turmas.join(', ')}</p>}
 
       {horarios.length === 0 ? (
@@ -61,23 +64,28 @@ export function TeacherScheduleReport({ professor, lessons, planejamentos, janel
                     {horario}
                   </th>
                   {weekDays.map((dia) => {
-                    const aula = aulas.find((a) => a.day === dia && a.time === horario)
+                    // Mais de uma aula no mesmo horário é conflito: mostra todas para não esconder
+                    const naCelula = aulas.filter((a) => a.day === dia && a.time === horario)
                     const plano = planos.find((p) => p.dia_semana === dia && p.horario === horario)
                     const janela = vagos.some((j) => j.dia_semana === dia && j.horario === horario)
                     return (
                       <td key={dia} className="p-1 align-top">
-                        {aula ? (
-                          <div className={cn('rounded-[5px] px-2 py-1.5', getSubjectColor(aula.subject))}>
-                            <span className="block font-semibold">{aula.subject}</span>
-                            <span className="block text-muted">
-                              {aula.classGroup}
-                              {aula.room && ` · ${aula.room}`}
-                            </span>
-                            {aula.teachers.length > 1 && (
-                              <span className="block text-[11px] text-muted">
-                                com {aula.teachers.filter((t) => t.nome !== professor).map((t) => t.nome).join(', ')}
-                              </span>
-                            )}
+                        {naCelula.length > 0 ? (
+                          <div className="flex flex-col gap-1">
+                            {naCelula.map((aula) => (
+                              <div key={aula.id} className={cn('rounded-[5px] px-2 py-1.5', getSubjectColor(aula.subject))}>
+                                <span className="block font-semibold">{aula.subject}</span>
+                                <span className="block text-muted">
+                                  {aula.classGroup}
+                                  {aula.room && ` · ${aula.room}`}
+                                </span>
+                                {aula.teachers.length > 1 && (
+                                  <span className="block text-[11px] text-muted">
+                                    com {aula.teachers.filter((t) => t.nome !== professor).map((t) => t.nome).join(', ')}
+                                  </span>
+                                )}
+                              </div>
+                            ))}
                           </div>
                         ) : plano ? (
                           <div className="rounded-[5px] border border-dashed border-line px-2 py-1.5">
@@ -100,6 +108,6 @@ export function TeacherScheduleReport({ professor, lessons, planejamentos, janel
           </table>
         </div>
       )}
-    </section>
+    </ReportSection>
   )
 }

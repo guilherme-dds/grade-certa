@@ -1,17 +1,10 @@
-import { useQuery } from '@tanstack/react-query'
-import { getProfessores } from '@/api/professores'
-import { useAuth } from '@/auth/useAuth'
+import { useProfessorLogado } from '@/auth/useProfessorLogado'
 import { ProfessorAvailabilityEditor } from '@/components/ProfessorAvailabilityEditor'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { formatDateTime } from '@/lib/schedule'
 
 export function AvailabilityPage() {
-  const { user } = useAuth()
-  const professoresQuery = useQuery({ queryKey: ['professores'], queryFn: () => getProfessores() })
-
-  // O usuário logado é ligado ao cadastro de professor pelo e-mail
-  const email = user?.email.trim().toLowerCase()
-  const professor = professoresQuery.data?.find((p) => p.email.trim().toLowerCase() === email)
+  const { user, professor, isLoading, isSuccess } = useProfessorLogado()
 
   return (
     <>
@@ -25,8 +18,8 @@ export function AvailabilityPage() {
       />
 
       <div className="max-w-[720px] rounded-lg border border-line bg-white p-5">
-        {professoresQuery.isLoading && <p className="py-8 text-center text-sm text-muted">Carregando...</p>}
-        {professoresQuery.isSuccess && !professor && (
+        {isLoading && <p className="py-8 text-center text-sm text-muted">Carregando...</p>}
+        {isSuccess && !professor && (
           <div className="py-6 text-center">
             <p className="text-sm font-semibold">Seu usuário não está vinculado a um professor</p>
             <p className="mt-1 text-[13px] text-muted">
