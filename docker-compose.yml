@@ -55,6 +55,27 @@ services:
     volumes:
       - ./core-service:/app
 
+  # Roda as gerações da fila (grades com status "gerando"), separado da API: reiniciar o
+  # core não interrompe uma geração, e uma geração interrompida no worker é refeita
+  worker:
+    build:
+      context: .
+      dockerfile: core-service/Dockerfile
+    container_name: grade_certa_worker
+    restart: always
+    command: ["python", "-m", "services.worker_geracao"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: mysql+pymysql://grade_user:grade_password@db:3306/grade_certa
+    depends_on:
+      db:
+        condition: service_healthy
+      core-service:
+        condition: service_started
+    volumes:
+      - ./core-service:/app
+
   frontend:
     build:
       context: ./frontend

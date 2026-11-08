@@ -3,7 +3,7 @@ import logging
 import pytest
 from sqlalchemy import create_engine, inspect, text
 
-from database.migracoes import COLUNAS, adicionar_colunas, marcar_geracoes_interrompidas
+from database.migracoes import COLUNAS, adicionar_colunas
 
 
 def _colunas(engine, tabela):
@@ -35,21 +35,6 @@ def test_falha_ao_adicionar_coluna_e_registrada_e_interrompe(caplog, monkeypatch
     with caplog.at_level(logging.ERROR, logger="database.migracoes"), pytest.raises(Exception):
         adicionar_colunas(engine)
     assert "não foi possível adicionar a coluna professores.jornada" in caplog.text
-
-
-def test_geracao_interrompida_vira_erro_e_falha_e_registrada(caplog):
-    engine = create_engine("sqlite://")
-    # Sem a tabela: registra a falha, sem interromper a subida
-    with caplog.at_level(logging.ERROR, logger="database.migracoes"):
-        marcar_geracoes_interrompidas(engine)
-    assert "gerações interrompidas" in caplog.text
-
-    with engine.begin() as conn:
-        conn.execute(text("CREATE TABLE grades (id INTEGER PRIMARY KEY, status TEXT)"))
-        conn.execute(text("INSERT INTO grades VALUES (1, 'gerando'), (2, 'sucesso')"))
-    marcar_geracoes_interrompidas(engine)
-    with engine.connect() as conn:
-        assert conn.execute(text("SELECT status FROM grades ORDER BY id")).scalars().all() == ["erro", "sucesso"]
 
 
 def test_toda_coluna_da_lista_existe_no_modelo():

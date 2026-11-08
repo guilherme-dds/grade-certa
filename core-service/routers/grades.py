@@ -1,22 +1,17 @@
-import logging
 from datetime import date
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
 from typing import Optional
 
-from database.connection import SessionLocal, get_db
+from database.connection import get_db
 from database.models import AlteracaoAulaDB, AulaDB, GradeDB, ProfessorDB, SalaDB, TurmaDB
 from models.grade import Aula, AulaUpdate, Grade
 from services.agenda_professores import recalcular_agenda
 from services.grade_conflicts import DetectorConflitos, horarios_da_turma
-from services.grid_generator import TEMPO_LIMITE_SEG, TEMPO_MAXIMO_SEG, GridGeneratorService
+from services.grid_generator import TEMPO_LIMITE_SEG, TEMPO_MAXIMO_SEG
 from services.time_slots import DIAS_SEMANA, TIME_SLOTS_BY_NIVEL, slots_overlap
 
 router = APIRouter(prefix="/grades", tags=["grades"])
-logger = logging.getLogger(__name__)
-
-# Sessão usada pela geração em segundo plano (os testes trocam por uma sessão SQLite)
-session_factory = SessionLocal
 
 
 def semestre_atual() -> str:
@@ -36,34 +31,17 @@ def _resumo(g: GradeDB) -> dict:
     }
 
 
-def executar_geracao(grade_id: int, tempo_limite_seg: float) -> None:
-    """Roda o solver fora da requisição e grava o resultado (ou o erro) na grade."""
-    db = session_factory()
-    try:
-        grade = db.get(GradeDB, grade_id)
-        GridGeneratorService(db).generate(grade=grade, tempo_limite_seg=tempo_limite_seg)
-    except Exception:
-        logger.exception("Falha na geração da grade %s", grade_id)
-        db.rollback()
-        grade = db.get(GradeDB, grade_id)
-        grade.status = "erro"
-        grade.detalhes = {**(grade.detalhes or {}), "mensagem": "Erro inesperado ao gerar a grade."}
-        db.commit()
-    finally:
-        db.close()
-
-
 @router.post("/gerar-grade", status_code=status.HTTP_202_ACCEPTED)
 def gerar_grade(
-    background_tasks: BackgroundTasks,
     nome: Optional[str] = Query("Grade Horária Automática", description="Nome descritivo da grade"),
     ano_semestre: Optional[str] = Query(None, description="Ex: 2026.2 (padrão: semestre atual)"),
     tempo_limite_seg: float = Query(TEMPO_LIMITE_SEG, ge=10, le=TEMPO_MAXIMO_SEG, description="Tempo máximo do solver"),
     db: Session = Depends(get_db),
 ):
     """
-    Inicia a geração automática (Google OR-Tools CP-SAT) em segundo plano e devolve a
-    grade com status "gerando". Acompanhe por GET /grades/{id}/status.
+    Coloca a geração automática (Google OR-Tools CP-SAT) na fila e devolve a grade com
+    status "gerando". Quem roda o solver é o worker (services/worker_geracao.py), num
+    processo separado. Acompanhe por GET /grades/{id}/status.
     """
     if db.query(GradeDB).filter(GradeDB.status == "gerando").first():
         raise HTTPException(status_code=409, detail="Já existe uma geração em andamento. Aguarde ela terminar.")
@@ -77,7 +55,6 @@ def gerar_grade(
     db.add(grade)
     db.commit()
     db.refresh(grade)
-    background_tasks.add_task(executar_geracao, grade.id, tempo_limite_seg)
     return _resumo(grade)
 
 

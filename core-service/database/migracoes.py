@@ -70,11 +70,3 @@ def vincular_professores_por_id(session_factory) -> None:
         # As matrizes antigas continuam funcionando pelo nome; o gerador também converte
         logger.exception("Migração: não foi possível vincular os professores das matrizes pelo id")
 
-
-def marcar_geracoes_interrompidas(engine: Engine) -> None:
-    """Uma geração que estava rodando quando o serviço parou não vai terminar."""
-    try:
-        with engine.begin() as conn:
-            conn.execute(text("UPDATE grades SET status = 'erro' WHERE status = 'gerando'"))
-    except Exception:
-        logger.exception("Migração: não foi possível marcar as gerações interrompidas")

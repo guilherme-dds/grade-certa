@@ -5,7 +5,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database.connection import Base, SessionLocal, engine
 import database.models  # Garante que os modelos SQLAlchemy sejam importados
-from database.migracoes import adicionar_colunas, marcar_geracoes_interrompidas, vincular_professores_por_id
+from database.migracoes import adicionar_colunas, vincular_professores_por_id
 from routers import professores, turmas, disciplinas, disponibilidades, grades, salas, configuracoes
 from services.autenticacao import usuario_autenticado
 
@@ -19,11 +19,11 @@ _log_migracoes = logging.getLogger("database.migracoes")
 _log_migracoes.setLevel(logging.INFO)
 _log_migracoes.addHandler(logging.StreamHandler())
 
-# Tabelas novas pelo create_all; colunas novas e ajustes de dados pelas migrações
+# Tabelas novas pelo create_all; colunas novas e ajustes de dados pelas migrações.
+# As gerações rodam no worker (services/worker_geracao.py), que retoma as interrompidas.
 Base.metadata.create_all(bind=engine)
 adicionar_colunas(engine)
 vincular_professores_por_id(SessionLocal)
-marcar_geracoes_interrompidas(engine)
 
 app = FastAPI(
     title="Grade Certa - Core Service",

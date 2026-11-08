@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 from database.connection import Base, get_db
 from database.models import AulaDB, GradeDB, ProfessorDB, SalaDB, TurmaDB
 from routers import configuracoes, grades, professores, salas, turmas
+from services.worker_geracao import MAX_TENTATIVAS, processar_pendentes
 
 
 @pytest.fixture
@@ -27,8 +28,6 @@ def ctx():
     for r in (configuracoes, grades, professores, salas, turmas):
         app.include_router(r.router)
     app.dependency_overrides[get_db] = _db
-    # A geração em segundo plano abre a própria sessão
-    grades.session_factory = Session
     return TestClient(app), Session()
 
 
@@ -310,6 +309,11 @@ def _turma_para_gerar(db):
     db.commit()
 
 
+def _rodar_worker(db):
+    """O que o worker faz a cada ciclo: gera as grades na fila."""
+    return processar_pendentes(sessionmaker(bind=db.get_bind()))
+
+
 def test_geracao_em_segundo_plano(ctx):
     client, db = ctx
     _turma_para_gerar(db)
@@ -319,7 +323,9 @@ def test_geracao_em_segundo_plano(ctx):
     assert r.json()["status"] == "gerando"
     grade_id = r.json()["id"]
 
-    # O TestClient executa a tarefa em segundo plano ao fim da requisição
+    # Na fila até o worker pegar
+    assert client.get(f"/grades/{grade_id}/status").json()["status"] == "gerando"
+    assert _rodar_worker(db) == 1
     situacao = client.get(f"/grades/{grade_id}/status").json()
     assert situacao["status"] == "sucesso"
     assert situacao["detalhes"]["tempo_limite_seg"] == 20
@@ -331,12 +337,14 @@ def test_geracao_inviavel_fica_no_historico_mas_nao_vira_grade_atual(ctx):
     client, db = ctx
     _turma_para_gerar(db)
     ok = client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).json()["id"]
+    _rodar_worker(db)
 
     # 11 aulas de uma disciplina não cabem na regra de no máximo 2 por dia
     turma = db.query(TurmaDB).first()
     turma.matriz_curricular = [*turma.matriz_curricular, {"disciplina": "Arte", "aulas_semanais": 11}]
     db.commit()
     falha = client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).json()["id"]
+    _rodar_worker(db)
 
     situacao = client.get(f"/grades/{falha}/status").json()
     assert situacao["status"] == "inviavel"
@@ -351,6 +359,25 @@ def test_uma_geracao_por_vez(ctx):
     db.commit()
     r = client.post("/grades/gerar-grade")
     assert r.status_code == 409
+
+
+def test_worker_refaz_geracao_interrompida_e_desiste_depois_do_limite(ctx):
+    client, db = ctx
+    _turma_para_gerar(db)
+    # Interrompida uma vez (o worker caiu no meio): é refeita do zero
+    retomada = GradeDB(nome="Interrompida", status="gerando", total_aulas=0,
+                       detalhes={"tempo_limite_seg": 20, "tentativas": 1})
+    # Já interrompida no limite: vira erro sem rodar de novo
+    desistida = GradeDB(nome="Derrubou o worker", status="gerando", total_aulas=0,
+                        detalhes={"tempo_limite_seg": 20, "tentativas": MAX_TENTATIVAS})
+    db.add_all([retomada, desistida])
+    db.commit()
+
+    assert _rodar_worker(db) == 2
+    assert client.get(f"/grades/{retomada.id}/status").json()["status"] == "sucesso"
+    situacao = client.get(f"/grades/{desistida.id}/status").json()
+    assert situacao["status"] == "erro" and "interrompida" in situacao["detalhes"]["mensagem"]
+    assert _rodar_worker(db) == 0
 
 
 def test_excluir_grade(ctx):
@@ -418,6 +445,7 @@ def test_geracao_usa_o_padrao_e_a_personalizacao_do_professor(ctx):
     client.put("/configuracoes/jornada", json=JORNADA)
 
     falha = client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).json()["id"]
+    _rodar_worker(db)
     situacao = client.get(f"/grades/{falha}/status").json()
     assert situacao["status"] == "inviavel"
     assert "almoco" in situacao["detalhes"]["regras_em_conflito"]
@@ -426,4 +454,5 @@ def test_geracao_usa_o_padrao_e_a_personalizacao_do_professor(ctx):
     ana["jornada"] = {**JORNADA, "almoco_minutos": 0}
     client.put(f"/professores/{ana['id']}", json=ana)
     ok = client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).json()["id"]
+    _rodar_worker(db)
     assert client.get(f"/grades/{ok}/status").json()["status"] == "sucesso"
