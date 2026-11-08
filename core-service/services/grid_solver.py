@@ -38,6 +38,7 @@ REGRAS = {
     "estrutura_tardes": "tardes completas ou meia tarde nas turmas de manhã + tardes",
     "almoco": "almoço dos professores",
     "limite_aulas_dia": "máximo de aulas por dia dos professores",
+    "duracao_dia": "duração máxima do dia dos professores",
 }
 
 # Início de palavra (sem acento) que indica a área do conhecimento pelo nome da disciplina.
@@ -164,6 +165,8 @@ class ProfessorInput:
     preferencial: List[Intervalo] = field(default_factory=list)
     almoco: Optional[Almoco] = None
     max_aulas_dia: Optional[int] = None
+    # Da primeira à última atividade do dia (aula ou planejamento)
+    max_minutos_dia: Optional[int] = None
 
 
 @dataclass
@@ -249,7 +252,9 @@ def _opcoes_almoco(almoco: Almoco, horarios: List[str]) -> List[List[int]]:
             return []
         if vagos not in opcoes:
             opcoes.append(vagos)
-    return opcoes
+    # Uma pausa que deixa vagos mais horários que outra não é necessária: se fosse escolhida,
+    # o horário a mais (ex.: 11:10 e 12:00 para 40 min a partir das 11:30) deixaria de contar como janela
+    return [o for o in opcoes if not any(set(m) < set(o) for m in opcoes)]
 
 
 def resolver_grade(
@@ -662,6 +667,15 @@ def resolver_grade(
 
                 horarios_dia += horarios
                 pres_dia += pres
+
+            # Duração do dia: duas presenças mais distantes que o limite não podem acontecer juntas
+            maximo = professores[chave].max_minutos_dia
+            if maximo:
+                faixas = [parse_slot_range(h) for h in horarios_dia]
+                for i, (ini_i, fim_i) in enumerate(faixas):
+                    for k, (ini_k, fim_k) in enumerate(faixas):
+                        if k > i and max(fim_i, fim_k) - min(ini_i, ini_k) > maximo:
+                            model.Add(pres_dia[i] + pres_dia[k] <= 1).OnlyEnforceIf(lits["duracao_dia"])
 
             # Almoço: uma das opções de pausa é escolhida e seus horários ficam vagos
             pausa_dia: Dict[str, List[cp_model.IntVar]] = {}  # horário -> pausas que o deixam vago

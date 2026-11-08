@@ -7,7 +7,7 @@ import { StatCard, StatGrid } from '@/components/ui/StatCard'
 import { formatDateTime } from '@/lib/schedule'
 import { useSchedule } from '@/schedule/useSchedule'
 
-export function CoordDashboard() {
+export function DashboardOverview() {
   const pendingConflicts = useSchedule().conflicts.length
   const professoresQuery = useQuery({ queryKey: ['professores'], queryFn: () => getProfessores() })
   const historicoQuery = useQuery({ queryKey: ['historicoGrades'], queryFn: getHistoricoGrades })

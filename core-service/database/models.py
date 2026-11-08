@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, JSON, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Boolean, JSON, DateTime, Float, ForeignKey, Text
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database.connection import Base
@@ -41,6 +41,7 @@ class ConfiguracaoEscolaDB(Base):
     almoco_fim = Column(String(5), nullable=False)
     almoco_minutos = Column(Integer, nullable=False)
     max_aulas_dia = Column(Integer, nullable=False)
+    max_horas_dia = Column(Float, nullable=True)
 
 
 class TurmaDB(Base):
@@ -108,6 +109,7 @@ class GradeDB(Base):
     detalhes = Column(JSON, default=dict)
 
     aulas = relationship("AulaDB", back_populates="grade", cascade="all, delete-orphan")
+    alteracoes = relationship("AlteracaoAulaDB", cascade="all, delete-orphan", order_by="AlteracaoAulaDB.id")
 
 
 class AulaDB(Base):
@@ -128,3 +130,18 @@ class AulaDB(Base):
     ordem = Column(Integer, default=1)
 
     grade = relationship("GradeDB", back_populates="aulas")
+
+
+class AlteracaoAulaDB(Base):
+    """Edição manual de uma aula, com o estado anterior para poder desfazê-la."""
+    __tablename__ = "alteracoes_aula"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    grade_id = Column(Integer, ForeignKey("grades.id", ondelete="CASCADE"), nullable=False, index=True)
+    aula_id = Column(Integer, nullable=False)
+    descricao = Column(String(500), nullable=False)
+    # Campos da aula antes da edição (dia_semana, horario, ordem, professores, sala_nome...)
+    aula_antes = Column(JSON, nullable=False)
+    # Planejamentos e janelas da grade antes da edição (recalculados a cada edição)
+    agenda_antes = Column(JSON, nullable=False)
+    criado_em = Column(DateTime, server_default=func.now())

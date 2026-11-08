@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router'
 import { useAuth } from '@/auth/useAuth'
-import { roles, roleShortLabels } from '@/auth/roles'
-import { navItemsFor } from '@/config/navigation'
+import { navItems } from '@/config/navigation'
 import { cn } from '@/lib/cn'
 import { ScheduleProvider } from '@/schedule/ScheduleProvider'
 
@@ -55,8 +54,8 @@ export function AppLayout() {
 }
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
-  const { user, role, logout, setPreviewRole } = useAuth()
-  if (!role) return null
+  const { user, logout } = useAuth()
+  if (!user) return null
 
   return (
     <nav aria-label="Principal" className="flex h-full flex-col bg-navy py-6">
@@ -65,30 +64,8 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <p className="mt-0.5 text-[11.5px] text-white/45">Grade horária escolar</p>
       </div>
 
-      {import.meta.env.DEV && (
-        <div className="px-5 pb-4">
-          <p className="mb-2 text-[10.5px] tracking-wider text-white/40 uppercase">Visualizar como (dev)</p>
-          <div className="flex gap-1 rounded-md bg-black/20 p-[3px]">
-            {roles.map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setPreviewRole(r)}
-                aria-pressed={role === r}
-                className={cn(
-                  'flex-1 rounded py-1.5 text-xs',
-                  role === r ? 'bg-primary font-semibold text-white' : 'text-white/55 hover:text-white',
-                )}
-              >
-                {roleShortLabels[r]}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       <ul className="mt-2 flex flex-col">
-        {navItemsFor(role).map((item) => (
+        {navItems.map((item) => (
           <li key={item.to}>
             <NavLink
               to={item.to}
@@ -112,13 +89,14 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <div className="mx-5 mt-auto border-t border-white/10 pt-4">
         <p className="truncate text-[13px] font-medium text-white">{user?.name}</p>
         <p className="truncate text-[11.5px] text-white/45">{user?.email}</p>
-        <button
-          type="button"
-          onClick={logout}
-          className="mt-3 text-[12.5px] text-white/60 hover:text-white hover:underline"
-        >
-          Sair
-        </button>
+        <div className="mt-3 flex gap-4 text-[12.5px]">
+          <NavLink to="/minha-conta" onClick={onNavigate} className="text-white/60 hover:text-white hover:underline">
+            Minha conta
+          </NavLink>
+          <button type="button" onClick={logout} className="text-white/60 hover:text-white hover:underline">
+            Sair
+          </button>
+        </div>
       </div>
     </nav>
   )

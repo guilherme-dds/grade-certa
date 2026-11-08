@@ -1,23 +1,16 @@
-import type { Role } from '@/auth/roles'
-
 export interface NavItem {
   to: string
   label: string
-  roles: Role[]
 }
 
-// Menu por perfil, conforme Fluxos.dc.html. Telas sem design fechado caem no placeholder.
+// Todos os usuários têm o mesmo acesso
 export const navItems: NavItem[] = [
-  { to: '/', label: 'Dashboard', roles: ['admin', 'coordenacao', 'professor'] },
-  { to: '/professores', label: 'Professores', roles: ['coordenacao', 'admin'] },
-  { to: '/disciplinas', label: 'Turmas e salas', roles: ['coordenacao'] },
-  { to: '/disponibilidade', label: 'Disponibilidade', roles: ['professor'] },
-  { to: '/geracao', label: 'Geração automática', roles: ['coordenacao'] },
-  { to: '/grade', label: 'Grade gerada', roles: ['coordenacao', 'professor'] },
-  { to: '/conflitos', label: 'Conflitos', roles: ['coordenacao'] },
-  { to: '/relatorios', label: 'Relatórios', roles: ['admin', 'coordenacao'] },
+  { to: '/', label: 'Dashboard' },
+  { to: '/professores', label: 'Professores' },
+  { to: '/disciplinas', label: 'Turmas e salas' },
+  { to: '/geracao', label: 'Geração automática' },
+  { to: '/grade', label: 'Grade gerada' },
+  { to: '/conflitos', label: 'Conflitos' },
+  { to: '/relatorios', label: 'Relatórios' },
+  { to: '/usuarios', label: 'Usuários' },
 ]
-
-export function navItemsFor(role: Role) {
-  return navItems.filter((item) => item.roles.includes(role))
-}

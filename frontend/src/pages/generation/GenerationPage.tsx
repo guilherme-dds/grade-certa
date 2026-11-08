@@ -109,6 +109,7 @@ export function GenerationPage() {
     0,
   )
   const professoresAtivos = professores.filter((p) => p.ativo)
+  const nomePorId = new Map(professores.flatMap((p) => (p.id ? [[p.id, p.nome] as const] : [])))
 
   // Aulas que a escola prendeu num dia/horário (ex.: laboratório), para conferir antes de gerar
   const aulasFixas = turmas.flatMap((t) =>
@@ -146,7 +147,7 @@ export function GenerationPage() {
     <div className="space-y-8">
       <PageHeader
         title="Geração Automática de Grade"
-        description="Resolvedor matemático via Google OR-Tools CP-SAT. Distribui aulas respeitando matrizes curriculares, níveis de ensino, indisponibilidades de professores e salas, aulas dobradas, ausência de janelas, almoço e limite de aulas por dia e 4 horários de planejamento por professor."
+        description="Resolvedor matemático via Google OR-Tools CP-SAT. Distribui aulas respeitando matrizes curriculares, níveis de ensino, indisponibilidades de professores e salas, aulas dobradas, ausência de janelas, almoço, limite de aulas e de horas por dia e 4 horários de planejamento por professor."
       />
 
       {/* 1. Diagnóstico Pré-Geração */}
@@ -227,7 +228,7 @@ export function GenerationPage() {
                       {item.disciplina}
                       {item.extra && <span className="ml-1.5 text-[11px] text-muted">(extra)</span>}
                     </td>
-                    <td className="px-4 py-2.5 text-muted">{professoresDoItem(item).join(', ') || 'Sem professor'}</td>
+                    <td className="px-4 py-2.5 text-muted">{professoresDoItem(item, nomePorId).join(', ') || 'Sem professor'}</td>
                     <td className="px-4 py-2.5">
                       {item.horarios_fixos!
                         .map((f) => `${f.dia_semana}, ${f.horario ?? 'qualquer horário'}`)
@@ -356,7 +357,7 @@ export function GenerationPage() {
                     <li>Verifique se o número de aulas demandadas pela turma cabe nos horários semanais do turno.</li>
                     <li>Verifique se algum professor atribuído está com carga máxima menor que a demanda.</li>
                     <li>Confirme se os professores possuem disponibilidade nos dias e turnos das aulas.</li>
-                    <li>Revise a jornada padrão ou personalizada em Professores (almoço e máximo de aulas por dia).</li>
+                    <li>Revise a jornada padrão ou personalizada em Professores (almoço, máximo de aulas e de horas por dia).</li>
                   </ul>
                 </div>
                 <Avisos avisos={detalhes?.avisos} />

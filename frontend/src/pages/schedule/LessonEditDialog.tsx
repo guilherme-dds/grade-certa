@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { simularEdicao, type SimulacaoEdicao } from '@/api/grades'
 import { getProfessores } from '@/api/professores'
 import { getSalas } from '@/api/salas'
 import { MultiSelectChips } from '@/components/MultiSelectChips'
 import { SelectField } from '@/components/SelectField'
 import { Button } from '@/components/ui/Button'
+import { getApiErrorMessage } from '@/lib/apiError'
 import { weekDays } from '@/lib/schedule'
 import type { Lesson } from '@/schedule/ScheduleContext'
 import { useSchedule } from '@/schedule/useSchedule'
@@ -30,6 +32,8 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
   })
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  // Resultado da simulação dos valores atuais; com conflitos novos, o próximo "Salvar" confirma
+  const [simulacao, setSimulacao] = useState<SimulacaoEdicao | null>(null)
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -45,6 +49,7 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
   const set = <K extends keyof typeof values>(key: K, value: (typeof values)[K]) => {
     setValues((prev) => ({ ...prev, [key]: value }))
     setError(null)
+    setSimulacao(null)
   }
 
   const professorOptions = (professoresQuery.data ?? [])
@@ -58,16 +63,32 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
+    const changes = {
+      day: values.day,
+      time: values.time,
+      teacherIds: values.teacherIds.map(Number),
+      room: values.room || null,
+    }
     try {
       setIsSaving(true)
-      const result = await updateLesson(lesson.id, {
-        day: values.day,
-        time: values.time,
-        teacherIds: values.teacherIds.map(Number),
-        room: values.room || null,
-      })
+      // Primeiro "Salvar": confere os conflitos que a edição criaria e, havendo algum, pede confirmação
+      if (!simulacao) {
+        const resultado = await simularEdicao(lesson.id, {
+          dia_semana: changes.day,
+          horario: changes.time,
+          professor_ids: changes.teacherIds,
+          sala_nome: changes.room,
+        })
+        if (resultado.novos.length > 0) {
+          setSimulacao(resultado)
+          return
+        }
+      }
+      const result = await updateLesson(lesson.id, changes)
       if (result.ok) close()
       else setError(result.error)
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Não foi possível conferir a edição.'))
     } finally {
       setIsSaving(false)
     }
@@ -89,7 +110,7 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
           Editar aula — {lesson.subject} · {lesson.classGroup}
         </h2>
         <p className="mt-1 text-[13px] text-muted">
-          Atualmente em {lesson.day}, {lesson.time}. Choques com outras turmas aparecem em Conflitos.
+          Atualmente em {lesson.day}, {lesson.time}. Antes de salvar, os conflitos que a mudança criaria são mostrados aqui.
         </p>
 
         <div className="mt-5 space-y-4">
@@ -110,6 +131,24 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
           </div>
         </div>
 
+        {simulacao && (
+          <div role="alert" className="mt-4 rounded-md border border-warning/40 bg-warning-soft p-3 text-[13px]">
+            <p className="font-semibold text-warning">
+              Esta mudança cria {simulacao.novos.length} conflito{simulacao.novos.length > 1 ? 's' : ''}:
+            </p>
+            <ul className="mt-1.5 list-disc space-y-1 pl-4">
+              {simulacao.novos.map((c) => (
+                <li key={c.id}>
+                  <span className="font-medium">{c.tipo}:</span> {c.descricao}
+                </li>
+              ))}
+            </ul>
+            {simulacao.resolvidos.length > 0 && (
+              <p className="mt-1.5 text-muted">E resolve {simulacao.resolvidos.length} conflito(s) atual(is).</p>
+            )}
+          </div>
+        )}
+
         {error && (
           <p className="mt-4 text-[13px] text-danger" role="alert">
             {error}
@@ -121,7 +160,7 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
             Cancelar
           </Button>
           <Button type="submit" disabled={isSaving}>
-            {isSaving ? 'Salvando...' : 'Salvar'}
+            {isSaving ? 'Salvando...' : simulacao ? 'Salvar mesmo assim' : 'Salvar'}
           </Button>
         </div>
       </form>

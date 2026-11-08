@@ -45,7 +45,7 @@ export function LoginPage() {
   return (
     <form onSubmit={onSubmit} noValidate>
       <h1 className="mb-1 text-[19px] font-semibold">Entrar</h1>
-      <p className="mb-6 text-[13px] text-muted">Acesse com o e-mail cadastrado pela coordenação.</p>
+      <p className="mb-6 text-[13px] text-muted">Acesse com o e-mail e a senha da sua conta.</p>
 
       {state?.registered && (
         <p className="mb-4 rounded-md border border-primary-soft-line bg-primary-soft px-3 py-2 text-[13px]">
@@ -81,7 +81,7 @@ export function LoginPage() {
       </Button>
 
       <p className="mt-5 border-t border-line-soft pt-5 text-[12.5px] leading-normal text-muted">
-        Primeiro acesso? Verifique o convite enviado por e-mail pela coordenação.
+        Primeiro acesso? Peça a um usuário do sistema para criar sua conta em Usuários.
       </p>
     </form>
   )

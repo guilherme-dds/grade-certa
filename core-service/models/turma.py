@@ -12,7 +12,9 @@ class HorarioFixo(BaseModel):
 class ItemMatriz(BaseModel):
     disciplina: str
     aulas_semanais: int = 4
-    # Professores que dão a aula juntos (ou em rodízio); todos ficam reservados no horário
+    # Ids dos professores que dão a aula juntos (ou em rodízio); todos ficam reservados no horário
+    professor_ids: List[int] = []
+    # Nomes de professores ainda sem cadastro (ao salvar, nomes cadastrados viram id)
     professores: List[str] = []
     # Formato antigo (um professor só); mantido igual ao primeiro de `professores`
     professor: Optional[str] = None
@@ -26,6 +28,7 @@ class ItemMatriz(BaseModel):
         nomes = [p.strip() for p in (self.professores or [self.professor or ""]) if p and p.strip()]
         self.professores = list(dict.fromkeys(nomes))
         self.professor = self.professores[0] if self.professores else None
+        self.professor_ids = list(dict.fromkeys(self.professor_ids))
         exatos = {(h.dia_semana, h.horario) for h in self.horarios_fixos if h.horario}
         so_dia = [h for h in self.horarios_fixos if not h.horario]
         if len(exatos) + len(so_dia) > self.aulas_semanais:

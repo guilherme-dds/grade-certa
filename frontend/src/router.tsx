@@ -2,7 +2,6 @@ import { createBrowserRouter } from 'react-router'
 import { RequireAuth, RequireGuest } from '@/auth/guards'
 import { AppLayout } from '@/layouts/AppLayout'
 import { AuthLayout } from '@/layouts/AuthLayout'
-import { AvailabilityPage } from '@/pages/AvailabilityPage'
 import { ConflictsPage } from '@/pages/conflicts/ConflictsPage'
 import { DashboardPage } from '@/pages/dashboard/DashboardPage'
 import { GenerationPage } from '@/pages/generation/GenerationPage'
@@ -13,6 +12,8 @@ import { ReportsPage } from '@/pages/reports/ReportsPage'
 import { SchedulePage } from '@/pages/schedule/SchedulePage'
 import { SubjectsPage } from '@/pages/SubjectsPage'
 import { TeachersPage } from '@/pages/TeachersPage'
+import { AccountPage } from '@/pages/users/AccountPage'
+import { UsersPage } from '@/pages/users/UsersPage'
 
 export const router = createBrowserRouter([
   {
@@ -36,11 +37,12 @@ export const router = createBrowserRouter([
           { path: '/', element: <DashboardPage /> },
           { path: '/professores', element: <TeachersPage /> },
           { path: '/disciplinas', element: <SubjectsPage /> },
-          { path: '/disponibilidade', element: <AvailabilityPage /> },
           { path: '/geracao', element: <GenerationPage /> },
           { path: '/grade', element: <SchedulePage /> },
           { path: '/conflitos', element: <ConflictsPage /> },
           { path: '/relatorios', element: <ReportsPage /> },
+          { path: '/usuarios', element: <UsersPage /> },
+          { path: '/minha-conta', element: <AccountPage /> },
         ],
       },
     ],

@@ -8,6 +8,8 @@ export interface Jornada {
   /** 0 = sem exigência de almoço */
   almoco_minutos: number
   max_aulas_dia: number
+  /** Da primeira à última atividade do dia (aula ou planejamento); nulo = sem limite */
+  max_horas_dia: number | null
 }
 
 export async function getJornadaPadrao(): Promise<Jornada> {

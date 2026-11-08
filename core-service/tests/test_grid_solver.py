@@ -476,6 +476,13 @@ def test_opcoes_de_almoco():
     opcoes = _opcoes_almoco(Almoco("12:00", "14:00", 40), SLOTS + TARDE_AF)
     horarios = [[(SLOTS + TARDE_AF)[i] for i in vagos] for vagos in opcoes]
     assert horarios == [["11:50 - 12:40"], ["13:00 - 13:50"]]
+    # Das 11:30, 40 min tocam 11:10 e 12:00 (Ensino Médio); a pausa das 12:00 deixa só um horário
+    # vago, então a de dois horários não é opção (senão o horário a mais seria uma janela escondida)
+    em = [s["horario"] for s in get_slots_for_turma("Manhã", "Ensino Médio")]
+    opcoes = _opcoes_almoco(Almoco("11:30", "14:30", 40), em + TARDE_AF)
+    assert [[(em + TARDE_AF)[i] for i in vagos] for vagos in opcoes] == [
+        ["12:00 - 12:50"], ["13:00 - 13:50"], ["13:50 - 14:40"],
+    ]
     # Só de manhã: a pausa cabe depois da última aula e não exige nada
     assert _opcoes_almoco(Almoco("11:30", "14:30", 40), SLOTS) == []
 
@@ -525,6 +532,17 @@ def test_almoco_fica_livre_e_nao_conta_como_janela():
     assert max(livres) >= 60
 
 
+def test_almoco_desculpa_so_um_horario_vago():
+    # 10:10 e 13:00 com 11:00 e 11:50 vagos (sem planejamento possível ali): 40 min de almoço
+    # cabem num horário só, então o outro é janela
+    turmas, professores = _duas_turmas([("Seg", SLOTS[3])], [("Seg", TARDE_AF[0])])
+    professores["ana"].almoco = Almoco("11:30", "14:30", 40)
+    professores["ana"].indisponivel = [Intervalo("Seg", "11:00 - 12:40")]
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO, regras_desligadas=("sem_janela_turma",))
+    assert res.sucesso, res.mensagem
+    assert [(dia, h) for _, dia, h in res.janelas] == [("Seg", SLOTS[4])]
+
+
 def test_maximo_de_aulas_por_dia():
     turmas, professores = montar_escola()
     professores["ana"].max_aulas_dia = 3
@@ -540,3 +558,26 @@ def test_maximo_de_aulas_por_dia():
     res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
     assert res.status == "inviavel"
     assert "limite de 1 aulas por dia" in res.mensagem
+
+
+def test_duracao_maxima_do_dia():
+    # 07:20 de manhã e 17:30-18:20 à tarde: 11 horas entre a primeira e a última aula
+    turmas, professores = _duas_turmas([("Seg", SLOTS[0])], [("Seg", TARDE_AF[5])])
+    professores["ana"].max_minutos_dia = 9 * 60
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO, regras_desligadas=("sem_janela_turma",))
+    assert res.status == "inviavel"
+    assert "duracao_dia" in res.regras_em_conflito
+
+    # Na escola de exemplo (só manhã), Ana fica no máximo 3 horas por dia, planejamento incluído
+    turmas, professores = montar_escola()
+    professores["ana"].max_minutos_dia = 3 * 60
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    verificar_regras(res, turmas)
+    por_dia = defaultdict(list)
+    for a in res.aulas:
+        if "ana" in a.professor_chaves:
+            por_dia[a.dia].append(parse_slot_range(a.horario))
+    for p in res.planejamentos:
+        if p.professor_chave == "ana":
+            por_dia[p.dia].append(parse_slot_range(p.horario))
+    assert all(max(f for _, f in faixas) - min(i for i, _ in faixas) <= 3 * 60 for faixas in por_dia.values())

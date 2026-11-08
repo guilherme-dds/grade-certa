@@ -25,5 +25,6 @@ def salvar_jornada_padrao(jornada: Jornada, db: Session = Depends(get_db)):
     config.almoco_fim = jornada.almoco_fim
     config.almoco_minutos = jornada.almoco_minutos
     config.max_aulas_dia = jornada.max_aulas_dia
+    config.max_horas_dia = jornada.max_horas_dia
     db.commit()
     return jornada
