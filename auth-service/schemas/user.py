@@ -8,6 +8,10 @@ class UserCreate(BaseModel):
     password: str
 
 
+class UserUpdate(BaseModel):
+    is_active: bool
+
+
 class UserResponse(BaseModel):
     id: int
     name: str
