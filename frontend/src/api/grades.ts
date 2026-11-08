@@ -169,6 +169,27 @@ export async function simularEdicao(aulaId: number, payload: AulaUpdate): Promis
   return data
 }
 
+/** Edição manual de uma aula guardada no histórico da grade */
+export interface AlteracaoGrade {
+  id: number
+  aula_id: number
+  /** Ex.: "Matemática (6º Ano A): Seg 07:20 - 08:10 → Ter 08:10 - 09:00" */
+  descricao: string
+  criado_em: string
+}
+
+/** Edições manuais da grade, da mais recente para a mais antiga. */
+export async function getAlteracoes(gradeId: number): Promise<AlteracaoGrade[]> {
+  const { data } = await api.get<AlteracaoGrade[]>(`/grades/${gradeId}/alteracoes`)
+  return data
+}
+
+/** Desfaz a última edição manual (aula e agenda dos professores voltam como estavam). */
+export async function desfazerAlteracao(gradeId: number): Promise<{ desfeita: string }> {
+  const { data } = await api.post<{ desfeita: string }>(`/grades/${gradeId}/desfazer`)
+  return data
+}
+
 /** Exclui a grade e suas aulas (uma geração em andamento não pode ser excluída). */
 export async function deleteGrade(gradeId: number): Promise<void> {
   await api.delete(`/grades/${gradeId}`)

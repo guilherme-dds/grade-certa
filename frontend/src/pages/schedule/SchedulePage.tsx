@@ -13,10 +13,26 @@ import { LessonEditDialog } from './LessonEditDialog'
 import { ScheduleGrid } from './ScheduleGrid'
 
 export function SchedulePage() {
-  const { lessons, activeGrade, horariosTurmas, isLoading, refreshSchedule } = useSchedule()
+  const { lessons, activeGrade, horariosTurmas, isLoading, refreshSchedule, changes, undoLastChange } = useSchedule()
   const [params, setParams] = useSearchParams()
   const queryClient = useQueryClient()
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isUndoing, setIsUndoing] = useState(false)
+  // Resultado do último "desfazer"; some quando o histórico muda (nova edição ou outra grade)
+  const [undoResult, setUndoResult] = useState<{ ok: boolean; text: string; changesLeft: number } | null>(null)
+  const undoMessage = undoResult?.changesLeft === changes.length ? undoResult : null
+
+  const handleUndo = async () => {
+    const desfeita = changes[0]
+    setIsUndoing(true)
+    const result = await undoLastChange()
+    setIsUndoing(false)
+    setUndoResult(
+      result.ok
+        ? { ok: true, text: `Desfeito: ${desfeita.descricao}`, changesLeft: changes.length - 1 }
+        : { ok: false, text: result.error, changesLeft: changes.length },
+    )
+  }
 
   // Grades geradas com sucesso, para trocar a grade exibida
   const { data: historico = [] } = useQuery({ queryKey: ['historicoGrades'], queryFn: getHistoricoGrades })
@@ -190,6 +206,20 @@ export function SchedulePage() {
           </>
         }
       />
+
+      {(changes.length > 0 || undoMessage) && (
+        <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-white px-3 py-2 text-[12.5px]">
+          <p className={undoMessage && !undoMessage.ok ? 'text-danger' : 'text-muted'} role="status">
+            {undoMessage ? undoMessage.text : `Última alteração: ${changes[0].descricao}`}
+            {changes.length > 0 && ` · ${changes.length} alteraç${changes.length > 1 ? 'ões' : 'ão'} manual(is) nesta grade`}
+          </p>
+          {changes.length > 0 && (
+            <Button variant="secondary" size="sm" onClick={handleUndo} disabled={isUndoing}>
+              {isUndoing ? 'Desfazendo…' : 'Desfazer última alteração'}
+            </Button>
+          )}
+        </div>
+      )}
 
       <ScheduleGrid
         lessons={turmaLessons}

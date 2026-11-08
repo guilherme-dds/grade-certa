@@ -125,6 +125,45 @@ def test_simular_edicao_mostra_conflitos_sem_gravar(ctx):
     assert r.status_code == 409
 
 
+def test_desfazer_edicoes_na_ordem_inversa(ctx):
+    client, db = ctx
+    grade, ana, bia = _grade_basica(db)
+    port = grade.aulas[1]
+    grade.detalhes = {"planejamentos": [{"professor": "Bia", "professor_id": bia.id, "dia_semana": "Seg",
+                                         "horario": "08:10 - 09:00", "compartilhado": False}], "janelas": []}
+    db.commit()
+    agenda_original = grade.detalhes
+
+    def aula():
+        return next(a for a in client.get("/grades/", params={"grade_id": grade.id}).json()["aulas"] if a["id"] == port.id)
+
+    original = aula()
+    client.put(f"/grades/aulas/{port.id}", json={"dia_semana": "Ter", "horario": "08:10 - 09:00", "professor_ids": [bia.id]})
+    client.put(f"/grades/aulas/{port.id}", json={"dia_semana": "Ter", "horario": "08:10 - 09:00",
+                                                 "professor_ids": [ana.id], "sala_nome": "Quadra"})
+    # Salvar sem mudar nada não entra no histórico
+    client.put(f"/grades/aulas/{port.id}", json={"dia_semana": "Ter", "horario": "08:10 - 09:00",
+                                                 "professor_ids": [ana.id], "sala_nome": "Quadra"})
+
+    alteracoes = client.get(f"/grades/{grade.id}/alteracoes").json()
+    assert [a["descricao"] for a in alteracoes] == [
+        "Português (7º Ano A): Bia → Ana; sala nenhuma → Quadra",
+        "Português (7º Ano A): Seg 07:20 - 08:10 → Ter 08:10 - 09:00",
+    ]
+
+    r = client.post(f"/grades/{grade.id}/desfazer")
+    assert r.json() == {"desfeita": alteracoes[0]["descricao"]}
+    assert aula()["professor_nome"] == "Bia" and aula()["sala_nome"] is None and aula()["dia_semana"] == "Ter"
+
+    client.post(f"/grades/{grade.id}/desfazer")
+    assert aula() == original
+    db.expire_all()
+    assert db.get(GradeDB, grade.id).detalhes == agenda_original
+
+    assert client.get(f"/grades/{grade.id}/alteracoes").json() == []
+    assert client.post(f"/grades/{grade.id}/desfazer").status_code == 404
+
+
 def test_editar_aula_recusa_choque_de_turma_e_horario_invalido(ctx):
     client, db = ctx
     grade, ana, _ = _grade_basica(db)

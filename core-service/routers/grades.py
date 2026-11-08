@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import Optional
 
 from database.connection import SessionLocal, get_db
-from database.models import AulaDB, GradeDB, ProfessorDB, SalaDB, TurmaDB
+from database.models import AlteracaoAulaDB, AulaDB, GradeDB, ProfessorDB, SalaDB, TurmaDB
 from models.grade import Aula, AulaUpdate, Grade
 from services.agenda_professores import recalcular_agenda
 from services.grade_conflicts import DetectorConflitos, horarios_da_turma
@@ -229,14 +229,91 @@ def simular_edicao(aula_id: int, dados: AulaUpdate, db: Session = Depends(get_db
     }
 
 
+# Campos da aula guardados no histórico para desfazer uma edição
+CAMPOS_AULA = ("dia_semana", "horario", "ordem", "professor_id", "professor_nome", "professores", "sala_nome")
+
+
+def _nomes_professores(campos: dict) -> str:
+    professores = campos.get("professores") or (
+        [{"nome": campos["professor_nome"]}] if campos.get("professor_nome") else []
+    )
+    return ", ".join(p["nome"] for p in professores) or "sem professor"
+
+
+def _descricao_alteracao(aula: AulaDB, antes: dict) -> Optional[str]:
+    """O que mudou na aula, em uma linha; None se nada mudou."""
+    depois = {c: getattr(aula, c) for c in CAMPOS_AULA}
+    partes = []
+    if (antes["dia_semana"], antes["horario"]) != (depois["dia_semana"], depois["horario"]):
+        partes.append(f"{antes['dia_semana']} {antes['horario']} → {depois['dia_semana']} {depois['horario']}")
+    if _nomes_professores(antes) != _nomes_professores(depois):
+        partes.append(f"{_nomes_professores(antes)} → {_nomes_professores(depois)}")
+    if (antes["sala_nome"] or None) != (depois["sala_nome"] or None):
+        partes.append(f"sala {antes['sala_nome'] or 'nenhuma'} → {depois['sala_nome'] or 'nenhuma'}")
+    if not partes:
+        return None
+    return f"{aula.disciplina_nome} ({aula.turma_nome}): " + "; ".join(partes)
+
+
 @router.put("/aulas/{aula_id}", response_model=Aula)
 def editar_aula(aula_id: int, dados: AulaUpdate, db: Session = Depends(get_db)):
     """
     Reatribui dia, horário, professor e sala de uma aula. Recusa apenas choque com outra
     aula da mesma turma; os demais problemas aparecem em /grades/{id}/conflitos.
-    Planejamentos e janelas dos professores são refeitos a partir das aulas.
+    Planejamentos e janelas dos professores são refeitos a partir das aulas, e a edição
+    fica no histórico da grade para poder ser desfeita.
     """
+    atual = db.query(AulaDB).filter(AulaDB.id == aula_id).first()
+    antes = {c: getattr(atual, c) for c in CAMPOS_AULA} if atual else None
+    grade = db.get(GradeDB, atual.grade_id) if atual else None
+    agenda_antes = {k: (grade.detalhes or {}).get(k, []) for k in ("planejamentos", "janelas")} if grade else None
+
     aula = _aplicar_edicao(db, aula_id, dados)
+    descricao = _descricao_alteracao(aula, antes)
+    if descricao:
+        db.add(AlteracaoAulaDB(
+            grade_id=aula.grade_id, aula_id=aula.id, descricao=descricao, aula_antes=antes, agenda_antes=agenda_antes,
+        ))
     db.commit()
     db.refresh(aula)
     return aula
+
+
+@router.get("/{grade_id}/alteracoes")
+def listar_alteracoes(grade_id: int, db: Session = Depends(get_db)):
+    """Edições manuais da grade, da mais recente para a mais antiga."""
+    alteracoes = (
+        db.query(AlteracaoAulaDB)
+        .filter(AlteracaoAulaDB.grade_id == grade_id)
+        .order_by(AlteracaoAulaDB.id.desc())
+        .all()
+    )
+    return [
+        {"id": a.id, "aula_id": a.aula_id, "descricao": a.descricao, "criado_em": a.criado_em} for a in alteracoes
+    ]
+
+
+@router.post("/{grade_id}/desfazer")
+def desfazer_alteracao(grade_id: int, db: Session = Depends(get_db)):
+    """
+    Desfaz a última edição manual: a aula e a agenda dos professores voltam exatamente
+    como estavam. As edições são desfeitas da mais recente para a mais antiga.
+    """
+    ultima = (
+        db.query(AlteracaoAulaDB)
+        .filter(AlteracaoAulaDB.grade_id == grade_id)
+        .order_by(AlteracaoAulaDB.id.desc())
+        .first()
+    )
+    if not ultima:
+        raise HTTPException(status_code=404, detail="Não há alterações para desfazer nesta grade.")
+    aula = db.get(AulaDB, ultima.aula_id)
+    if aula:
+        for campo, valor in ultima.aula_antes.items():
+            setattr(aula, campo, valor)
+    grade = db.get(GradeDB, grade_id)
+    grade.detalhes = {**(grade.detalhes or {}), **ultima.agenda_antes}
+    descricao = ultima.descricao
+    db.delete(ultima)
+    db.commit()
+    return {"desfeita": descricao}
