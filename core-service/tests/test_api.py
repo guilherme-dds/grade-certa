@@ -96,6 +96,35 @@ def test_editar_aula_gera_conflito_e_sugestao(ctx):
     assert _choques(client, grade.id) == []
 
 
+def test_simular_edicao_mostra_conflitos_sem_gravar(ctx):
+    client, db = ctx
+    grade, ana, bia = _grade_basica(db)
+    aula_port = grade.aulas[1]
+    edicao = {"dia_semana": "Seg", "horario": "07:20 - 08:10", "professor_ids": [ana.id], "sala_nome": None}
+
+    r = client.post(f"/grades/aulas/{aula_port.id}/simular", json=edicao)
+    assert r.status_code == 200, r.text
+    novos = [c for c in r.json()["novos"] if c["tipo"] != "Primeira e última aula"]
+    assert [c["tipo"] for c in novos] == ["Professor duplicado"]
+
+    # Nada foi gravado
+    aula = next(a for a in client.get("/grades/", params={"grade_id": grade.id}).json()["aulas"] if a["id"] == aula_port.id)
+    assert aula["professores"] == [{"id": bia.id, "nome": "Bia"}]
+    assert _choques(client, grade.id) == []
+
+    # Salvando, o conflito aparece; voltar para a Bia o resolve
+    client.put(f"/grades/aulas/{aula_port.id}", json=edicao)
+    r = client.post(f"/grades/aulas/{aula_port.id}/simular", json={**edicao, "professor_ids": [bia.id]})
+    assert "Professor duplicado" in [c["tipo"] for c in r.json()["resolvidos"]]
+
+    # Choque na mesma turma continua recusado
+    db.add(AulaDB(grade_id=grade.id, turma_id=aula_port.turma_id, turma_nome="7º Ano A", disciplina_nome="Arte",
+                  dia_semana="Ter", horario="07:20 - 08:10", ordem=1))
+    db.commit()
+    r = client.post(f"/grades/aulas/{aula_port.id}/simular", json={**edicao, "dia_semana": "Ter"})
+    assert r.status_code == 409
+
+
 def test_editar_aula_recusa_choque_de_turma_e_horario_invalido(ctx):
     client, db = ctx
     grade, ana, _ = _grade_basica(db)

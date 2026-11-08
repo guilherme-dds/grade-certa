@@ -156,6 +156,19 @@ export async function editarAula(aulaId: number, payload: AulaUpdate): Promise<A
   return data
 }
 
+export interface SimulacaoEdicao {
+  /** Conflitos que a edição criaria */
+  novos: ConflitoGrade[]
+  /** Conflitos atuais que a edição resolveria */
+  resolvidos: ConflitoGrade[]
+}
+
+/** Conflitos que a edição causaria, sem gravar nada (recusa choque na mesma turma, como a edição). */
+export async function simularEdicao(aulaId: number, payload: AulaUpdate): Promise<SimulacaoEdicao> {
+  const { data } = await api.post<SimulacaoEdicao>(`/grades/aulas/${aulaId}/simular`, payload)
+  return data
+}
+
 /** Exclui a grade e suas aulas (uma geração em andamento não pode ser excluída). */
 export async function deleteGrade(gradeId: number): Promise<void> {
   await api.delete(`/grades/${gradeId}`)

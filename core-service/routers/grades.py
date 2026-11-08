@@ -155,13 +155,8 @@ def listar_conflitos(grade_id: int, db: Session = Depends(get_db)):
     return DetectorConflitos(db, grade).detectar()
 
 
-@router.put("/aulas/{aula_id}", response_model=Aula)
-def editar_aula(aula_id: int, dados: AulaUpdate, db: Session = Depends(get_db)):
-    """
-    Reatribui dia, horário, professor e sala de uma aula. Recusa apenas choque com outra
-    aula da mesma turma; os demais problemas aparecem em /grades/{id}/conflitos.
-    Planejamentos e janelas dos professores são refeitos a partir das aulas.
-    """
+def _aplicar_edicao(db: Session, aula_id: int, dados: AulaUpdate) -> AulaDB:
+    """Valida e aplica a edição na sessão, sem gravar; recusa só choque com a mesma turma."""
     aula = db.query(AulaDB).filter(AulaDB.id == aula_id).first()
     if not aula:
         raise HTTPException(status_code=404, detail="Aula não encontrada")
@@ -208,6 +203,40 @@ def editar_aula(aula_id: int, dados: AulaUpdate, db: Session = Depends(get_db)):
     aula.sala_nome = dados.sala_nome or None
     db.flush()
     recalcular_agenda(db, db.query(GradeDB).filter(GradeDB.id == aula.grade_id).first())
+    return aula
+
+
+@router.post("/aulas/{aula_id}/simular")
+def simular_edicao(aula_id: int, dados: AulaUpdate, db: Session = Depends(get_db)):
+    """
+    Conflitos que a edição criaria (e os que resolveria), sem gravar nada. O frontend
+    mostra os novos antes de salvar.
+    """
+    aula = db.query(AulaDB).filter(AulaDB.id == aula_id).first()
+    if not aula:
+        raise HTTPException(status_code=404, detail="Aula não encontrada")
+    grade = _carregar_grade(db, aula.grade_id)
+    antes = {c["id"]: c for c in DetectorConflitos(db, grade).detectar()}
+    try:
+        _aplicar_edicao(db, aula_id, dados)
+        db.expire(grade, ["aulas"])
+        depois = {c["id"]: c for c in DetectorConflitos(db, grade).detectar()}
+    finally:
+        db.rollback()
+    return {
+        "novos": [c for k, c in depois.items() if k not in antes],
+        "resolvidos": [c for k, c in antes.items() if k not in depois],
+    }
+
+
+@router.put("/aulas/{aula_id}", response_model=Aula)
+def editar_aula(aula_id: int, dados: AulaUpdate, db: Session = Depends(get_db)):
+    """
+    Reatribui dia, horário, professor e sala de uma aula. Recusa apenas choque com outra
+    aula da mesma turma; os demais problemas aparecem em /grades/{id}/conflitos.
+    Planejamentos e janelas dos professores são refeitos a partir das aulas.
+    """
+    aula = _aplicar_edicao(db, aula_id, dados)
     db.commit()
     db.refresh(aula)
     return aula
