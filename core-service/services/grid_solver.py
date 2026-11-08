@@ -252,7 +252,9 @@ def _opcoes_almoco(almoco: Almoco, horarios: List[str]) -> List[List[int]]:
             return []
         if vagos not in opcoes:
             opcoes.append(vagos)
-    return opcoes
+    # Uma pausa que deixa vagos mais horários que outra não é necessária: se fosse escolhida,
+    # o horário a mais (ex.: 11:10 e 12:00 para 40 min a partir das 11:30) deixaria de contar como janela
+    return [o for o in opcoes if not any(set(m) < set(o) for m in opcoes)]
 
 
 def resolver_grade(
