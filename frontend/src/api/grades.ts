@@ -55,6 +55,8 @@ export interface DetalhesGrade {
   janelas?: JanelaProfessor[]
   avisos?: string[]
   regras_em_conflito?: string[]
+  /** Id da grade de que esta é cópia */
+  copia_de?: number
 }
 
 export interface JanelaProfessor {
@@ -187,6 +189,12 @@ export async function getAlteracoes(gradeId: number): Promise<AlteracaoGrade[]> 
 /** Desfaz a última edição manual (aula e agenda dos professores voltam como estavam). */
 export async function desfazerAlteracao(gradeId: number): Promise<{ desfeita: string }> {
   const { data } = await api.post<{ desfeita: string }>(`/grades/${gradeId}/desfazer`)
+  return data
+}
+
+/** Cópia da grade (aulas, planejamentos e janelas) para editar sem perder a original. */
+export async function duplicarGrade(gradeId: number, nome: string): Promise<GradeResumo> {
+  const { data } = await api.post<GradeResumo>(`/grades/${gradeId}/duplicar`, null, { params: { nome } })
   return data
 }
 

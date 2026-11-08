@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { deleteGrade, getHistoricoGrades } from '@/api/grades'
+import { deleteGrade, duplicarGrade, getHistoricoGrades } from '@/api/grades'
 import { Button } from '@/components/ui/Button'
 import { buttonStyles } from '@/components/ui/buttonStyles'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -9,6 +9,7 @@ import { formatDateTime } from '@/lib/schedule'
 import type { Lesson } from '@/schedule/ScheduleContext'
 import { useSchedule } from '@/schedule/useSchedule'
 import { DeleteGradeDialog } from './DeleteGradeDialog'
+import { DuplicateGradeDialog } from './DuplicateGradeDialog'
 import { LessonEditDialog } from './LessonEditDialog'
 import { ScheduleGrid } from './ScheduleGrid'
 
@@ -17,6 +18,7 @@ export function SchedulePage() {
   const [params, setParams] = useSearchParams()
   const queryClient = useQueryClient()
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isDuplicating, setIsDuplicating] = useState(false)
   const [isUndoing, setIsUndoing] = useState(false)
   // Resultado do último "desfazer"; some quando o histórico muda (nova edição ou outra grade)
   const [undoResult, setUndoResult] = useState<{ ok: boolean; text: string; changesLeft: number } | null>(null)
@@ -56,6 +58,12 @@ export function SchedulePage() {
       { replace: true },
     )
     await refreshSchedule()
+  }
+
+  const handleDuplicateGrade = async (nome: string) => {
+    const copia = await duplicarGrade(activeGrade!.id!, nome)
+    await queryClient.invalidateQueries({ queryKey: ['historicoGrades'] })
+    setParam('gradeId', String(copia.id))
   }
 
   const gradeIdParam = params.get('gradeId')
@@ -145,6 +153,7 @@ export function SchedulePage() {
     )
   }
 
+  const origem = historico.find((g) => g.id === activeGrade?.detalhes?.copia_de)
   const turmaLessons = lessons.filter((l) => l.classGroup === classGroup)
   const turmaSlots = turmaLessons.length ? horariosTurmas[turmaLessons[0].turmaId] : undefined
   const planejamentos = (activeGrade?.detalhes?.planejamentos ?? []).filter((p) => p.professor === teacher)
@@ -158,6 +167,7 @@ export function SchedulePage() {
           activeGrade
             ? [
                 activeGrade.nome,
+                origem && `cópia de ${origem.nome}`,
                 activeGrade.ano_semestre && `Semestre ${activeGrade.ano_semestre}`,
                 `${lessons.length} aulas alocadas no total`,
               ]
@@ -198,6 +208,11 @@ export function SchedulePage() {
             <Link to="/geracao" className={buttonStyles({ variant: 'secondary' })}>
               Nova Geração
             </Link>
+            {activeGrade && (
+              <Button variant="secondary" onClick={() => setIsDuplicating(true)}>
+                Duplicar grade
+              </Button>
+            )}
             {activeGrade && (
               <Button variant="secondary" onClick={() => setIsDeleting(true)} className="text-danger">
                 Excluir grade
@@ -247,9 +262,18 @@ export function SchedulePage() {
 
       <p className="mt-3.5 text-[12.5px] text-muted">
         Clique em uma célula para reatribuir professor, sala ou horário. Célula em destaque: edição em andamento.
+        Para manter a grade como foi gerada, duplique antes de editar e edite a cópia.
       </p>
 
       {editing && <LessonEditDialog key={editing.id} lesson={editing} onClose={() => setParam('aula', null)} />}
+
+      {isDuplicating && activeGrade && (
+        <DuplicateGradeDialog
+          grade={activeGrade}
+          onClose={() => setIsDuplicating(false)}
+          onConfirm={handleDuplicateGrade}
+        />
+      )}
 
       {isDeleting && activeGrade && (
         <DeleteGradeDialog grade={activeGrade} onClose={() => setIsDeleting(false)} onConfirm={handleDeleteGrade} />

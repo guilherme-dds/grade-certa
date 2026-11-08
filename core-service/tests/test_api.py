@@ -164,6 +164,33 @@ def test_desfazer_edicoes_na_ordem_inversa(ctx):
     assert client.post(f"/grades/{grade.id}/desfazer").status_code == 404
 
 
+def test_duplicar_grade_e_editar_a_copia(ctx):
+    client, db = ctx
+    grade, ana, bia = _grade_basica(db)
+    grade.detalhes = {"planejamentos": [], "janelas": []}
+    db.commit()
+    port = grade.aulas[1]
+    client.put(f"/grades/aulas/{port.id}", json={"dia_semana": "Ter", "horario": "07:20 - 08:10", "professor_ids": [bia.id]})
+
+    r = client.post(f"/grades/{grade.id}/duplicar")
+    assert r.status_code == 201, r.text
+    copia = r.json()
+    assert copia["nome"] == "G (cópia)" and copia["status"] == "sucesso" and copia["detalhes"]["copia_de"] == grade.id
+    assert client.post(f"/grades/{grade.id}/duplicar", params={"nome": "Teste"}).json()["nome"] == "Teste"
+
+    aulas_copia = client.get("/grades/", params={"grade_id": copia["id"]}).json()["aulas"]
+    assert [(a["disciplina_nome"], a["dia_semana"]) for a in aulas_copia] == [("Matemática", "Seg"), ("Português", "Ter")]
+    # A cópia começa sem histórico, e editá-la não muda a original
+    assert client.get(f"/grades/{copia['id']}/alteracoes").json() == []
+    port_copia = next(a for a in aulas_copia if a["disciplina_nome"] == "Português")
+    client.put(f"/grades/aulas/{port_copia['id']}", json={"dia_semana": "Qua", "horario": "07:20 - 08:10",
+                                                          "professor_ids": [bia.id]})
+    original = client.get("/grades/", params={"grade_id": grade.id}).json()["aulas"]
+    assert next(a for a in original if a["id"] == port.id)["dia_semana"] == "Ter"
+
+    assert client.post("/grades/999/duplicar").status_code == 404
+
+
 def test_editar_aula_recusa_choque_de_turma_e_horario_invalido(ctx):
     client, db = ctx
     grade, ana, _ = _grade_basica(db)

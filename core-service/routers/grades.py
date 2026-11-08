@@ -94,6 +94,37 @@ def excluir_grade(grade_id: int, db: Session = Depends(get_db)):
     return None
 
 
+@router.post("/{grade_id}/duplicar", status_code=status.HTTP_201_CREATED)
+def duplicar_grade(grade_id: int, nome: Optional[str] = Query(None, description="Padrão: nome atual + (cópia)"),
+                   db: Session = Depends(get_db)):
+    """
+    Cópia da grade com as aulas, os planejamentos e as janelas, para editar sem perder a
+    original. O histórico de edições não vai junto.
+    """
+    original = _carregar_grade(db, grade_id)
+    if not original or original.status != "sucesso":
+        raise HTTPException(status_code=404, detail="Grade gerada não encontrada")
+    copia = GradeDB(
+        nome=(nome or "").strip() or f"{original.nome} (cópia)",
+        status="sucesso",
+        ano_semestre=original.ano_semestre,
+        total_aulas=original.total_aulas,
+        detalhes={**(original.detalhes or {}), "copia_de": original.id},
+    )
+    copia.aulas = [
+        AulaDB(
+            turma_id=a.turma_id, turma_nome=a.turma_nome, disciplina_nome=a.disciplina_nome,
+            professor_id=a.professor_id, professor_nome=a.professor_nome, professores=a.professores,
+            sala_nome=a.sala_nome, dia_semana=a.dia_semana, horario=a.horario, ordem=a.ordem,
+        )
+        for a in original.aulas
+    ]
+    db.add(copia)
+    db.commit()
+    db.refresh(copia)
+    return _resumo(copia)
+
+
 @router.get("/{grade_id}/status")
 def status_grade(grade_id: int, db: Session = Depends(get_db)):
     """Situação de uma geração: "gerando", "sucesso", "inviavel", "tempo_esgotado" ou "erro"."""
