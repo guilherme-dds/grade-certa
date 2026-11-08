@@ -21,3 +21,8 @@ export async function setUserActive(id: number, isActive: boolean) {
 export async function deleteUser(id: number) {
   await api.delete(`/users/${id}`)
 }
+
+/** Troca a senha de quem está logado (a senha atual confirma que é a própria pessoa) */
+export async function changeMyPassword(senhaAtual: string, novaSenha: string) {
+  await api.put('/users/me/senha', { senha_atual: senhaAtual, nova_senha: novaSenha })
+}

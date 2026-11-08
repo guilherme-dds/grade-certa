@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr, ConfigDict, Field
 
 
 class UserCreate(BaseModel):
@@ -10,6 +10,11 @@ class UserCreate(BaseModel):
 
 class UserUpdate(BaseModel):
     is_active: bool
+
+
+class PasswordChange(BaseModel):
+    senha_atual: str
+    nova_senha: str = Field(min_length=8)
 
 
 class UserResponse(BaseModel):

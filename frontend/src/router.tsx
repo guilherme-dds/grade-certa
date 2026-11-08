@@ -12,6 +12,7 @@ import { ReportsPage } from '@/pages/reports/ReportsPage'
 import { SchedulePage } from '@/pages/schedule/SchedulePage'
 import { SubjectsPage } from '@/pages/SubjectsPage'
 import { TeachersPage } from '@/pages/TeachersPage'
+import { AccountPage } from '@/pages/users/AccountPage'
 import { UsersPage } from '@/pages/users/UsersPage'
 
 export const router = createBrowserRouter([
@@ -41,6 +42,7 @@ export const router = createBrowserRouter([
           { path: '/conflitos', element: <ConflictsPage /> },
           { path: '/relatorios', element: <ReportsPage /> },
           { path: '/usuarios', element: <UsersPage /> },
+          { path: '/minha-conta', element: <AccountPage /> },
         ],
       },
     ],

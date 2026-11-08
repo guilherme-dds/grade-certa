@@ -89,13 +89,14 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <div className="mx-5 mt-auto border-t border-white/10 pt-4">
         <p className="truncate text-[13px] font-medium text-white">{user?.name}</p>
         <p className="truncate text-[11.5px] text-white/45">{user?.email}</p>
-        <button
-          type="button"
-          onClick={logout}
-          className="mt-3 text-[12.5px] text-white/60 hover:text-white hover:underline"
-        >
-          Sair
-        </button>
+        <div className="mt-3 flex gap-4 text-[12.5px]">
+          <NavLink to="/minha-conta" onClick={onNavigate} className="text-white/60 hover:text-white hover:underline">
+            Minha conta
+          </NavLink>
+          <button type="button" onClick={logout} className="text-white/60 hover:text-white hover:underline">
+            Sair
+          </button>
+        </div>
       </div>
     </nav>
   )

@@ -4,10 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
-from core.security import decode_access_token
+from core.security import decode_access_token, get_password_hash, verify_password
 from database.connection import get_db
 from models.user import User
-from schemas.user import UserCreate, UserResponse, UserUpdate
+from schemas.user import PasswordChange, UserCreate, UserResponse, UserUpdate
 from services.auth_service import AuthService
 from services.user_service import UserService
 
@@ -38,6 +38,18 @@ def create_user(user_in: UserCreate, db: Session = Depends(get_db), token: str |
 @router.get("/", response_model=List[UserResponse])
 def list_users(db: Session = Depends(get_db), _: User = Depends(AuthService.get_current_user)):
     return db.query(User).order_by(User.name).all()
+
+
+@router.put("/me/senha", status_code=status.HTTP_204_NO_CONTENT)
+def change_password(
+    dados: PasswordChange, db: Session = Depends(get_db), atual: User = Depends(AuthService.get_current_user)
+):
+    """Troca a senha de quem está logado, confirmando a senha atual."""
+    if not verify_password(dados.senha_atual, atual.hashed_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A senha atual está incorreta.")
+    atual.hashed_password = get_password_hash(dados.nova_senha)
+    db.commit()
+    return None
 
 
 def _outro_usuario(db: Session, user_id: int, atual: User, acao: str) -> User:

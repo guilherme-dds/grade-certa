@@ -73,3 +73,18 @@ def test_ninguem_desativa_nem_exclui_a_propria_conta(client):
     r = client.patch(f"/users/{ana['id']}", json={"is_active": False}, headers=h)
     assert r.status_code == 400 and "própria conta" in r.json()["detail"]
     assert client.delete(f"/users/{ana['id']}", headers=h).status_code == 400
+
+
+def test_trocar_a_propria_senha(client):
+    _criar(client, "Ana")
+    h = _headers(client, "Ana")
+    assert client.put("/users/me/senha", json={"senha_atual": SENHA, "nova_senha": "nova-senha"}).status_code == 401
+
+    r = client.put("/users/me/senha", json={"senha_atual": "errada", "nova_senha": "nova-senha"}, headers=h)
+    assert r.status_code == 400 and r.json()["detail"] == "A senha atual está incorreta."
+    assert client.put("/users/me/senha", json={"senha_atual": SENHA, "nova_senha": "curta"}, headers=h).status_code == 422
+
+    assert client.put("/users/me/senha", json={"senha_atual": SENHA, "nova_senha": "nova-senha"}, headers=h).status_code == 204
+    assert _login(client, "Ana").status_code == 401
+    r = client.post("/auth/login", json={"email": "ana@escola.com", "password": "nova-senha"})
+    assert r.status_code == 200
