@@ -28,3 +28,6 @@ Thumbs.db
 # Local Database / Docker volumes
 mysql_data/
 *.sqlite3
+
+# Backups do banco (docker-compose.prod.yml)
+backups/

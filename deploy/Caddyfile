@@ -1,0 +1,6 @@
+# HTTPS automático (Let's Encrypt) para o domínio do .env; o resto vai para o nginx do frontend.
+# Usado só em produção (docker-compose.prod.yml).
+{$DOMINIO} {
+	encode gzip
+	reverse_proxy frontend:80
+}

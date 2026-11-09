@@ -1,0 +1,92 @@
+# Ajustes de produção, aplicados por cima do docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# - Só o Caddy fica exposto (80/443), com HTTPS automático pelo Let's Encrypt para o
+#   DOMINIO do .env; banco e APIs ficam acessíveis só dentro da rede do Docker.
+# - Senhas do banco obrigatórias no .env (sem os valores padrão do ambiente local).
+# - O código vem da imagem, não da pasta do servidor.
+# - Memória do worker limitada: uma geração pesada não derruba o banco.
+# - Logs com tamanho limitado e backup diário do banco em ./backups.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    ports: !reset []
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Defina DB_ROOT_PASSWORD no .env}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD no .env}
+    logging: *logging
+
+  app:
+    ports: !reset []
+    volumes: !reset []
+    logging: *logging
+
+  core-service:
+    ports: !reset []
+    volumes: !reset []
+    logging: *logging
+
+  worker:
+    volumes: !reset []
+    mem_limit: ${WORKER_MEM_LIMIT:-2g}
+    logging: *logging
+
+  frontend:
+    ports: !reset []
+    logging: *logging
+
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: grade_certa_caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMINIO: "${DOMINIO:?Defina DOMINIO no .env, por exemplo gradecerta.eastus.cloudapp.azure.com}"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+    logging: *logging
+
+  # Backup diário do banco, comprimido, em ./backups; guarda os últimos 7 dias
+  backup:
+    image: mysql:8.0
+    container_name: grade_certa_backup
+    restart: always
+    environment:
+      MYSQL_PWD: ${DB_ROOT_PASSWORD:?Defina DB_ROOT_PASSWORD no .env}
+    volumes:
+      - ./backups:/backups
+    entrypoint:
+      - sh
+      - -c
+      - |
+        while true; do
+          arquivo=/backups/grade_certa-$$(date +%F).sql.gz
+          if mysqldump -h db -u root --single-transaction --routines --databases grade_certa | gzip > $$arquivo.tmp; then
+            mv $$arquivo.tmp $$arquivo && echo "Backup salvo: $$arquivo"
+          else
+            rm -f $$arquivo.tmp && echo "Falha no backup"
+          fi
+          find /backups -name 'grade_certa-*.sql.gz' -mtime +7 -delete
+          sleep 86400
+        done
+    depends_on:
+      db:
+        condition: service_healthy
+    logging: *logging
+
+volumes:
+  caddy_data:
+  caddy_config:
