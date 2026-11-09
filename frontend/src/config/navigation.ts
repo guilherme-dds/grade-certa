@@ -10,6 +10,7 @@ export const navItems: NavItem[] = [
   { to: '/disciplinas', label: 'Turmas e salas' },
   { to: '/geracao', label: 'Geração automática' },
   { to: '/grade', label: 'Grade gerada' },
+  { to: '/minha-grade', label: 'Minha grade' },
   { to: '/conflitos', label: 'Conflitos' },
   { to: '/relatorios', label: 'Relatórios' },
   { to: '/usuarios', label: 'Usuários' },

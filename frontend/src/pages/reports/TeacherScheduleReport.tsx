@@ -2,6 +2,8 @@ import type { JanelaProfessor, PlanejamentoGrade } from '@/api/grades'
 import { cn } from '@/lib/cn'
 import { getSubjectColor, splitHorario, weekDays } from '@/lib/schedule'
 import type { Lesson } from '@/schedule/ScheduleContext'
+import { ReportSection } from './ReportSection'
+import { nomesOrdenados } from './reportMetrics'
 
 // Vagos menores que isso são o recreio ou a troca de turno e não aparecem
 const MIN_LIVRE = 30
@@ -38,19 +40,20 @@ export function TeacherScheduleReport({ professor, lessons, planejamentos, janel
   }))
   const temItens = dias.some((d) => d.itens.length > 0)
 
-  const turmas = Array.from(new Set(aulas.map((a) => a.classGroup))).sort()
+  const turmas = nomesOrdenados(aulas.map((a) => a.classGroup))
   const compartilhados = planos.filter((p) => p.compartilhado).length
 
   return (
-    <section className="rounded-lg border border-line bg-white p-5 print:break-after-page print:border-0 print:p-0">
-      <header className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-lg font-bold">{professor}</h2>
-        <p className="text-[12.5px] text-muted">
+    <ReportSection
+      title={professor}
+      summary={
+        <>
           {aulas.length} aulas · {planos.length} planejamentos
           {planos.length > 0 && ` (${compartilhados} compartilhados)`} ·{' '}
           {vagos.length === 0 ? 'sem janelas' : `${vagos.length} janela(s)`}
-        </p>
-      </header>
+        </>
+      }
+    >
       {turmas.length > 0 && <p className="mb-3 text-[12.5px] text-muted">Turmas: {turmas.join(', ')}</p>}
 
       {!temItens ? (
@@ -84,7 +87,7 @@ export function TeacherScheduleReport({ professor, lessons, planejamentos, janel
           </div>
         </div>
       )}
-    </section>
+    </ReportSection>
   )
 }
 

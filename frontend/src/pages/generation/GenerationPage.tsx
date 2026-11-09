@@ -5,6 +5,7 @@ import { getTurmas, professoresDoItem, type TurmaBackend } from '@/api/turmas'
 import { getProfessores, type ProfessorBackend } from '@/api/professores'
 import { gerarGrade, getHistoricoGrades, getStatusGrade, type GradeResumo, type StatusGrade } from '@/api/grades'
 import { useSchedule } from '@/schedule/useSchedule'
+import { GenerationWarnings } from '@/components/GenerationWarnings'
 import { Button } from '@/components/ui/Button'
 import { buttonStyles } from '@/components/ui/buttonStyles'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -360,7 +361,7 @@ export function GenerationPage() {
                     <li>Revise a jornada padrão ou personalizada em Professores (almoço, máximo de aulas e de horas por dia).</li>
                   </ul>
                 </div>
-                <Avisos avisos={detalhes?.avisos} />
+                <GenerationWarnings avisos={detalhes?.avisos} />
               </div>
             </div>
           </div>
@@ -404,7 +405,7 @@ export function GenerationPage() {
                 </ul>
               </div>
             )}
-            <Avisos avisos={detalhes?.avisos} />
+            <GenerationWarnings avisos={detalhes?.avisos} />
           </div>
         )}
       </section>
@@ -488,20 +489,6 @@ export function GenerationPage() {
           </div>
         )}
       </section>
-    </div>
-  )
-}
-
-function Avisos({ avisos }: { avisos?: string[] }) {
-  if (!avisos?.length) return null
-  return (
-    <div className="mt-4 border-t border-black/5 pt-3 text-xs">
-      <p className="font-semibold text-warning">Avisos</p>
-      <ul className="mt-1 list-disc space-y-0.5 pl-4 text-muted">
-        {avisos.map((aviso) => (
-          <li key={aviso}>{aviso}</li>
-        ))}
-      </ul>
     </div>
   )
 }
