@@ -51,7 +51,7 @@ export function SubjectDialog({ availableSubjects, onAddSubject, onClose }: Subj
       }}
       onClick={(e) => e.target === e.currentTarget && close()}
       aria-labelledby="subject-dialog-title"
-      className="m-auto w-[min(420px,calc(100%-2rem))] rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
+      className="m-auto w-[min(420px,calc(100%-2rem))] card p-0 text-ink"
     >
       <form onSubmit={handleSubmit} className="p-6">
         <h3 id="subject-dialog-title" className="text-[17px] font-semibold">

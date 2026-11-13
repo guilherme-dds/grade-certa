@@ -17,10 +17,10 @@ export function MyGradePage() {
     return (
       <>
         <PageHeader title="Minha grade" />
-        <div className="max-w-xl rounded-lg border border-line bg-white px-6 py-8">
+        <div className="max-w-xl card px-6 py-8">
           <p className="text-sm font-semibold">Seu usuário não está vinculado a um professor</p>
           <p className="mt-1 text-[13px] text-muted">
-            Para ver seus horários aqui, cadastre em Professores um professor com o e-mail {user?.email}.
+            Para ver seus horários aqui, cadastre em Cadastros › Professores um professor com o e-mail {user?.email}.
           </p>
         </div>
       </>
@@ -31,7 +31,7 @@ export function MyGradePage() {
     return (
       <>
         <PageHeader title="Minha grade" />
-        <div className="max-w-xl rounded-lg border border-dashed border-line bg-white px-6 py-8">
+        <div className="max-w-xl rounded-[20px] border-2 border-dashed border-line bg-white/60 px-6 py-8">
           <p className="text-sm font-semibold">Nenhuma grade gerada</p>
           <p className="mt-1 text-[13px] text-muted">Seus horários aparecem aqui quando a coordenação gerar a grade.</p>
         </div>

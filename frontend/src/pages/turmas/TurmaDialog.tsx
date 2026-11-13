@@ -73,7 +73,7 @@ export function TurmaDialog({ turma, onClose, onSave }: TurmaDialogProps) {
       }}
       onClick={(e) => e.target === e.currentTarget && close()}
       aria-labelledby="turma-dialog-title"
-      className="m-auto w-[min(460px,calc(100%-2rem))] rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
+      className="m-auto w-[min(460px,calc(100%-2rem))] card p-0 text-ink"
     >
       <form onSubmit={handleSubmit} className="p-6">
         <h3 id="turma-dialog-title" className="text-[17px] font-semibold">
@@ -106,7 +106,7 @@ export function TurmaDialog({ turma, onClose, onSave }: TurmaDialogProps) {
           />
 
           {turno === TURNO_MANHA_E_TARDES && (
-            <fieldset className="rounded-md border border-line-soft bg-paper p-3">
+            <fieldset className="rounded-xl border border-line-soft bg-paper p-3">
               <legend className="px-1 text-xs font-medium text-muted">Tardes com aula</legend>
               <div className="flex flex-wrap gap-3">
                 {weekDays.map((dia) => (

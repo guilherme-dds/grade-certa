@@ -16,13 +16,17 @@ interface DataTableProps<T> {
 
 export function DataTable<T>({ columns, rows, rowKey, caption }: DataTableProps<T>) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-line bg-white">
-      <table className="w-full border-collapse text-[13px]">
+    <div className="card overflow-x-auto px-2 pb-2">
+      <table className="w-full border-collapse text-[13.5px]">
         {caption && <caption className="sr-only">{caption}</caption>}
         <thead>
-          <tr className="bg-paper text-left">
+          <tr className="text-left">
             {columns.map((col) => (
-              <th key={col.header} scope="col" className="px-3.5 py-2.5 font-semibold whitespace-nowrap text-muted">
+              <th
+                key={col.header}
+                scope="col"
+                className="px-3.5 pt-4 pb-3 text-[12.5px] font-medium whitespace-nowrap text-muted"
+              >
                 {col.header}
               </th>
             ))}
@@ -30,9 +34,9 @@ export function DataTable<T>({ columns, rows, rowKey, caption }: DataTableProps<
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={rowKey(row)} className="border-t border-line-soft">
+            <tr key={rowKey(row)} className="border-t border-line-soft transition-colors hover:bg-paper/70">
               {columns.map((col) => (
-                <td key={col.header} className={cn('px-3.5 py-2.5', col.className)}>
+                <td key={col.header} className={cn('px-3.5 py-3', col.className)}>
                   {col.cell(row)}
                 </td>
               ))}

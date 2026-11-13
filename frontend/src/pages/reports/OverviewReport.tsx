@@ -83,7 +83,7 @@ export function OverviewReport({ lessons, conflitos, cargas, ocupacoes, avisos }
                     </th>
                     <td className="py-1.5 pr-3">
                       <div
-                        className="h-2.5 rounded bg-line-soft"
+                        className="h-2.5 rounded-lg bg-line-soft"
                         title={
                           carga.cargaMaxima != null
                             ? `${carga.nome}: ${carga.aulas} de ${carga.cargaMaxima} aulas (${largura}%)`
@@ -91,7 +91,7 @@ export function OverviewReport({ lessons, conflitos, cargas, ocupacoes, avisos }
                         }
                       >
                         <div
-                          className={cn('h-full rounded', acimaDoLimite ? 'bg-danger' : 'bg-primary')}
+                          className={cn('h-full rounded-lg', acimaDoLimite ? 'bg-danger' : 'bg-primary')}
                           style={{ width: `${Math.min(largura, 100)}%` }}
                         />
                       </div>

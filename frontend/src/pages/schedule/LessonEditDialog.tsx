@@ -103,7 +103,7 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
       }}
       onClick={(e) => e.target === e.currentTarget && close()}
       aria-labelledby="lesson-edit-title"
-      className="m-auto w-[min(420px,calc(100%-2rem))] rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
+      className="m-auto w-[min(420px,calc(100%-2rem))] card p-0 text-ink"
     >
       <form onSubmit={handleSubmit} className="p-6">
         <h2 id="lesson-edit-title" className="text-[17px] font-semibold">
@@ -132,7 +132,7 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
         </div>
 
         {simulacao && (
-          <div role="alert" className="mt-4 rounded-md border border-warning/40 bg-warning-soft p-3 text-[13px]">
+          <div role="alert" className="mt-4 rounded-xl border border-warning/40 bg-warning-soft p-3 text-[13px]">
             <p className="font-semibold text-warning">
               Esta mudança cria {simulacao.novos.length} conflito{simulacao.novos.length > 1 ? 's' : ''}:
             </p>

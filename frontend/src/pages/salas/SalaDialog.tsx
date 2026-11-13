@@ -87,7 +87,7 @@ export function SalaDialog({ sala, salas, onClose, onSave }: SalaDialogProps) {
       }}
       onClick={(e) => e.target === e.currentTarget && close()}
       aria-labelledby="sala-dialog-title"
-      className="m-auto w-[min(460px,calc(100%-2rem))] rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
+      className="m-auto w-[min(460px,calc(100%-2rem))] card p-0 text-ink"
     >
       <form onSubmit={handleSubmit} noValidate className="p-6">
         <h3 id="sala-dialog-title" className="text-[17px] font-semibold">

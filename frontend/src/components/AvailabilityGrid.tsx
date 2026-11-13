@@ -50,7 +50,7 @@ export function AvailabilityGrid({ niveis, horarios, slots, onChange }: Availabi
               type="button"
               onClick={() => setActiveNivel(nivel)}
               className={cn(
-                'rounded-md px-3.5 py-1.5 text-xs font-semibold transition-colors',
+                'rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-colors',
                 activeNivel === nivel
                   ? 'bg-navy text-white shadow-xs'
                   : 'bg-paper text-muted hover:bg-line-soft hover:text-ink',
@@ -62,7 +62,7 @@ export function AvailabilityGrid({ niveis, horarios, slots, onChange }: Availabi
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line-soft bg-paper p-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line-soft bg-paper p-2.5">
         <div className="flex flex-wrap gap-2">
           <QuickAction onClick={() => setMany(current.manha, 'indisponivel')}>Manhã indisponível</QuickAction>
           <QuickAction onClick={() => setMany(current.tarde, 'indisponivel')}>Tarde indisponível</QuickAction>
@@ -76,7 +76,7 @@ export function AvailabilityGrid({ niveis, horarios, slots, onChange }: Availabi
       <div className="mt-4 space-y-5">
         {(['manha', 'tarde'] as const).map((turno) => (
           <div key={turno}>
-            <h3 className="mb-2 text-xs font-bold tracking-wider text-ink uppercase">
+            <h3 className="mb-2 font-display text-[15px] font-bold text-ink">
               Turno da {turno === 'manha' ? 'Manhã' : 'Tarde'} ({activeNivel})
             </h3>
             <SlotTable nivel={activeNivel} times={current[turno]} slots={slots} onToggle={toggle} />
@@ -102,7 +102,7 @@ function QuickAction({ onClick, children }: { onClick: () => void; children: Rea
     <button
       type="button"
       onClick={onClick}
-      className="rounded border border-line bg-white px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-paper"
+      className="rounded-lg border border-line bg-white px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-paper"
     >
       {children}
     </button>
@@ -130,7 +130,7 @@ function SlotTable({
         <div role="row" className="contents">
           <div role="columnheader" />
           {weekDays.map((day) => (
-            <div key={day} role="columnheader" className="rounded bg-paper p-1.5 text-center text-xs font-semibold text-muted">
+            <div key={day} role="columnheader" className="rounded-lg bg-paper p-1.5 text-center text-xs font-semibold text-muted">
               {day}
             </div>
           ))}
@@ -140,7 +140,7 @@ function SlotTable({
           <div key={time} role="row" className="contents">
             <div
               role="rowheader"
-              className="flex items-center justify-center rounded bg-paper/70 px-1 text-center font-mono text-[11px] font-medium text-muted"
+              className="flex items-center justify-center rounded-lg bg-paper/70 px-1 text-center font-mono text-[11px] font-medium text-muted"
             >
               {time}
             </div>
@@ -155,7 +155,7 @@ function SlotTable({
                   onClick={() => onToggle(key)}
                   aria-label={`${day}, ${time}: ${slotStyles[state].label}`}
                   className={cn(
-                    'flex h-[34px] cursor-pointer items-center justify-center rounded text-[11px] transition-all select-none',
+                    'flex h-[34px] cursor-pointer items-center justify-center rounded-lg text-[11px] transition-all select-none',
                     slotStyles[state].className,
                   )}
                 >

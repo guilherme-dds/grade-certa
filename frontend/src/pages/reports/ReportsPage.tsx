@@ -5,7 +5,8 @@ import { getProfessores } from '@/api/professores'
 import { getSalas } from '@/api/salas'
 import { Button } from '@/components/ui/Button'
 import { buttonStyles } from '@/components/ui/buttonStyles'
-import { PageHeader } from '@/components/ui/PageHeader'
+import { paths } from '@/config/paths'
+import { TabHeader } from '@/layouts/SectionLayout'
 import { cn } from '@/lib/cn'
 import { formatDateTime } from '@/lib/schedule'
 import { useSchedule } from '@/schedule/useSchedule'
@@ -78,12 +79,11 @@ export function ReportsPage() {
   if (!activeGrade) {
     return (
       <>
-        <PageHeader title="Relatórios" />
-        <div className="max-w-xl rounded-lg border border-dashed border-line bg-white px-6 py-8">
+        <div className="max-w-xl rounded-[20px] border-2 border-dashed border-line bg-white/60 px-6 py-8">
           <p className="text-sm font-semibold">Nenhuma grade gerada</p>
           <p className="mt-1 text-[13px] text-muted">Os relatórios usam a grade gerada. Gere uma grade primeiro.</p>
-          <Link to="/geracao" className={buttonStyles({ variant: 'secondary', size: 'sm' }, 'mt-4')}>
-            Ir para geração
+          <Link to={paths.geracao} className={buttonStyles({ variant: 'secondary', size: 'sm' }, 'mt-4')}>
+            Gerar grade
           </Link>
         </div>
       </>
@@ -92,9 +92,9 @@ export function ReportsPage() {
 
   return (
     <>
-      <PageHeader
+      <TabHeader
         title="Relatórios"
-        description={`${activeGrade.nome} · gerada em ${formatDateTime(activeGrade.criado_em)}.`}
+        description={`Carga dos professores, grade de cada turma e ocupação das salas. Gerada em ${formatDateTime(activeGrade.criado_em)}.`}
         actions={
           <div className="flex flex-wrap items-center gap-2 print:hidden">
             {gradesGeradas.length > 1 && (
@@ -141,7 +141,7 @@ export function ReportsPage() {
 
       <nav
         aria-label="Tipos de relatório"
-        className="mb-5 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-line print:hidden"
+        className="mb-5 inline-flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-line-soft p-1 print:hidden"
       >
         {abas.map(({ id, label }) => (
           <Link
@@ -150,8 +150,8 @@ export function ReportsPage() {
             replace
             aria-current={id === aba ? 'page' : undefined}
             className={cn(
-              'border-b-2 px-3 py-2 text-[13px] font-medium whitespace-nowrap transition-colors',
-              id === aba ? 'border-primary text-ink' : 'border-transparent text-muted hover:text-ink',
+              'rounded-lg px-3.5 py-1.5 text-[13.5px] font-medium whitespace-nowrap transition-colors',
+              id === aba ? 'bg-white font-semibold text-ink shadow-xs' : 'text-muted hover:text-ink',
             )}
           >
             {label}
@@ -160,7 +160,7 @@ export function ReportsPage() {
       </nav>
 
       {(professoresQuery.isError || salasQuery.isError) && (
-        <p role="alert" className="mb-4 rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-[13px]">
+        <p role="alert" className="mb-4 rounded-2xl border border-danger/30 bg-danger-soft px-4 py-3 text-[13px]">
           Não foi possível carregar professores ou salas. Carga máxima e ocupação podem estar incompletas.
         </p>
       )}
@@ -216,7 +216,7 @@ interface ReportSelectProps {
 
 function ReportSelect({ label, value, options, onChange }: ReportSelectProps) {
   return (
-    <label className="flex items-center gap-1 rounded-md border border-line bg-white py-1 pr-1 pl-3 text-[12.5px] focus-within:border-primary">
+    <label className="flex items-center gap-1 rounded-xl border border-line bg-white py-1 pr-1 pl-3 text-[12.5px] focus-within:border-primary">
       <span className="text-muted">{label}:</span>
       <select
         aria-label={label}

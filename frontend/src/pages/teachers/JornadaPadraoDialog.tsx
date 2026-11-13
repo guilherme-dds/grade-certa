@@ -58,7 +58,7 @@ export function JornadaPadraoDialog({ jornada, onClose }: JornadaPadraoDialogPro
       }}
       onClick={(e) => e.target === e.currentTarget && close()}
       aria-labelledby="jornada-dialog-title"
-      className="m-auto w-[min(460px,calc(100%-2rem))] rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
+      className="m-auto w-[min(460px,calc(100%-2rem))] card p-0 text-ink"
     >
       <form onSubmit={handleSubmit} className="p-6">
         <h2 id="jornada-dialog-title" className="text-[17px] font-semibold">

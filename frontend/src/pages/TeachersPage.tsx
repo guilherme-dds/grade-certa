@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { FormField } from '@/components/FormField'
 import { SelectField } from '@/components/SelectField'
 import { Button } from '@/components/ui/Button'
 import { DataTable } from '@/components/ui/DataTable'
-import { PageHeader, SectionHeader } from '@/components/ui/PageHeader'
+import { SectionHeader } from '@/components/ui/PageHeader'
+import { TabHeader } from '@/layouts/SectionLayout'
 import { StatCard, StatGrid } from '@/components/ui/StatCard'
 import {
   getProfessores,
@@ -38,7 +40,19 @@ export function TeachersPage() {
 
   // Filtros locais
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('todos')
+  // O filtro de situação fica na URL: ?filtro=sem-disponibilidade vem do dashboard e do gerador
+  const [searchParams, setSearchParams] = useSearchParams()
+  const statusFilter = (searchParams.get('filtro') ?? 'todos').replace(/-/g, ' ')
+  const setStatusFilter = (value: string) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (value === 'todos') next.delete('filtro')
+        else next.set('filtro', value.replace(/ /g, '-'))
+        return next
+      },
+      { replace: true },
+    )
   const [subjectFilter, setSubjectFilter] = useState<string>('todas')
   const [nivelFilter, setNivelFilter] = useState<string>('todos')
 
@@ -172,7 +186,9 @@ export function TeachersPage() {
           ? true
           : statusFilter === 'ativos'
             ? teacher.status === 'ativo'
-            : teacher.status === 'inativo'
+            : statusFilter === 'sem disponibilidade'
+              ? teacher.status === 'ativo' && !teacher.raw.disponibilidade_atualizada_em
+              : teacher.status === 'inativo'
 
       const matchesSubject =
         subjectFilter === 'todas' ? true : teacher.subjects.includes(subjectFilter)
@@ -254,14 +270,14 @@ export function TeachersPage() {
 
   return (
     <>
-      <PageHeader
+      <TabHeader
         title="Professores"
-        description="Gerencie os docentes cadastrados, níveis de ensino, disciplinas associadas e carga horária semanal."
+        description="Quem dá aula, em quais disciplinas e níveis, e quando está disponível."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button
               variant="secondary"
-              size="sm"
+
               onClick={() => setIsJornadaDialogOpen(true)}
               title={resumoJornada(jornadaPadrao)}
             >
@@ -269,19 +285,19 @@ export function TeachersPage() {
             </Button>
             <Button
               variant="secondary"
-              size="sm"
+
               onClick={() => setIsSubjectDialogOpen(true)}
             >
-              + Nova disciplina
+              Nova disciplina
             </Button>
             <Button
-              size="sm"
+
               onClick={() => {
                 setEditingTeacher(null)
                 setIsTeacherDialogOpen(true)
               }}
             >
-              + Novo professor
+              Novo professor
             </Button>
           </div>
         }
@@ -299,10 +315,10 @@ export function TeachersPage() {
 
       {/* Tabela e Filtros */}
       <section>
-        <SectionHeader title={`Docentes (${filteredTeachers.length})`} />
+        <SectionHeader title={`Professores (${filteredTeachers.length})`} />
 
         {/* Barra de Filtros */}
-        <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-line bg-white p-3.5 shadow-xs">
+        <div className="mb-4 flex flex-wrap items-end gap-3 card p-3.5">
           <div className="min-w-[200px] flex-1">
             <FormField
               label="Buscar professor"
@@ -315,7 +331,7 @@ export function TeachersPage() {
           <div className="w-36">
             <SelectField
               label="Status"
-              options={['todos', 'ativos', 'inativos'] as const}
+              options={['todos', 'ativos', 'inativos', 'sem disponibilidade'] as const}
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             />
@@ -394,7 +410,7 @@ export function TeachersPage() {
                     {(row.niveisEnsino ?? ['Anos Finais']).map((n) => (
                       <span
                         key={n}
-                        className="inline-block rounded border border-line-soft bg-paper px-2 py-0.5 text-xs font-semibold text-ink whitespace-nowrap"
+                        className="inline-block rounded-lg border border-line-soft bg-paper px-2 py-0.5 text-xs font-semibold text-ink whitespace-nowrap"
                       >
                         {n}
                       </span>
@@ -409,7 +425,7 @@ export function TeachersPage() {
                     {row.subjects.map((sub) => (
                       <span
                         key={sub}
-                        className="rounded border border-primary-soft-line bg-primary-soft/40 px-2 py-0.5 text-xs font-medium text-primary"
+                        className="rounded-lg border border-primary-soft-line bg-primary-soft/40 px-2 py-0.5 text-xs font-medium text-primary"
                       >
                         {sub}
                       </span>
@@ -511,7 +527,7 @@ export function TeachersPage() {
         )}
 
         {!isLoading && filteredTeachers.length === 0 && (
-          <div className="mt-4 rounded-lg border border-dashed border-line bg-white p-8 text-center">
+          <div className="mt-4 rounded-[20px] border-2 border-dashed border-line bg-white/60 p-8 text-center">
             <p className="text-sm font-medium text-ink">Nenhum professor encontrado</p>
             <p className="mt-1 text-xs text-muted">Tente ajustar os filtros ou cadastrar um novo professor.</p>
           </div>

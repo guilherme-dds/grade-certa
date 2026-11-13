@@ -155,7 +155,7 @@ export function TeacherDialog({
       }}
       onClick={(e) => e.target === e.currentTarget && close()}
       aria-labelledby="teacher-dialog-title"
-      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(520px,calc(100%-2rem))] overflow-y-auto rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(520px,calc(100%-2rem))] overflow-y-auto card p-0 text-ink"
     >
       <form onSubmit={handleSubmit} className="p-6">
         <h2 id="teacher-dialog-title" className="text-[17px] font-semibold">
@@ -195,7 +195,7 @@ export function TeacherDialog({
             <label className="mb-1.5 block text-xs font-medium text-muted">
               Nível(is) de Ensino (pode selecionar mais de um)
             </label>
-            <div className="flex flex-wrap gap-1.5 rounded-md border border-line p-2.5 bg-paper/50">
+            <div className="flex flex-wrap gap-1.5 rounded-xl border border-line p-2.5 bg-paper/50">
               {allNiveis.map((nivel) => {
                 const isSelected = selectedNiveis.includes(nivel)
                 return (
@@ -205,8 +205,8 @@ export function TeacherDialog({
                     onClick={() => toggleNivel(nivel)}
                     className={
                       isSelected
-                        ? 'rounded border border-primary-soft-line bg-primary-soft px-3 py-1 text-xs font-semibold text-primary transition-colors'
-                        : 'rounded border border-line-soft bg-white px-3 py-1 text-xs text-muted transition-colors hover:border-line hover:text-ink'
+                        ? 'rounded-lg border border-primary-soft-line bg-primary-soft px-3 py-1 text-xs font-semibold text-primary transition-colors'
+                        : 'rounded-lg border border-line-soft bg-white px-3 py-1 text-xs text-muted transition-colors hover:border-line hover:text-ink'
                     }
                   >
                     {isSelected ? `✓ ${nivel}` : `+ ${nivel}`}
@@ -234,7 +234,7 @@ export function TeacherDialog({
 
             {/* Campo Inline para criar disciplina */}
             {isAddingSubject && (
-              <div className="mb-3 rounded-md border border-primary-soft-line bg-primary-soft/40 p-2.5">
+              <div className="mb-3 rounded-xl border border-primary-soft-line bg-primary-soft/40 p-2.5">
                 <p className="mb-1.5 text-xs font-semibold text-primary">Nova disciplina</p>
                 <div className="flex gap-2">
                   <input
@@ -245,7 +245,7 @@ export function TeacherDialog({
                       setNewSubjectName(e.target.value)
                       if (newSubjectError) setNewSubjectError('')
                     }}
-                    className="flex-1 rounded border border-line bg-white px-2.5 py-1.5 text-xs outline-none focus:border-primary"
+                    className="flex-1 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs outline-none focus:border-primary"
                     autoFocus
                   />
                   <Button type="button" size="sm" onClick={handleCreateSubject}>
@@ -270,7 +270,7 @@ export function TeacherDialog({
               </div>
             )}
 
-            <div className="flex flex-wrap gap-1.5 rounded-md border border-line p-3">
+            <div className="flex flex-wrap gap-1.5 rounded-xl border border-line p-3">
               {availableSubjects.map((subject) => {
                 const isSelected = selectedSubjects.includes(subject)
                 return (
@@ -280,8 +280,8 @@ export function TeacherDialog({
                     onClick={() => toggleSubject(subject)}
                     className={
                       isSelected
-                        ? 'rounded border border-primary-soft-line bg-primary-soft px-2.5 py-1 text-xs font-medium text-primary transition-colors'
-                        : 'rounded border border-line-soft bg-paper px-2.5 py-1 text-xs text-muted transition-colors hover:border-line hover:text-ink'
+                        ? 'rounded-lg border border-primary-soft-line bg-primary-soft px-2.5 py-1 text-xs font-medium text-primary transition-colors'
+                        : 'rounded-lg border border-line-soft bg-paper px-2.5 py-1 text-xs text-muted transition-colors hover:border-line hover:text-ink'
                     }
                   >
                     {isSelected ? `✓ ${subject}` : `+ ${subject}`}
@@ -318,7 +318,7 @@ export function TeacherDialog({
 
           <fieldset>
             <legend className="mb-1.5 block text-xs font-medium text-muted">Almoço e aulas por dia</legend>
-            <div className="flex gap-1 rounded-md bg-paper p-[3px]">
+            <div className="flex gap-1 rounded-xl bg-paper p-[3px]">
               {[
                 { personalizada: false, label: 'Padrão da escola' },
                 { personalizada: true, label: 'Personalizado' },
@@ -329,7 +329,7 @@ export function TeacherDialog({
                   aria-pressed={jornadaPersonalizada === opcao.personalizada}
                   onClick={() => setJornadaPersonalizada(opcao.personalizada)}
                   className={cn(
-                    'flex-1 rounded py-1.5 text-xs transition-colors',
+                    'flex-1 rounded-lg py-1.5 text-xs transition-colors',
                     jornadaPersonalizada === opcao.personalizada
                       ? 'bg-white font-semibold text-primary shadow-xs'
                       : 'text-muted hover:text-ink',

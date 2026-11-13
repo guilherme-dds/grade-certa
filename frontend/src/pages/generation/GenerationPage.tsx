@@ -1,18 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { getTurmas, professoresDoItem, type TurmaBackend } from '@/api/turmas'
-import { getProfessores, type ProfessorBackend } from '@/api/professores'
 import { gerarGrade, getHistoricoGrades, getStatusGrade, type GradeResumo, type StatusGrade } from '@/api/grades'
-import { useSchedule } from '@/schedule/useSchedule'
+import { getProfessores, type ProfessorBackend } from '@/api/professores'
+import { getTurmas, professoresDoItem, type TurmaBackend } from '@/api/turmas'
 import { GenerationWarnings } from '@/components/GenerationWarnings'
 import { Button } from '@/components/ui/Button'
 import { buttonStyles } from '@/components/ui/buttonStyles'
-import { PageHeader } from '@/components/ui/PageHeader'
-import { StatCard, StatGrid } from '@/components/ui/StatCard'
+import { Icon } from '@/components/ui/Icon'
+import { paths } from '@/config/paths'
 import { getApiErrorMessage } from '@/lib/apiError'
 import { cn } from '@/lib/cn'
 import { formatDateTime } from '@/lib/schedule'
+import { useSchedule } from '@/schedule/useSchedule'
 
 /** Mesmo padrão do backend: "2026.2" para o 2º semestre de 2026 */
 function semestreAtual() {
@@ -30,12 +30,22 @@ const TEMPOS_LIMITE = [
 ]
 
 const STATUS_LABEL: Record<string, string> = {
-  gerando: 'gerando',
-  sucesso: 'sucesso',
-  inviavel: 'inviável',
-  tempo_esgotado: 'tempo esgotado',
-  erro: 'erro',
+  gerando: 'Gerando',
+  sucesso: 'Concluída',
+  inviavel: 'Inviável',
+  tempo_esgotado: 'Tempo esgotado',
+  erro: 'Erro',
 }
+
+// O que o gerador leva em conta, em linguagem de coordenação
+const REGRAS = [
+  'Aulas semanais de cada disciplina, conforme a matriz da turma',
+  'Disponibilidade de cada professor e horários bloqueados das salas',
+  'Aulas dobradas e aulas fixadas em dia ou horário',
+  'Sem janelas na agenda dos professores, sempre que possível',
+  'Almoço, limite de aulas e de horas por dia (jornada)',
+  '4 horários de planejamento por professor',
+]
 
 const isFalha = (status: StatusGrade) => status !== 'gerando' && status !== 'sucesso'
 
@@ -44,7 +54,7 @@ export function GenerationPage() {
   const queryClient = useQueryClient()
   const { refreshSchedule } = useSchedule()
 
-  const [nomeGrade, setNomeGrade] = useState(`Grade Horária ${semestreAtual()}`)
+  const [nomeGrade, setNomeGrade] = useState(`Grade ${semestreAtual()}`)
   const [tempoLimite, setTempoLimite] = useState('120')
   const [isStarting, setIsStarting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -52,24 +62,19 @@ export function GenerationPage() {
   const [geracaoId, setGeracaoId] = useState<number | null>(null)
   const [elapsed, setElapsed] = useState(0)
 
-  const { data: turmas = [] } = useQuery<TurmaBackend[]>({
+  const { data: turmas = [], isLoading: loadingTurmas } = useQuery<TurmaBackend[]>({
     queryKey: ['turmas'],
     queryFn: () => getTurmas(),
   })
-
-  const { data: professores = [] } = useQuery<ProfessorBackend[]>({
+  const { data: professores = [], isLoading: loadingProfessores } = useQuery<ProfessorBackend[]>({
     queryKey: ['professores'],
     queryFn: () => getProfessores(),
   })
-
   const {
     data: historico = [],
     isLoading: isLoadingHistorico,
     refetch: refetchHistorico,
-  } = useQuery<GradeResumo[]>({
-    queryKey: ['historicoGrades'],
-    queryFn: () => getHistoricoGrades(),
-  })
+  } = useQuery<GradeResumo[]>({ queryKey: ['historicoGrades'], queryFn: () => getHistoricoGrades() })
 
   // Ao abrir a página com uma geração rodando (ex.: depois de recarregar), volta a acompanhá-la
   const emAndamento = historico.find((g) => g.status === 'gerando')
@@ -102,34 +107,32 @@ export function GenerationPage() {
     if (statusFinal === 'sucesso') refreshSchedule(geracao.id)
   }, [statusFinal, geracao, queryClient, refreshSchedule])
 
-  // Análise diagnóstica pré-geração
-  const turmasValidas = turmas.filter((t) => (t.matriz_curricular || []).some((item) => Number(item.aulas_semanais) > 0))
-  const turmasSemMatriz = turmas.filter((t) => !(t.matriz_curricular || []).some((item) => Number(item.aulas_semanais) > 0))
+  // Checagem antes de gerar
+  const temMatriz = (t: TurmaBackend) => (t.matriz_curricular || []).some((item) => Number(item.aulas_semanais) > 0)
+  const turmasValidas = turmas.filter(temMatriz)
+  const turmasSemMatriz = turmas.filter((t) => !temMatriz(t))
   const totalAulasDemandadas = turmasValidas.reduce(
     (acc, t) => acc + (t.matriz_curricular || []).reduce((sub, item) => sub + Number(item.aulas_semanais || 0), 0),
     0,
   )
-  const professoresAtivos = professores.filter((p) => p.ativo)
+  const ativos = professores.filter((p) => p.ativo)
+  const semDisponibilidade = ativos.filter((p) => !p.disponibilidade_atualizada_em)
   const nomePorId = new Map(professores.flatMap((p) => (p.id ? [[p.id, p.nome] as const] : [])))
 
   // Aulas que a escola prendeu num dia/horário (ex.: laboratório), para conferir antes de gerar
   const aulasFixas = turmas.flatMap((t) =>
-    (t.matriz_curricular ?? [])
-      .filter((item) => item.horarios_fixos?.length)
-      .map((item) => ({ turma: t, item })),
+    (t.matriz_curricular ?? []).filter((item) => item.horarios_fixos?.length).map((item) => ({ turma: t, item })),
   )
 
   const handleGerar = async () => {
     if (turmasValidas.length === 0) {
-      setErrorMessage(
-        'Nenhuma turma possui matriz curricular com aulas cadastradas. Configure ao menos uma turma para gerar a grade.',
-      )
+      setErrorMessage('Nenhuma turma tem matriz curricular com aulas. Monte a matriz de ao menos uma turma.')
       return
     }
     setErrorMessage(null)
     setIsStarting(true)
     try {
-      const iniciada = await gerarGrade(nomeGrade.trim() || 'Grade Horária Automática', Number(tempoLimite))
+      const iniciada = await gerarGrade(nomeGrade.trim() || `Grade ${semestreAtual()}`, Number(tempoLimite))
       queryClient.setQueryData(['statusGrade', iniciada.id], iniciada)
       setGeracaoId(iniciada.id)
       await queryClient.invalidateQueries({ queryKey: ['historicoGrades'] })
@@ -143,320 +146,320 @@ export function GenerationPage() {
   const detalhes = geracao?.detalhes
   const planejamentos = detalhes?.planejamentos ?? []
   const limiteAtual = detalhes?.tempo_limite_seg ?? Number(tempoLimite)
+  const loadingChecks = loadingTurmas || loadingProfessores
 
   return (
-    <div className="space-y-8">
-      <PageHeader
-        title="Geração Automática de Grade"
-        description="Resolvedor matemático via Google OR-Tools CP-SAT. Distribui aulas respeitando matrizes curriculares, níveis de ensino, indisponibilidades de professores e salas, aulas dobradas, ausência de janelas, almoço, limite de aulas e de horas por dia e 4 horários de planejamento por professor."
-      />
-
-      {/* 1. Diagnóstico Pré-Geração */}
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold tracking-wide text-ink uppercase">Diagnóstico do Sistema</h2>
-        <StatGrid>
-          <StatCard
-            label="Turmas Prontas"
-            value={turmasValidas.length}
-            suffix={`de ${turmas.length} turmas`}
-            tone={turmasValidas.length > 0 ? 'success' : 'danger'}
-          />
-          <StatCard label="Aulas Demandadas" value={totalAulasDemandadas} suffix="aulas/semana" tone="default" />
-          <StatCard
-            label="Professores Ativos"
-            value={professoresAtivos.length}
-            suffix={`de ${professores.length} cadastrados`}
-            tone={professoresAtivos.length > 0 ? 'success' : 'warning'}
-          />
-          <StatCard label="Grades no Histórico" value={historico.length} suffix="execuções" tone="default" />
-        </StatGrid>
-
-        {/* Alerta de turmas sem matriz */}
-        {turmasSemMatriz.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning-soft px-4 py-3 text-[13px] text-ink">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-warning text-xs font-bold text-white">
-                !
-              </span>
-              <span>
-                <strong>Atenção:</strong> {turmasSemMatriz.length}{' '}
-                {turmasSemMatriz.length === 1 ? 'turma não possui' : 'turmas não possuem'} matriz curricular cadastrada
-                ({turmasSemMatriz.map((t) => t.nome).join(', ')}).
-              </span>
-            </div>
-            <Link to="/disciplinas" className="font-medium text-warning hover:underline">
-              Configurar turmas →
-            </Link>
-          </div>
-        )}
-
-        {/* Status de Prontidão */}
-        {turmasValidas.length > 0 && (
-          <div className="rounded-lg border border-primary-soft-line bg-primary-soft/60 px-4 py-3 text-[13px] text-primary">
-            <span className="font-semibold">✓ Dados consistentes:</span> O sistema possui turmas com matriz curricular
-            prontas para processamento no motor de otimização.
-          </div>
-        )}
-      </section>
-
-      {/* 2. Aulas com dia ou horário fixo */}
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold tracking-wide text-ink uppercase">
-          Aulas com dia ou horário fixo ({aulasFixas.length})
-        </h2>
-        {aulasFixas.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-line bg-white p-5 text-xs text-muted">
-            Nenhuma aula fixada. Para prender uma aula num dia ou horário (ex.: laboratório), abra Turmas e salas →
-            Matriz Curricular → Fixar dia/horário.
-          </div>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-line bg-white">
-            <table className="w-full border-collapse text-left text-[12.5px]">
-              <thead>
-                <tr className="border-b border-line bg-paper text-muted">
-                  <th className="px-4 py-2.5 font-semibold">Turma</th>
-                  <th className="px-4 py-2.5 font-semibold">Disciplina</th>
-                  <th className="px-4 py-2.5 font-semibold">Professores</th>
-                  <th className="px-4 py-2.5 font-semibold">Dia / horário</th>
-                  <th className="px-4 py-2.5 text-right font-semibold">Ação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {aulasFixas.map(({ turma, item }) => (
-                  <tr key={`${turma.id}-${item.disciplina}`} className="border-b border-line-soft last:border-b-0">
-                    <td className="px-4 py-2.5 font-medium text-ink">{turma.nome}</td>
-                    <td className="px-4 py-2.5">
-                      {item.disciplina}
-                      {item.extra && <span className="ml-1.5 text-[11px] text-muted">(extra)</span>}
-                    </td>
-                    <td className="px-4 py-2.5 text-muted">{professoresDoItem(item, nomePorId).join(', ') || 'Sem professor'}</td>
-                    <td className="px-4 py-2.5">
-                      {item.horarios_fixos!
-                        .map((f) => `${f.dia_semana}, ${f.horario ?? 'qualquer horário'}`)
-                        .join(' · ')}
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      <Link to={`/disciplinas?matriz=${turma.id}`} className="font-semibold text-primary hover:underline">
-                        Editar →
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      {/* 3. Painel de Execução do Solver */}
-      <section className="rounded-xl border border-line bg-white p-6 shadow-xs">
-        <h2 className="text-base font-semibold text-ink">Executar Otimização da Grade</h2>
-        <p className="mt-1 text-xs text-muted">
-          A geração roda em segundo plano: você pode sair desta página e voltar depois. Escolas maiores precisam de mais
-          tempo para o solver encontrar uma grade.
+    <>
+      <header className="mb-6">
+        <p className="mb-1 text-[13px] font-medium text-muted">Passo 2 de 3</p>
+        <h1 className="font-display text-[28px] leading-tight font-bold tracking-[-0.02em] md:text-[32px]">Gerar grade</h1>
+        <p className="mt-1.5 max-w-2xl text-[14px] leading-relaxed text-muted">
+          O gerador distribui todas as aulas da semana sem choque de horário. Confira os cadastros e inicie; você pode
+          sair desta tela enquanto ele trabalha.
         </p>
+      </header>
 
-        <div className="mt-5 grid max-w-xl gap-4 sm:grid-cols-[1fr_180px]">
-          <div>
-            <label htmlFor="nomeGrade" className="block text-xs font-medium text-ink">
-              Nome de identificação da grade
-            </label>
-            <input
-              id="nomeGrade"
-              type="text"
-              value={nomeGrade}
-              disabled={isGenerating}
-              onChange={(e) => setNomeGrade(e.target.value)}
-              placeholder={`Ex: Grade Horária ${semestreAtual()} - Versão Final`}
-              className="mt-1.5 w-full rounded-md border border-line bg-white px-3.5 py-2 text-sm text-ink outline-none transition focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50"
-            />
-          </div>
-          <div>
-            <label htmlFor="tempoLimite" className="block text-xs font-medium text-ink">
-              Tempo máximo
-            </label>
-            <select
-              id="tempoLimite"
-              value={tempoLimite}
-              disabled={isGenerating}
-              onChange={(e) => setTempoLimite(e.target.value)}
-              className="mt-1.5 w-full rounded-md border border-line bg-white px-3 py-2 text-sm text-ink outline-none focus:border-primary disabled:opacity-50"
-            >
-              {TEMPOS_LIMITE.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </div>
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+        {/* Coluna esquerda: o que será usado */}
+        <div className="space-y-4">
+          <section className="card p-5 md:p-6" aria-labelledby="checagem">
+            <h2 id="checagem" className="font-display text-[18px] font-bold">
+              Antes de gerar
+            </h2>
+            <ul className="mt-3 divide-y divide-line-soft">
+              <CheckItem
+                state={loadingChecks ? 'loading' : turmasSemMatriz.length === 0 && turmas.length > 0 ? 'ok' : 'warn'}
+                title="Turmas com matriz curricular"
+                detail={
+                  turmas.length === 0
+                    ? 'Nenhuma turma cadastrada.'
+                    : turmasSemMatriz.length
+                      ? `Sem matriz: ${turmasSemMatriz.map((t) => t.nome).join(', ')}. Essas turmas ficam de fora.`
+                      : 'Todas as turmas entram na grade.'
+                }
+                value={`${turmasValidas.length}/${turmas.length}`}
+                action={turmasSemMatriz.length > 0 || turmas.length === 0 ? { to: paths.turmas, label: 'Montar matrizes' } : undefined}
+              />
+              <CheckItem
+                state={loadingChecks ? 'loading' : semDisponibilidade.length === 0 ? 'ok' : 'warn'}
+                title="Professores com disponibilidade"
+                detail={
+                  semDisponibilidade.length
+                    ? `${semDisponibilidade.length} ainda não ${semDisponibilidade.length === 1 ? 'informou' : 'informaram'}. Sem isso, o gerador considera a semana toda livre.`
+                    : 'Todos os professores ativos informaram seus horários.'
+                }
+                value={`${ativos.length - semDisponibilidade.length}/${ativos.length}`}
+                action={
+                  semDisponibilidade.length ? { to: paths.professoresSemDisponibilidade, label: 'Ver quem falta' } : undefined
+                }
+              />
+              <CheckItem
+                state={loadingChecks ? 'loading' : 'info'}
+                title="Aulas por semana"
+                detail="Soma das matrizes de todas as turmas."
+                value={String(totalAulasDemandadas)}
+              />
+              <CheckItem
+                state={loadingChecks ? 'loading' : 'info'}
+                title="Aulas fixadas em dia ou horário"
+                detail={
+                  aulasFixas.length
+                    ? 'Serão mantidas exatamente onde foram fixadas.'
+                    : 'Nenhuma. Para fixar uma aula (ex.: laboratório), use a matriz da turma.'
+                }
+                value={String(aulasFixas.length)}
+              />
+            </ul>
 
-          <div className="flex flex-wrap items-center gap-3 pt-2 sm:col-span-2">
-            <Button
-              onClick={handleGerar}
-              disabled={isGenerating || turmasValidas.length === 0}
-              className="flex items-center gap-2 font-medium"
-            >
-              {isGenerating ? (
-                <>
-                  <svg className="h-4 w-4 animate-spin text-white" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                  <span>Gerando... ({elapsed}s de até {Math.round(limiteAtual / 60)} min)</span>
-                </>
-              ) : (
-                <>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                    <polygon points="5 3 19 12 5 21 5 3" />
-                  </svg>
-                  <span>Gerar Grade Automática</span>
-                </>
-              )}
-            </Button>
-
-            {historico.some((g) => g.status === 'sucesso') && !isGenerating && (
-              <Button variant="secondary" onClick={() => navigate('/grade')}>
-                Visualizar Grade Atual
-              </Button>
+            {aulasFixas.length > 0 && (
+              <details className="group mt-2 rounded-2xl bg-paper">
+                <summary className="flex cursor-pointer list-none items-center justify-between rounded-2xl px-4 py-3 text-[14px] font-semibold">
+                  Ver aulas fixadas
+                  <span className="text-muted transition-transform group-open:rotate-180" aria-hidden="true">
+                    ▾
+                  </span>
+                </summary>
+                <div className="overflow-x-auto px-2 pb-2">
+                  <table className="w-full min-w-[520px] text-left text-[13.5px]">
+                    <thead>
+                      <tr className="text-[12.5px] text-muted">
+                        <th className="px-2 py-2 font-medium">Turma</th>
+                        <th className="px-2 py-2 font-medium">Disciplina</th>
+                        <th className="px-2 py-2 font-medium">Professores</th>
+                        <th className="px-2 py-2 font-medium">Quando</th>
+                        <th className="px-2 py-2"><span className="sr-only">Ações</span></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {aulasFixas.map(({ turma, item }) => (
+                        <tr key={`${turma.id}-${item.disciplina}`} className="border-t border-line">
+                          <td className="px-2 py-2.5 font-semibold">{turma.nome}</td>
+                          <td className="px-2 py-2.5">
+                            {item.disciplina}
+                            {item.extra && <span className="ml-1.5 text-[12px] text-muted">(extra)</span>}
+                          </td>
+                          <td className="px-2 py-2.5 text-muted">
+                            {professoresDoItem(item, nomePorId).join(', ') || 'Sem professor'}
+                          </td>
+                          <td className="px-2 py-2.5">
+                            {item.horarios_fixos!.map((f) => `${f.dia_semana}, ${f.horario ?? 'qualquer horário'}`).join('; ')}
+                          </td>
+                          <td className="px-2 py-2.5 text-right">
+                            <Link to={paths.matrizDaTurma(turma.id!)} className="font-semibold hover:underline">
+                              Editar
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
             )}
-          </div>
+          </section>
+
+          <details className="card group p-5 md:p-6">
+            <summary className="flex cursor-pointer list-none items-center justify-between font-display text-[16px] font-bold">
+              O que o gerador respeita
+              <span className="text-muted transition-transform group-open:rotate-180" aria-hidden="true">
+                ▾
+              </span>
+            </summary>
+            <ul className="mt-3 grid gap-2 text-[14px] sm:grid-cols-2">
+              {REGRAS.map((r) => (
+                <li key={r} className="flex gap-2">
+                  <Icon name="check" width={16} height={16} className="mt-0.5 shrink-0 text-primary" />
+                  {r}
+                </li>
+              ))}
+            </ul>
+          </details>
         </div>
 
-        {/* 3. Erro ao iniciar */}
-        {errorMessage && (
-          <div className="mt-6 rounded-lg border border-danger/40 bg-danger-soft p-4 text-[13px] text-danger">
-            {errorMessage}
-          </div>
-        )}
+        {/* Coluna direita: gerar e acompanhar */}
+        <section className="rounded-[28px] bg-board p-6 text-white lg:sticky lg:top-24" aria-labelledby="nova-grade">
+          <h2 id="nova-grade" className="font-display text-[20px] font-bold">
+            Nova grade
+          </h2>
 
-        {/* 4. Geração que não encontrou grade */}
-        {geracao && isFalha(geracao.status) && (
-          <div className="mt-6 rounded-lg border border-danger/40 bg-danger-soft p-4 text-[13px] text-danger">
-            <div className="flex items-start gap-3">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-danger text-sm font-bold text-white">
-                ✕
-              </span>
-              <div className="space-y-2">
-                <h3 className="font-semibold text-danger">
-                  {geracao.status === 'tempo_esgotado'
-                    ? 'Tempo esgotado'
-                    : geracao.status === 'erro'
-                      ? 'Erro na geração'
-                      : 'Não foi possível montar a grade'}
-                </h3>
-                <p className="text-ink">
-                  {detalhes?.mensagem ?? 'A geração foi interrompida (o serviço pode ter sido reiniciado). Tente novamente.'}
-                </p>
-                <div className="text-xs text-muted">
-                  <strong>Sugestões para solucionar:</strong>
-                  <ul className="mt-1 list-disc space-y-0.5 pl-4">
-                    {geracao.status === 'tempo_esgotado' && <li>Tente de novo com um tempo máximo maior.</li>}
-                    <li>Verifique se o número de aulas demandadas pela turma cabe nos horários semanais do turno.</li>
-                    <li>Verifique se algum professor atribuído está com carga máxima menor que a demanda.</li>
-                    <li>Confirme se os professores possuem disponibilidade nos dias e turnos das aulas.</li>
-                    <li>Revise a jornada padrão ou personalizada em Professores (almoço, máximo de aulas e de horas por dia).</li>
+          <div className="mt-5 space-y-4">
+            <div>
+              <label htmlFor="nomeGrade" className="mb-1.5 block text-[13px] font-medium text-white/70">
+                Nome da grade
+              </label>
+              <input
+                id="nomeGrade"
+                type="text"
+                value={nomeGrade}
+                disabled={isGenerating}
+                onChange={(e) => setNomeGrade(e.target.value)}
+                placeholder={`Ex.: Grade ${semestreAtual()} – versão final`}
+                className="h-11 w-full rounded-xl border border-white/15 bg-white/[0.07] px-3.5 text-[14px] text-white outline-none placeholder:text-white/35 focus:border-white/50 disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label htmlFor="tempoLimite" className="mb-1.5 block text-[13px] font-medium text-white/70">
+                Tempo máximo de busca
+              </label>
+              <select
+                id="tempoLimite"
+                value={tempoLimite}
+                disabled={isGenerating}
+                onChange={(e) => setTempoLimite(e.target.value)}
+                className="h-11 w-full rounded-xl border border-white/15 bg-white/[0.07] px-3 text-[14px] text-white outline-none focus:border-white/50 disabled:opacity-50 [&>option]:text-ink"
+              >
+                {TEMPOS_LIMITE.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1.5 text-[12.5px] text-white/45">Escolas maiores precisam de mais tempo.</p>
+            </div>
+          </div>
+
+          {isGenerating ? (
+            <div className="mt-6" role="status" aria-live="polite">
+              <div className="flex items-center justify-between text-[13.5px]">
+                <span className="flex items-center gap-2 font-semibold">
+                  <span className="size-3.5 animate-spin rounded-full border-2 border-accent border-r-transparent" />
+                  Gerando…
+                </span>
+                <span className="text-white/55 tabular-nums">
+                  {elapsed}s de até {Math.round(limiteAtual / 60)} min
+                </span>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-accent transition-[width] duration-1000 ease-linear"
+                  style={{ width: `${Math.min(100, (elapsed / limiteAtual) * 100)}%` }}
+                />
+              </div>
+              <p className="mt-2 text-[12.5px] text-white/45">Pode sair desta tela; a geração continua.</p>
+            </div>
+          ) : (
+            <Button
+              onClick={handleGerar}
+              disabled={turmasValidas.length === 0}
+              size="lg"
+              className="mt-6 w-full bg-white text-ink shadow-none hover:bg-white/90"
+            >
+              Gerar grade
+            </Button>
+          )}
+
+          {errorMessage && (
+            <p role="alert" className="mt-4 rounded-2xl bg-[#ff7a5c]/15 px-4 py-3 text-[13.5px] text-[#ffb3a1]">
+              {errorMessage}
+            </p>
+          )}
+
+          {/* Resultado */}
+          {geracao?.status === 'sucesso' && (
+            <div className="mt-5 rounded-2xl bg-white p-4 text-ink" role="status">
+              <p className="flex items-center gap-2 font-display text-[16px] font-bold text-primary">
+                <Icon name="check" width={18} height={18} />
+                Grade gerada
+              </p>
+              <p className="mt-1 text-[13.5px] text-muted">
+                {geracao.total_aulas} aulas distribuídas em {detalhes?.tempo_resolucao_seg ?? '—'} s.
+                {planejamentos.length > 0 &&
+                  ` Planejamentos compartilhados com colega da mesma área: ${planejamentos.filter((p) => p.compartilhado).length} de ${planejamentos.length}.`}
+              </p>
+              {(detalhes?.janelas?.length ?? 0) > 0 && (
+                <div className="mt-3 border-t border-line pt-3 text-[13px]">
+                  <p className="font-semibold text-warning">
+                    Janelas que não puderam ser evitadas ({detalhes!.janelas!.length})
+                  </p>
+                  <ul className="mt-1 list-disc space-y-0.5 pl-4 text-muted">
+                    {detalhes!.janelas!.map((j) => (
+                      <li key={`${j.professor}-${j.dia_semana}-${j.horario}`}>
+                        {j.professor}: {j.dia_semana}, {j.horario}
+                      </li>
+                    ))}
                   </ul>
                 </div>
-                <GenerationWarnings avisos={detalhes?.avisos} />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 5. Feedback de Sucesso */}
-        {geracao?.status === 'sucesso' && (
-          <div className="mt-6 rounded-lg border border-primary-soft-line bg-primary-soft p-5 text-ink">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="font-bold text-primary">Grade gerada com sucesso!</h3>
-                  <p className="text-xs text-muted">
-                    {geracao.total_aulas} aulas distribuídas em {detalhes?.tempo_resolucao_seg ?? '—'} segundos.
-                    {planejamentos.length > 0 &&
-                      ` Planejamentos compartilhados com colega da mesma área: ${planejamentos.filter((p) => p.compartilhado).length}/${planejamentos.length}.`}
-                  </p>
-                </div>
-              </div>
-
-              <Link to="/grade" className={buttonStyles()}>
-                Ver Grade Completa →
+              )}
+              <GenerationWarnings avisos={detalhes?.avisos} />
+              <Link to={paths.grade} className={buttonStyles({}, 'mt-4 w-full')}>
+                Revisar grade
               </Link>
             </div>
-            {(detalhes?.janelas?.length ?? 0) > 0 && (
-              <div className="mt-4 border-t border-black/5 pt-3 text-xs">
-                <p className="font-semibold text-warning">
-                  Janelas de professor que não puderam ser evitadas ({detalhes!.janelas!.length})
-                </p>
-                <ul className="mt-1 list-disc space-y-0.5 pl-4 text-muted">
-                  {detalhes!.janelas!.map((j) => (
-                    <li key={`${j.professor}-${j.dia_semana}-${j.horario}`}>
-                      {j.professor}: {j.dia_semana}, {j.horario}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <GenerationWarnings avisos={detalhes?.avisos} />
-          </div>
-        )}
-      </section>
+          )}
 
-      {/* 6. Histórico de Execuções */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold tracking-wide text-ink uppercase">Histórico de Execuções</h2>
+          {geracao && isFalha(geracao.status) && (
+            <div className="mt-5 rounded-2xl bg-white p-4 text-ink" role="alert">
+              <p className="font-display text-[16px] font-bold text-danger">
+                {geracao.status === 'tempo_esgotado'
+                  ? 'O tempo acabou antes de achar uma grade'
+                  : geracao.status === 'erro'
+                    ? 'A geração falhou'
+                    : 'Não existe grade possível com estes cadastros'}
+              </p>
+              <p className="mt-1 text-[13.5px]">
+                {detalhes?.mensagem ?? 'A geração foi interrompida (o serviço pode ter sido reiniciado). Tente de novo.'}
+              </p>
+              <p className="mt-3 text-[13px] font-semibold">O que costuma resolver</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[13px] text-muted">
+                {geracao.status === 'tempo_esgotado' && <li>Tentar de novo com um tempo máximo maior.</li>}
+                <li>Conferir se as aulas da turma cabem nos horários do turno.</li>
+                <li>Conferir se a carga máxima dos professores cobre a demanda.</li>
+                <li>Conferir a disponibilidade dos professores nos dias e turnos das aulas.</li>
+                <li>Revisar a jornada (almoço, máximo de aulas e de horas por dia) em Cadastros › Professores.</li>
+              </ul>
+              <GenerationWarnings avisos={detalhes?.avisos} />
+            </div>
+          )}
+        </section>
+      </div>
+
+      {/* Histórico */}
+      <section className="card mt-4 p-5 md:p-6">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="font-display text-[18px] font-bold">Histórico de gerações</h2>
           <button
             type="button"
             onClick={() => refetchHistorico()}
             disabled={isLoadingHistorico}
-            className="text-xs font-medium text-primary hover:underline"
+            className="rounded-full px-3 py-1.5 text-[13px] font-semibold text-muted hover:bg-paper hover:text-ink"
           >
-            Atualizar lista
+            Atualizar
           </button>
         </div>
 
         {historico.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-line bg-white p-6 text-center text-xs text-muted">
-            Nenhuma geração registrada no histórico ainda.
-          </div>
+          <p className="rounded-2xl border-2 border-dashed border-line p-6 text-center text-[14px] text-muted">
+            As grades geradas aparecem aqui.
+          </p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-line bg-white">
-            <table className="w-full border-collapse text-left text-[12.5px]">
+          <div className="-mx-2 overflow-x-auto">
+            <table className="w-full min-w-[640px] text-left text-[14px]">
               <thead>
-                <tr className="border-b border-line bg-paper text-muted">
-                  <th className="px-4 py-2.5 font-semibold">Nome da Grade</th>
-                  <th className="px-4 py-2.5 font-semibold">Semestre</th>
-                  <th className="px-4 py-2.5 font-semibold">Total Aulas</th>
-                  <th className="px-4 py-2.5 font-semibold">Status</th>
-                  <th className="px-4 py-2.5 font-semibold">Criado em</th>
-                  <th className="px-4 py-2.5 text-right font-semibold">Ação</th>
+                <tr className="text-[12.5px] text-muted">
+                  <th className="px-2 pb-2 font-medium">Grade</th>
+                  <th className="px-2 pb-2 font-medium">Semestre</th>
+                  <th className="px-2 pb-2 text-right font-medium">Aulas</th>
+                  <th className="px-2 pb-2 font-medium">Situação</th>
+                  <th className="px-2 pb-2 font-medium">Gerada em</th>
+                  <th className="px-2 pb-2"><span className="sr-only">Ações</span></th>
                 </tr>
               </thead>
               <tbody>
                 {historico.map((g) => (
-                  <tr key={g.id} className="border-b border-line-soft last:border-b-0 hover:bg-paper/40">
-                    <td className="px-4 py-2.5 font-medium text-ink">
+                  <tr key={g.id} className="border-t border-line-soft">
+                    <td className="px-2 py-3 font-semibold">
                       {g.nome}
                       {g.detalhes?.tempo_resolucao_seg != null && (
-                        <span className="ml-2 text-[11px] text-muted">({g.detalhes.tempo_resolucao_seg}s)</span>
+                        <span className="ml-2 text-[12px] font-normal text-muted">{g.detalhes.tempo_resolucao_seg} s</span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-muted">{g.ano_semestre ?? '—'}</td>
-                    <td className="px-4 py-2.5 font-semibold text-ink">{g.total_aulas}</td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-2 py-3 text-muted">{g.ano_semestre ?? '—'}</td>
+                    <td className="px-2 py-3 text-right tabular-nums">{g.total_aulas}</td>
+                    <td className="px-2 py-3">
                       <span
                         title={isFalha(g.status) ? g.detalhes?.mensagem : undefined}
                         className={cn(
-                          'inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                          'inline-flex rounded-full px-2.5 py-1 text-[12px] font-semibold whitespace-nowrap',
                           g.status === 'sucesso' && 'bg-primary-soft text-primary',
                           g.status === 'gerando' && 'bg-warning-soft text-warning',
                           isFalha(g.status) && 'bg-danger-soft text-danger',
@@ -465,21 +468,19 @@ export function GenerationPage() {
                         {STATUS_LABEL[g.status] ?? g.status}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-muted">{formatDateTime(g.criado_em)}</td>
-                    <td className="px-4 py-2.5 text-right">
-                      {g.status === 'sucesso' ? (
+                    <td className="px-2 py-3 whitespace-nowrap text-muted tabular-nums">{formatDateTime(g.criado_em)}</td>
+                    <td className="px-2 py-3 text-right">
+                      {g.status === 'sucesso' && (
                         <button
                           type="button"
                           onClick={async () => {
                             await refreshSchedule(g.id)
-                            navigate(`/grade?gradeId=${g.id}`)
+                            navigate(`${paths.grade}?gradeId=${g.id}`)
                           }}
-                          className="font-semibold text-primary hover:underline"
+                          className="rounded-full bg-ink px-3.5 py-1.5 text-[12.5px] font-semibold text-white hover:bg-ink-soft"
                         >
-                          Visualizar →
+                          Abrir
                         </button>
-                      ) : (
-                        <span className="text-muted">—</span>
                       )}
                     </td>
                   </tr>
@@ -489,6 +490,54 @@ export function GenerationPage() {
           </div>
         )}
       </section>
-    </div>
+    </>
+  )
+}
+
+function CheckItem({
+  state,
+  title,
+  detail,
+  value,
+  action,
+}: {
+  state: 'ok' | 'warn' | 'info' | 'loading'
+  title: string
+  detail: string
+  value: string
+  action?: { to: string; label: string }
+}): ReactNode {
+  return (
+    <li className="flex items-start gap-3 py-3.5">
+      <span
+        className={cn(
+          'mt-0.5 grid size-7 shrink-0 place-items-center rounded-full',
+          state === 'ok' && 'bg-primary-soft text-primary',
+          state === 'warn' && 'bg-warning-soft text-warning',
+          (state === 'info' || state === 'loading') && 'bg-paper text-muted',
+        )}
+        aria-hidden="true"
+      >
+        {state === 'ok' ? (
+          <Icon name="check" width={15} height={15} />
+        ) : state === 'warn' ? (
+          <span className="text-[14px] font-bold">!</span>
+        ) : (
+          <span className="size-1.5 rounded-full bg-current" />
+        )}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="flex items-baseline justify-between gap-3">
+          <span className="font-semibold">{title}</span>
+          <span className="font-display text-[17px] font-bold tabular-nums">{state === 'loading' ? '…' : value}</span>
+        </p>
+        <p className="mt-0.5 text-[13.5px] leading-relaxed text-muted">{detail}</p>
+        {action && (
+          <Link to={action.to} className="mt-1.5 inline-block text-[13.5px] font-semibold text-ink underline-offset-2 hover:underline">
+            {action.label}
+          </Link>
+        )}
+      </div>
+    </li>
   )
 }

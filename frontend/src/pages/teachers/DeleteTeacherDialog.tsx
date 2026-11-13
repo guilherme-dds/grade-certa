@@ -32,7 +32,7 @@ export function DeleteTeacherDialog({ teacher, onClose, onConfirm }: DeleteTeach
       }}
       onClick={(e) => e.target === e.currentTarget && close()}
       aria-labelledby="delete-teacher-dialog-title"
-      className="m-auto w-[min(400px,calc(100%-2rem))] rounded-lg border border-line bg-white p-6 text-ink shadow-lg backdrop:bg-black/40"
+      className="m-auto w-[min(400px,calc(100%-2rem))] card p-6 text-ink"
     >
       <h3 id="delete-teacher-dialog-title" className="text-base font-semibold">
         Excluir Professor

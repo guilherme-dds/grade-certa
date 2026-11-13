@@ -32,7 +32,7 @@ export function TeacherAvailabilityDialog({ professor, onClose }: TeacherAvailab
       }}
       onClick={(e) => e.target === e.currentTarget && close()}
       aria-labelledby="availability-dialog-title"
-      className="m-auto w-[min(740px,calc(100%-2rem))] rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
+      className="m-auto w-[min(740px,calc(100%-2rem))] card p-0 text-ink"
     >
       <div className="max-h-[90vh] overflow-y-auto p-6">
         <div className="mb-4 flex items-start justify-between gap-4">
@@ -49,7 +49,7 @@ export function TeacherAvailabilityDialog({ professor, onClose }: TeacherAvailab
             type="button"
             onClick={close}
             aria-label="Fechar"
-            className="rounded p-1 text-sm font-semibold text-muted hover:bg-paper hover:text-ink"
+            className="rounded-lg p-1 text-sm font-semibold text-muted hover:bg-paper hover:text-ink"
           >
             ✕
           </button>

@@ -198,7 +198,7 @@ export function CurriculumMatrixDialog({
       }}
       onClick={(e) => e.target === e.currentTarget && close()}
       aria-labelledby="matrix-dialog-title"
-      className="m-auto w-[min(760px,calc(100%-2rem))] rounded-lg border border-line bg-white p-0 text-ink shadow-xl backdrop:bg-black/40"
+      className="m-auto w-[min(760px,calc(100%-2rem))] card p-0 text-ink"
     >
       <form onSubmit={handleSubmit} className="p-6">
         <div className="flex items-start justify-between border-b border-line pb-4">
@@ -210,8 +210,8 @@ export function CurriculumMatrixDialog({
               Turno: <strong className="font-semibold text-ink">{turma.turno}</strong> · Com mais de um professor, eles dão a aula juntos (ou em rodízio) e todos ficam reservados no horário.
             </p>
           </div>
-          <div className="rounded-md border border-line-soft bg-paper px-3 py-1.5 text-right">
-            <p className="text-[11px] font-medium text-muted uppercase tracking-wider">Carga total</p>
+          <div className="rounded-xl border border-line-soft bg-paper px-3 py-1.5 text-right">
+            <p className="text-[12px] font-medium text-muted">Carga total</p>
             <p className="text-base font-bold font-mono text-primary">
               {totalHours}h <span className="text-xs font-normal text-muted">/ sem</span>
             </p>
@@ -220,7 +220,7 @@ export function CurriculumMatrixDialog({
         </div>
 
         {error && (
-          <div className="mt-4 rounded-md border border-danger/30 bg-danger-soft/30 p-3 text-xs text-danger">
+          <div className="mt-4 rounded-xl border border-danger/30 bg-danger-soft/30 p-3 text-xs text-danger">
             {error}
           </div>
         )}
@@ -229,7 +229,7 @@ export function CurriculumMatrixDialog({
         <div className="mt-4 max-h-[380px] overflow-y-auto pr-1">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-line bg-paper/60 text-muted uppercase tracking-wider">
+              <tr className="border-b border-line bg-paper/60 text-muted">
                 <th className="py-2.5 px-3 font-semibold">Professores</th>
                 <th className="py-2.5 px-3 font-semibold">Matéria / Disciplina</th>
                 <th className="py-2.5 px-3 font-semibold w-28">Aulas / sem</th>
@@ -262,7 +262,7 @@ export function CurriculumMatrixDialog({
                       <select
                         value={item.disciplina}
                         onChange={(e) => handleSubjectChange(idx, e.target.value)}
-                        className="w-full rounded border border-line bg-white px-2.5 py-1.5 text-xs font-semibold text-primary outline-none focus:border-primary"
+                        className="w-full rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-semibold text-primary outline-none focus:border-primary"
                       >
                         {allowedSubjects.map((sub) => (
                           <option key={sub} value={sub}>
@@ -284,7 +284,7 @@ export function CurriculumMatrixDialog({
                           max={30}
                           value={item.aulas_semanais}
                           onChange={(e) => handleHoursChange(idx, Number(e.target.value))}
-                          className="w-16 rounded border border-line bg-white px-2 py-1.5 text-center font-mono text-xs text-ink outline-none focus:border-primary"
+                          className="w-16 rounded-lg border border-line bg-white px-2 py-1.5 text-center font-mono text-xs text-ink outline-none focus:border-primary"
                         />
                         <span className="text-muted text-[11px]">aulas</span>
                       </div>
@@ -296,7 +296,7 @@ export function CurriculumMatrixDialog({
                         type="button"
                         onClick={() => toggleExpanded(idx)}
                         aria-expanded={expanded.has(idx)}
-                        className="rounded p-1 text-xs text-primary transition-colors hover:bg-primary-soft"
+                        className="rounded-lg p-1 text-xs text-primary transition-colors hover:bg-primary-soft"
                         title="Dia/horário fixo e aula extra"
                       >
                         Fixar dia/horário{opcoesAtivas > 0 && ` (${opcoesAtivas})`}
@@ -304,7 +304,7 @@ export function CurriculumMatrixDialog({
                       <button
                         type="button"
                         onClick={() => handleRemoveItem(idx)}
-                        className="rounded p-1 text-muted hover:bg-danger-soft hover:text-danger transition-colors text-xs"
+                        className="rounded-lg p-1 text-muted hover:bg-danger-soft hover:text-danger transition-colors text-xs"
                         title="Remover matéria da matriz"
                       >
                         Remover
@@ -329,7 +329,7 @@ export function CurriculumMatrixDialog({
           </table>
 
           {items.length === 0 && (
-            <div className="py-8 text-center text-xs text-muted border border-dashed border-line rounded-md mt-2">
+            <div className="py-8 text-center text-xs text-muted border border-dashed border-line rounded-xl mt-2">
               Nenhuma matéria cadastrada nesta matriz. Clique no botão abaixo para adicionar.
             </div>
           )}
@@ -392,7 +392,7 @@ function ItemOptions({ item, slots, onChange }: ItemOptionsProps) {
   const descricao = (f: HorarioFixo) => `${f.dia_semana}, ${f.horario ?? 'qualquer horário'}`
 
   return (
-    <div className="space-y-2.5 rounded-md border border-line-soft bg-white p-3">
+    <div className="space-y-2.5 rounded-xl border border-line-soft bg-white p-3">
       <label className="flex items-center gap-2 text-xs text-ink">
         <input
           type="checkbox"
@@ -414,14 +414,14 @@ function ItemOptions({ item, slots, onChange }: ItemOptionsProps) {
           {fixos.map((f, i) => (
             <span
               key={`${f.dia_semana}-${f.horario ?? 'dia'}-${i}`}
-              className="inline-flex items-center gap-1 rounded border border-warning/40 bg-warning-soft py-0.5 pr-1 pl-2 text-xs"
+              className="inline-flex items-center gap-1 rounded-lg border border-warning/40 bg-warning-soft py-0.5 pr-1 pl-2 text-xs"
             >
               {descricao(f)}
               <button
                 type="button"
                 onClick={() => remover(i)}
                 aria-label={`Remover ${descricao(f)}`}
-                className="rounded px-1 text-muted hover:bg-danger-soft hover:text-danger"
+                className="rounded-lg px-1 text-muted hover:bg-danger-soft hover:text-danger"
               >
                 ×
               </button>
@@ -431,7 +431,7 @@ function ItemOptions({ item, slots, onChange }: ItemOptionsProps) {
             value={dia}
             onChange={(e) => setDia(e.target.value)}
             aria-label="Dia do horário fixo"
-            className="rounded border border-line bg-white px-2 py-1 text-xs outline-none focus:border-primary"
+            className="rounded-lg border border-line bg-white px-2 py-1 text-xs outline-none focus:border-primary"
           >
             {weekDays.map((d) => (
               <option key={d} value={d}>
@@ -443,7 +443,7 @@ function ItemOptions({ item, slots, onChange }: ItemOptionsProps) {
             value={horario}
             onChange={(e) => setHorario(e.target.value)}
             aria-label="Horário fixo"
-            className="rounded border border-line bg-white px-2 py-1 font-mono text-xs outline-none focus:border-primary"
+            className="rounded-lg border border-line bg-white px-2 py-1 font-mono text-xs outline-none focus:border-primary"
           >
             <option value={QUALQUER_HORARIO}>qualquer horário</option>
             {slots.map((h) => (

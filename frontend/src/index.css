@@ -1,37 +1,119 @@
 @import 'tailwindcss';
 
-/* Tokens do design (Claude Design · GradeCerta.dc.html) */
+/*
+ * GradeCerta — "lousa e giz"
+ * Interface monocromática (grafite sobre cinza-claro) com um único acento menta,
+ * como giz sobre a lousa. Os nomes de token foram mantidos para não quebrar as páginas.
+ */
 @theme {
-  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-sans: 'Figtree', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Urbanist', 'Figtree', ui-sans-serif, sans-serif;
+  /* Horários e códigos: mesma família, com algarismos tabulares */
+  --font-mono: 'Figtree', ui-sans-serif, system-ui, sans-serif;
 
-  --color-paper: #f4f1ea;
-  --color-ink: #1c2430;
-  --color-muted: #6b6455;
-  --color-line: #dbd5c6;
-  --color-line-soft: #efebdf;
+  /* Superfícies */
+  --color-canvas: #ecedef;
+  --color-paper: #f4f5f6;
+  --color-ink: #15161a;
+  --color-ink-soft: #2a2c32;
+  --color-muted: #6c6f78;
+  --color-line: #e2e3e7;
+  --color-line-soft: #eeeff1;
 
-  --color-navy: #16233d;
-  --color-primary: #2f6f5e;
-  --color-primary-hover: #275c4e;
-  --color-primary-soft: #e4ede9;
-  --color-primary-soft-line: #c7dbd3;
-  --color-accent: #5fa88f;
+  /* Lousa (hero, botões escuros, item ativo) */
+  --color-navy: #15161a;
+  --color-board: #15161a;
+  --color-board-raised: #22242a;
 
-  --color-warning: #c68a1e;
-  --color-warning-soft: #fbf0da;
-  --color-danger: #aa3e22;
-  --color-danger-soft: #f3e2dc;
-  --color-lilac-soft: #ede7f3;
+  /* Giz menta: sucesso, seleção, links */
+  --color-primary: #0b7f63;
+  --color-primary-hover: #086a52;
+  --color-primary-soft: #dcf3ea;
+  --color-primary-soft-line: #b3e3d1;
+  --color-accent: #3fd1a6;
+
+  --color-warning: #b26d07;
+  --color-warning-soft: #fcefd6;
+  --color-danger: #c73a1f;
+  --color-danger-soft: #fbe4de;
+  --color-lilac-soft: #ebe7f8;
+
+  --radius-card: 1.25rem;
+  --shadow-float: 0 1px 2px rgb(21 22 26 / 0.04), 0 8px 24px -12px rgb(21 22 26 / 0.12);
 }
 
 @layer base {
+  html {
+    font-feature-settings: 'tnum' 0;
+  }
+
   body {
-    @apply bg-paper font-sans text-ink antialiased;
+    @apply bg-canvas font-sans text-ink antialiased;
+    font-size: 15px;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-display tracking-[-0.01em];
+  }
+
+  .font-mono {
+    font-variant-numeric: tabular-nums;
   }
 
   ::selection {
-    @apply bg-primary text-white;
+    @apply bg-ink text-white;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+
+  /* Modais: cantos generosos e fundo desfocado em todos os <dialog> */
+  dialog {
+    border-radius: 1.5rem !important;
+    box-shadow: 0 24px 64px -24px rgb(21 22 26 / 0.35) !important;
+  }
+
+  dialog::backdrop {
+    background: rgb(21 22 26 / 0.35);
+    backdrop-filter: blur(3px);
+  }
+
+  input:not([type='checkbox'], [type='radio'], [type='range']),
+  select,
+  textarea {
+    border-radius: 0.75rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@utility card {
+  border-radius: var(--radius-card);
+  background: white;
+  box-shadow: var(--shadow-float);
+}
+
+/* Entrada única da lousa do dashboard */
+@keyframes chalk-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 

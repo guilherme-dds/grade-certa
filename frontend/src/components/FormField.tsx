@@ -12,7 +12,7 @@ export function FormField({ label, error, className, ...inputProps }: FormFieldP
 
   return (
     <div>
-      <label htmlFor={id} className="mb-1.5 block text-xs font-medium text-muted">
+      <label htmlFor={id} className="mb-1.5 block text-[13px] font-medium text-ink/80">
         {label}
       </label>
       <input
@@ -20,8 +20,8 @@ export function FormField({ label, error, className, ...inputProps }: FormFieldP
         aria-invalid={Boolean(error)}
         aria-describedby={error ? errorId : undefined}
         className={cn(
-          'w-full rounded-md border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none transition-colors',
-          'focus:border-primary focus:ring-1 focus:ring-primary',
+          'h-11 w-full rounded-2xl border border-line bg-paper px-3.5 text-[14px] text-ink outline-none transition-colors hover:border-ink/20',
+          'focus:border-ink focus:bg-white focus:ring-4 focus:ring-ink/8',
           error && 'border-danger focus:border-danger focus:ring-danger',
           className,
         )}

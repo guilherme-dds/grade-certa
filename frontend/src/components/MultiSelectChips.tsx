@@ -21,14 +21,14 @@ export function MultiSelectChips({ options, value, onChange, addLabel, emptyLabe
       {value.map((v) => (
         <span
           key={v}
-          className="inline-flex items-center gap-1 rounded border border-primary-soft-line bg-primary-soft/50 py-0.5 pr-1 pl-2 text-xs font-medium text-ink"
+          className="inline-flex items-center gap-1 rounded-lg border border-primary-soft-line bg-primary-soft/50 py-0.5 pr-1 pl-2 text-xs font-medium text-ink"
         >
           {labelOf(v)}
           <button
             type="button"
             onClick={() => onChange(value.filter((x) => x !== v))}
             aria-label={`Remover ${labelOf(v)}`}
-            className="rounded px-1 text-muted hover:bg-danger-soft hover:text-danger"
+            className="rounded-lg px-1 text-muted hover:bg-danger-soft hover:text-danger"
           >
             ×
           </button>
@@ -39,7 +39,7 @@ export function MultiSelectChips({ options, value, onChange, addLabel, emptyLabe
           value=""
           aria-label={addLabel}
           onChange={(e) => e.target.value && onChange([...value, e.target.value])}
-          className="max-w-full min-w-0 flex-1 rounded border border-dashed border-line bg-white px-2 py-1 text-xs text-muted outline-none focus:border-primary"
+          className="max-w-full min-w-0 flex-1 rounded-lg border border-dashed border-line bg-white px-2 py-1 text-xs text-muted outline-none focus:border-primary"
         >
           <option value="">{addLabel}</option>
           {remaining.map((o) => (

@@ -50,7 +50,7 @@ export function DeleteGradeDialog({ grade, onClose, onConfirm }: DeleteGradeDial
       }}
       onClick={(e) => e.target === e.currentTarget && close()}
       aria-labelledby="delete-grade-dialog-title"
-      className="m-auto w-[min(440px,calc(100%-2rem))] rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
+      className="m-auto w-[min(440px,calc(100%-2rem))] card p-0 text-ink"
     >
       <div className="p-6">
         <h3 id="delete-grade-dialog-title" className="text-[17px] font-semibold text-danger">

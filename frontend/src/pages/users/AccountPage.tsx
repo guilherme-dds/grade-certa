@@ -7,7 +7,7 @@ import { changeMyPassword } from '@/api/users'
 import { useAuth } from '@/auth/useAuth'
 import { FormField } from '@/components/FormField'
 import { Button } from '@/components/ui/Button'
-import { PageHeader } from '@/components/ui/PageHeader'
+import { TabHeader } from '@/layouts/SectionLayout'
 import { getApiErrorMessage } from '@/lib/apiError'
 
 const passwordSchema = z
@@ -50,12 +50,13 @@ export function AccountPage() {
 
   return (
     <>
-      <PageHeader title="Minha conta" description={user ? `${user.name} · ${user.email}` : undefined} />
+      <TabHeader
+        title="Minha conta" description={user ? `${user.name} · ${user.email}` : undefined} />
 
-      <div className="max-w-md rounded-lg border border-line bg-white p-6">
-        <h2 className="mb-4 text-sm font-semibold">Trocar senha</h2>
+      <div className="max-w-md card p-6">
+        <h2 className="mb-4 font-display text-[17px] font-bold">Trocar senha</h2>
         {changed && (
-          <p role="status" className="mb-4 rounded-md border border-primary-soft-line bg-primary-soft px-3 py-2 text-[13px]">
+          <p role="status" className="mb-4 rounded-xl border border-primary-soft-line bg-primary-soft px-3 py-2 text-[13px]">
             Senha alterada. Use a nova senha no próximo login.
           </p>
         )}

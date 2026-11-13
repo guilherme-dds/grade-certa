@@ -108,7 +108,7 @@ export function SalaIndisponibilidadeDialog({ sala, onClose, onChanged }: SalaIn
       }}
       onClick={(e) => e.target === e.currentTarget && close()}
       aria-labelledby="sala-indisp-dialog-title"
-      className="m-auto w-[min(560px,calc(100%-2rem))] rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
+      className="m-auto w-[min(560px,calc(100%-2rem))] card p-0 text-ink"
     >
       <div className="p-6">
         <h3 id="sala-indisp-dialog-title" className="text-[17px] font-semibold">
@@ -142,11 +142,11 @@ export function SalaIndisponibilidadeDialog({ sala, onClose, onChanged }: SalaIn
 
         <div className="mt-5">
           {indisponibilidades.length === 0 ? (
-            <p className="rounded-md border border-dashed border-line p-4 text-center text-xs text-muted">
+            <p className="rounded-xl border border-dashed border-line p-4 text-center text-xs text-muted">
               Nenhum horário indisponível. A sala pode receber aulas a semana toda.
             </p>
           ) : (
-            <ul className="divide-y divide-line-soft rounded-md border border-line">
+            <ul className="divide-y divide-line-soft rounded-xl border border-line">
               {indisponibilidades.map((ind) => (
                 <li key={ind.id} className="flex items-center gap-3 px-3 py-2 text-sm">
                   <span className="w-10 font-semibold">{ind.dia_semana}</span>
