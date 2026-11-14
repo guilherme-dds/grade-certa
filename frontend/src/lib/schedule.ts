@@ -31,13 +31,35 @@ export function temTardesParciais(turno: string) {
   return t.includes('+') || (t.includes('manh') && t.includes('tarde'))
 }
 
+/**
+ * Quantos horários de aula a turma tem na semana. null quando não dá para saber
+ * (ex.: "Manhã + tardes" sem as tardes escolhidas).
+ */
+export function capacidadeSemanal(
+  turma: { turno: string; nivel_ensino?: string | null; tardes?: string[] | null },
+  horarios: HorariosEscola,
+): number | null {
+  const grade = horarios.niveis[turma.nivel_ensino ?? 'Anos Finais'] ?? horarios.niveis['Anos Finais']
+  if (!grade) return null
+  if (temTardesParciais(turma.turno)) {
+    return turma.tardes?.length ? grade.manha.length * weekDays.length + grade.tarde.length * turma.tardes.length : null
+  }
+  return horariosDaTurma(turma, horarios).length * weekDays.length
+}
+
 /** Cor do cartão da aula pela área da disciplina */
 export function getSubjectColor(subject: string): string {
   const clean = (subject || '').trim().toLowerCase()
   if (clean.includes('mat') || clean.includes('geom')) return 'bg-primary-soft'
   if (clean.includes('port') || clean.includes('ingl') || clean.includes('arte') || clean.includes('red'))
     return 'bg-warning-soft'
-  if (clean.includes('cien') || clean.includes('ciên') || clean.includes('quí') || clean.includes('qui') || clean.includes('bio'))
+  if (
+    clean.includes('cien') ||
+    clean.includes('ciên') ||
+    clean.includes('quí') ||
+    clean.includes('qui') ||
+    clean.includes('bio')
+  )
     return 'bg-lilac-soft'
   if (clean.includes('hist') || clean.includes('geog') || clean.includes('soc') || clean.includes('filo'))
     return 'bg-danger-soft'

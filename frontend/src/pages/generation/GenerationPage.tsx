@@ -12,7 +12,8 @@ import { Select } from '@/components/ui/Select'
 import { paths } from '@/config/paths'
 import { getApiErrorMessage } from '@/lib/apiError'
 import { cn } from '@/lib/cn'
-import { formatDateTime } from '@/lib/schedule'
+import { capacidadeSemanal, formatDateTime } from '@/lib/schedule'
+import { useHorarios } from '@/schedule/useHorarios'
 import { useSchedule } from '@/schedule/useSchedule'
 import { isFalha, STATUS_LABEL } from './generationShared'
 
@@ -51,6 +52,7 @@ export function GenerationPage() {
     queryKey: ['professores'],
     queryFn: () => getProfessores(),
   })
+  const { data: horarios, isLoading: loadingHorarios } = useHorarios()
   const { data: historico = [], isLoading: isLoadingHistorico } = useQuery<GradeResumo[]>({
     queryKey: ['historicoGrades'],
     queryFn: () => getHistoricoGrades(),
@@ -91,10 +93,22 @@ export function GenerationPage() {
   const temMatriz = (t: TurmaBackend) => (t.matriz_curricular || []).some((item) => Number(item.aulas_semanais) > 0)
   const turmasValidas = turmas.filter(temMatriz)
   const turmasSemMatriz = turmas.filter((t) => !temMatriz(t))
-  const totalAulasDemandadas = turmasValidas.reduce(
-    (acc, t) => acc + (t.matriz_curricular || []).reduce((sub, item) => sub + Number(item.aulas_semanais || 0), 0),
-    0,
-  )
+  const aulasDaTurma = (t: TurmaBackend) =>
+    (t.matriz_curricular || []).reduce((sub, item) => sub + Number(item.aulas_semanais || 0), 0)
+  const totalAulasDemandadas = turmasValidas.reduce((acc, t) => acc + aulasDaTurma(t), 0)
+
+  // Matriz que não fecha com os horários da turma: sobra horário vago ou falta horário para as aulas
+  const descompasso = horarios
+    ? turmasValidas.flatMap((t) => {
+        const capacidade = capacidadeSemanal(t, horarios)
+        const aulas = aulasDaTurma(t)
+        return capacidade != null && aulas !== capacidade ? [{ turma: t, aulas, capacidade }] : []
+      })
+    : []
+  const comVagos = descompasso.filter((d) => d.aulas < d.capacidade)
+  const comExcesso = descompasso.filter((d) => d.aulas > d.capacidade)
+  const listar = (itens: typeof descompasso) =>
+    itens.map((d) => `${d.turma.nome} (${d.aulas} aulas, ${d.capacidade} horários)`).join(', ')
   const ativos = professores.filter((p) => p.ativo)
   const semDisponibilidade = ativos.filter((p) => !p.disponibilidade_atualizada_em)
 
@@ -125,7 +139,7 @@ export function GenerationPage() {
   const detalhes = geracao?.detalhes
   const planejamentos = detalhes?.planejamentos ?? []
   const limiteAtual = detalhes?.tempo_limite_seg ?? Number(tempoLimite)
-  const loadingChecks = loadingTurmas || loadingProfessores
+  const loadingChecks = loadingTurmas || loadingProfessores || loadingHorarios
 
   return (
     <>
@@ -153,6 +167,24 @@ export function GenerationPage() {
                     ? { to: paths.turmas, label: 'Montar matrizes' }
                     : undefined
                 }
+              />
+              <CheckItem
+                state={loadingChecks ? 'loading' : descompasso.length === 0 ? 'ok' : 'warn'}
+                title="Matrizes completas"
+                detail={
+                  descompasso.length === 0
+                    ? 'A matriz de cada turma preenche exatamente os horários dela.'
+                    : [
+                        comVagos.length &&
+                          `Vão sobrar horários vagos em ${listar(comVagos)}. Confira se falta alguma disciplina ou aula.`,
+                        comExcesso.length &&
+                          `Mais aulas que horários em ${listar(comExcesso)}. O gerador não consegue encaixar todas.`,
+                      ]
+                        .filter(Boolean)
+                        .join(' ')
+                }
+                value={`${turmasValidas.length - descompasso.length}/${turmasValidas.length}`}
+                action={descompasso.length ? { to: paths.turmas, label: 'Revisar matrizes' } : undefined}
               />
               <CheckItem
                 state={loadingChecks ? 'loading' : semDisponibilidade.length === 0 ? 'ok' : 'warn'}

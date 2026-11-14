@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import type { HorariosEscola } from '@/api/grades'
 import { nomesSemCadastro, type HorarioFixo, type ItemMatriz, type TurmaBackend } from '@/api/turmas'
 import { MultiSelectChips } from '@/components/MultiSelectChips'
 import { Button } from '@/components/ui/Button'
@@ -8,7 +7,7 @@ import { RowMenu } from '@/components/ui/RowMenu'
 import { Select } from '@/components/ui/Select'
 import { Sheet, SheetBody, SheetFooter, useSheetClose } from '@/components/ui/Sheet'
 import { cn } from '@/lib/cn'
-import { horariosDaTurma, temTardesParciais, weekDays } from '@/lib/schedule'
+import { capacidadeSemanal, horariosDaTurma, weekDays } from '@/lib/schedule'
 import { useHorarios } from '@/schedule/useHorarios'
 
 export interface TeacherWithSubjects {
@@ -32,16 +31,6 @@ const professoresDosValores = (valores: string[]) => ({
 const descricaoFixo = (f: HorarioFixo) => `${f.dia_semana}, ${f.horario ?? 'qualquer horário'}`
 // Compara nomes de disciplina sem acento e sem caixa
 const chave = (nome: string) => nome.normalize('NFD').replace(/\p{M}/gu, '').trim().toLowerCase()
-
-/** Quantos horários de aula a turma tem na semana; null quando o gerador escolhe as tardes */
-function capacidadeSemanal(turma: TurmaBackend, horarios: HorariosEscola): number | null {
-  const grade = horarios.niveis[turma.nivel_ensino ?? 'Anos Finais'] ?? horarios.niveis['Anos Finais']
-  if (!grade) return null
-  if (temTardesParciais(turma.turno)) {
-    return turma.tardes?.length ? grade.manha.length * weekDays.length + grade.tarde.length * turma.tardes.length : null
-  }
-  return horariosDaTurma(turma, horarios).length * weekDays.length
-}
 
 type Filtro = 'todas' | 'sem-professor' | 'fixas'
 
