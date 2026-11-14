@@ -88,8 +88,12 @@ export function TeacherDialog({
       title={isEditing ? `Editar ${teacher?.name}` : 'Novo professor'}
       description="O que o gerador precisa saber: o que a pessoa ensina, em quais níveis e quanto pode trabalhar."
     >
-      <form onSubmit={handleSubmit} onChange={(e) => (e.target as EventTarget & { type?: string }).type !== 'search' && touch()}
-        className="contents" noValidate>
+      <form
+        onSubmit={handleSubmit}
+        onChange={(e) => (e.target as EventTarget & { type?: string }).type !== 'search' && touch()}
+        className="contents"
+        noValidate
+      >
         <SheetBody className="space-y-7">
           <Section title="Identificação">
             <div className="space-y-4">
@@ -128,7 +132,7 @@ export function TeacherDialog({
             </div>
           </Section>
 
-          <Section title="Disciplinas" hint="Só essas aparecem para ele na matriz das turmas.">
+          <Section title="Disciplinas" hint="Na matriz das turmas, quem tem a disciplina aparece primeiro.">
             <SubjectPicker
               available={availableSubjects}
               value={selectedSubjects}
@@ -145,7 +149,7 @@ export function TeacherDialog({
           <Section title="Carga e jornada">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField
-                label="Carga máxima por semana (horas)"
+                label="Carga máxima por semana (aulas)"
                 type="number"
                 min={1}
                 max={60}
@@ -189,7 +193,9 @@ export function TeacherDialog({
                 {jornadaPersonalizada ? (
                   <JornadaFields value={jornada} errors={jornadaErrors} onChange={setJornada} />
                 ) : (
-                  <p className="rounded-xl bg-paper px-3.5 py-2.5 text-[13px] text-muted">{resumoJornada(jornadaPadrao)}</p>
+                  <p className="rounded-xl bg-paper px-3.5 py-2.5 text-[13px] text-muted">
+                    {resumoJornada(jornadaPadrao)}
+                  </p>
                 )}
               </div>
             </div>
@@ -288,7 +294,11 @@ function SubjectPicker({
 }) {
   const [query, setQuery] = useState('')
   const term = query.trim()
-  const norm = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+  const norm = (s: string) =>
+    s
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase()
   const remaining = available.filter((s) => !value.includes(s) && norm(s).includes(norm(term)))
   const exists = available.some((s) => norm(s) === norm(term))
 

@@ -5,6 +5,8 @@ export interface Column<T> {
   header: string
   cell: (row: T) => ReactNode
   className?: string
+  /** Esconde a coluna em telas estreitas (a informação precisa aparecer de outro jeito na linha) */
+  wideOnly?: boolean
 }
 
 interface DataTableProps<T> {
@@ -25,7 +27,10 @@ export function DataTable<T>({ columns, rows, rowKey, caption }: DataTableProps<
               <th
                 key={col.header}
                 scope="col"
-                className="px-3.5 pt-4 pb-3 text-[12.5px] font-medium whitespace-nowrap text-muted"
+                className={cn(
+                  'px-3.5 pt-4 pb-3 text-[12.5px] font-medium whitespace-nowrap text-muted',
+                  col.wideOnly && 'hidden xl:table-cell',
+                )}
               >
                 {col.header}
               </th>
@@ -36,7 +41,10 @@ export function DataTable<T>({ columns, rows, rowKey, caption }: DataTableProps<
           {rows.map((row) => (
             <tr key={rowKey(row)} className="border-t border-line-soft transition-colors hover:bg-paper/70">
               {columns.map((col) => (
-                <td key={col.header} className={cn('px-3.5 py-3', col.className)}>
+                <td
+                  key={col.header}
+                  className={cn('px-3.5 py-3', col.wideOnly && 'hidden xl:table-cell', col.className)}
+                >
                   {col.cell(row)}
                 </td>
               ))}

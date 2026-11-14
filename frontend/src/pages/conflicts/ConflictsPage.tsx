@@ -38,8 +38,8 @@ export function ConflictsPage() {
         title="Conflitos"
         description={
           count > 0
-            ? `${count} ${count === 1 ? 'aula está' : 'aulas estão'} em choque depois das edições manuais. Aplique a sugestão ou edite na grade.`
-            : 'Choques de horário criados por edições manuais aparecem aqui.'
+            ? `${count} ${count === 1 ? 'problema precisa' : 'problemas precisam'} de ajuste na grade. Aplique a sugestão ou edite a aula.`
+            : 'Choques de horário e regras não cumpridas na grade aparecem aqui.'
         }
       />
 
@@ -77,7 +77,7 @@ export function ConflictsPage() {
         <EmptyState
           ok
           title="Nenhum conflito pendente"
-          text="Nenhuma aula está em choque. Se mover aulas na grade e criar um choque, ele aparece aqui com uma sugestão de ajuste."
+          text="Nenhum problema na grade. Se uma edição criar um choque, ele aparece aqui com uma sugestão de ajuste."
           action={
             <>
               <Link to={paths.grade} className={buttonStyles()}>

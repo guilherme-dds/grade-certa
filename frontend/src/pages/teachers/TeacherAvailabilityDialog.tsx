@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { ProfessorBackend } from '@/api/professores'
 import { ProfessorAvailabilityEditor } from '@/components/ProfessorAvailabilityEditor'
 import { Sheet } from '@/components/ui/Sheet'
+import { useToast } from '@/components/ui/Toast'
 
 interface TeacherAvailabilityDialogProps {
   professor: ProfessorBackend
@@ -10,6 +11,7 @@ interface TeacherAvailabilityDialogProps {
 
 export function TeacherAvailabilityDialog({ professor, onClose }: TeacherAvailabilityDialogProps) {
   const [dirty, setDirty] = useState(false)
+  const toast = useToast()
 
   return (
     <Sheet
@@ -19,7 +21,14 @@ export function TeacherAvailabilityDialog({ professor, onClose }: TeacherAvailab
       title={`Disponibilidade de ${professor.nome}`}
       description="Tudo começa livre. Marque os horários em que o professor não pode dar aula e, se quiser, os que ele prefere: o gerador tenta usá-los primeiro."
     >
-      <ProfessorAvailabilityEditor professor={professor} onSaved={onClose} onDirty={() => setDirty(true)} />
+      <ProfessorAvailabilityEditor
+        professor={professor}
+        onSaved={() => {
+          toast(`Disponibilidade de ${professor.nome} salva`)
+          onClose()
+        }}
+        onDirty={() => setDirty(true)}
+      />
     </Sheet>
   )
 }

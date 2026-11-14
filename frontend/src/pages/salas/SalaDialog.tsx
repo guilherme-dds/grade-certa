@@ -87,7 +87,7 @@ export function SalaDialog({ sala, salas, onClose, onSave }: SalaDialogProps) {
     >
       <form onSubmit={handleSubmit} noValidate className="p-6">
         <h3 id="sala-dialog-title" className="text-[17px] font-semibold">
-          {sala ? 'Editar Sala' : 'Nova Sala'}
+          {sala ? 'Editar sala' : 'Nova sala'}
         </h3>
         <p className="mt-1 text-[13px] text-muted">
           {sala ? 'Altere as informações da sala selecionada.' : 'Cadastre uma sala com sua capacidade e tipo.'}

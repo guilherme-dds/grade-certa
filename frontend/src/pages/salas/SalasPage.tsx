@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createSala, deleteSala, getSalas, updateSala, type SalaBackend } from '@/api/salas'
+import { useToast } from '@/components/ui/Toast'
 import { Button } from '@/components/ui/Button'
 import { DataTable } from '@/components/ui/DataTable'
 import { RowMenu } from '@/components/ui/RowMenu'
@@ -17,6 +18,7 @@ export function SalasPage() {
   const [horariosSalaId, setHorariosSalaId] = useState<number | null>(null)
 
   const salasQuery = useQuery({ queryKey: ['salas'], queryFn: getSalas })
+  const toast = useToast()
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['salas'] })
 
   const createSalaMutation = useMutation({ mutationFn: createSala, onSuccess: invalidate })
@@ -29,6 +31,7 @@ export function SalasPage() {
   const handleSaveSala = async ({ id, ...data }: Omit<SalaBackend, 'id'> & { id?: number }) => {
     if (id) await updateSalaMutation.mutateAsync({ id, payload: { id, ...data } })
     else await createSalaMutation.mutateAsync(data)
+    toast(id ? `${data.nome} salva` : `${data.nome} cadastrada`)
   }
 
   const handleDeleteSala = async (id: number) => {
@@ -129,7 +132,11 @@ export function SalasPage() {
       )}
 
       {horariosSala && (
-        <SalaIndisponibilidadeDialog sala={horariosSala} onClose={() => setHorariosSalaId(null)} onChanged={invalidate} />
+        <SalaIndisponibilidadeDialog
+          sala={horariosSala}
+          onClose={() => setHorariosSalaId(null)}
+          onChanged={invalidate}
+        />
       )}
 
       {deletingSala && (

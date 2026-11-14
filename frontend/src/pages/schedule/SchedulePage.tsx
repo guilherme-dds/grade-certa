@@ -155,7 +155,7 @@ export function SchedulePage() {
         <p className="text-[14px] text-muted">
           {[
             origem && `Cópia de ${origem.nome}`,
-            `${lessons.length} aulas na semana`,
+            `${lessons.length} ${lessons.length === 1 ? 'aula' : 'aulas'} na semana`,
             `${availableTurmas.length} turmas`,
           ]
             .filter(Boolean)

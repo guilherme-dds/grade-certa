@@ -77,7 +77,7 @@ export function TurmaDialog({ turma, onClose, onSave }: TurmaDialogProps) {
     >
       <form onSubmit={handleSubmit} className="p-6">
         <h3 id="turma-dialog-title" className="text-[17px] font-semibold">
-          {turma ? 'Editar Turma' : 'Nova Turma'}
+          {turma ? 'Editar turma' : 'Nova turma'}
         </h3>
         <p className="mt-1 text-[13px] text-muted">
           {turma ? 'Altere as informações da turma selecionada.' : 'Cadastre uma nova turma com seu respectivo turno.'}

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useToast } from '@/components/ui/Toast'
 import { Button } from '@/components/ui/Button'
 import { DataTable } from '@/components/ui/DataTable'
 import { CompactSelect, QuickFilters, SearchInput, Toolbar } from '@/components/ui/FilterBar'
@@ -37,6 +38,7 @@ const JORNADA_INICIAL: Jornada = {
 }
 
 export function TeachersPage() {
+  const toast = useToast()
   const queryClient = useQueryClient()
   const confirm = useConfirm()
 
@@ -97,7 +99,8 @@ export function TeachersPage() {
 
   // 2. Mapeamentos de Disciplinas
   const disciplinesList = useMemo(() => {
-    return (disciplinasQuery.data ?? []).map((d) => d.nome)
+    // Ordem alfabética do português ("Álgebra" junto do "A", não depois do "Z")
+    return (disciplinasQuery.data ?? []).map((d) => d.nome).sort((a, b) => a.localeCompare(b, 'pt-BR'))
   }, [disciplinasQuery.data])
 
   const disciplineIdByName = useMemo(() => {
@@ -235,6 +238,8 @@ export function TeachersPage() {
     const salvo = teacherData.id
       ? await updateProfessorMutation.mutateAsync({ id: Number(teacherData.id), payload })
       : await createProfessorMutation.mutateAsync(payload)
+
+    toast(teacherData.id ? `Alterações de ${salvo.nome} salvas` : `Cadastro de ${salvo.nome} salvo`)
 
     // Sem esperar: o painel fecha e a pergunta aparece em seguida, sobre a lista
     if (salvo.id != null && payload.ativo)
@@ -443,6 +448,8 @@ export function TeachersPage() {
             },
             {
               header: 'Disponibilidade',
+              // Em telas menores o botão da linha já mostra a situação (escuro = falta registrar)
+              wideOnly: true,
               cell: (row) =>
                 row.raw.disponibilidade_atualizada_em ? (
                   <span
@@ -471,6 +478,11 @@ export function TeachersPage() {
                     }
                     size="sm"
                     onClick={() => setAvailabilityTeacher(row)}
+                    title={
+                      row.raw.disponibilidade_atualizada_em
+                        ? 'Disponibilidade registrada'
+                        : 'Disponibilidade não registrada'
+                    }
                   >
                     Disponibilidade
                   </Button>

@@ -11,8 +11,10 @@ import { Icon } from '@/components/ui/Icon'
 import { Select } from '@/components/ui/Select'
 import { paths } from '@/config/paths'
 import { getApiErrorMessage } from '@/lib/apiError'
+import { professoresAcimaDaCarga } from '@/lib/cargaDocente'
 import { cn } from '@/lib/cn'
-import { capacidadeSemanal, formatDateTime } from '@/lib/schedule'
+import { fixoIndisponivel, useDisponibilidades } from '@/lib/fixosIndisponiveis'
+import { capacidadeSemanal, formatDateTime, horariosDaTurma } from '@/lib/schedule'
 import { useHorarios } from '@/schedule/useHorarios'
 import { useSchedule } from '@/schedule/useSchedule'
 import { isFalha, STATUS_LABEL } from './generationShared'
@@ -117,6 +119,23 @@ export function GenerationPage() {
     (t.matriz_curricular ?? []).filter((item) => item.horarios_fixos?.length).map((item) => ({ turma: t, item })),
   )
 
+  // Professor com mais aulas nas matrizes do que a carga máxima: a geração para na hora
+  const acimaDaCarga = professoresAcimaDaCarga(professores, turmas)
+
+  // Aula fixada num horário que o professor marcou como indisponível: a grade não fecha
+  const disponibilidades = useDisponibilidades(aulasFixas.flatMap(({ item }) => item.professor_ids ?? []))
+  const fixosBloqueados = horarios
+    ? aulasFixas.flatMap(({ turma, item }) =>
+        (item.horarios_fixos ?? []).flatMap((fixo) =>
+          (item.professor_ids ?? [])
+            .filter((id) => fixoIndisponivel(fixo, horariosDaTurma(turma, horarios), disponibilidades.get(id) ?? []))
+            .map((id) => ({
+              texto: `${turma.nome}, ${item.disciplina} (${fixo.dia_semana}${fixo.horario ? ` ${fixo.horario}` : ''}, ${professores.find((p) => p.id === id)?.nome ?? 'professor'})`,
+            })),
+        ),
+      )
+    : []
+
   const handleGerar = async () => {
     if (turmasValidas.length === 0) {
       setErrorMessage('Nenhuma turma tem matriz curricular com aulas. Monte a matriz de ao menos uma turma.')
@@ -187,6 +206,23 @@ export function GenerationPage() {
                 action={descompasso.length ? { to: paths.turmas, label: 'Revisar matrizes' } : undefined}
               />
               <CheckItem
+                state={loadingChecks ? 'loading' : acimaDaCarga.length === 0 ? 'ok' : 'error'}
+                title="Carga dos professores"
+                detail={
+                  acimaDaCarga.length === 0
+                    ? 'Nenhum professor recebeu mais aulas do que a carga máxima.'
+                    : `Acima da carga máxima: ${acimaDaCarga
+                        .map((a) => `${a.professor.nome} (${a.aulas} aulas, máximo ${a.professor.carga_maxima_aulas})`)
+                        .join(', ')}. Assim a geração não fecha: aumente a carga ou passe aulas para outro professor.`
+                }
+                value={`${professores.filter((p) => p.ativo).length - acimaDaCarga.length}/${professores.filter((p) => p.ativo).length}`}
+                action={
+                  acimaDaCarga.length
+                    ? { to: `${paths.professores}?filtro=acima-da-carga`, label: 'Ver professores' }
+                    : undefined
+                }
+              />
+              <CheckItem
                 state={loadingChecks ? 'loading' : semDisponibilidade.length === 0 ? 'ok' : 'warn'}
                 title="Disponibilidade registrada"
                 detail={
@@ -208,12 +244,14 @@ export function GenerationPage() {
                 value={String(totalAulasDemandadas)}
               />
               <CheckItem
-                state={loadingChecks ? 'loading' : 'info'}
+                state={loadingChecks ? 'loading' : fixosBloqueados.length ? 'error' : 'info'}
                 title="Aulas fixadas em dia ou horário"
                 detail={
-                  aulasFixas.length
-                    ? 'Serão mantidas exatamente onde foram fixadas.'
-                    : 'Nenhuma. Para fixar uma aula (ex.: laboratório), use a matriz da turma.'
+                  fixosBloqueados.length
+                    ? `Fixadas num horário em que o professor está indisponível: ${fixosBloqueados.map((f) => f.texto).join('; ')}. Mude o fixo ou a disponibilidade.`
+                    : aulasFixas.length
+                      ? 'Serão mantidas exatamente onde foram fixadas.'
+                      : 'Nenhuma. Para fixar uma aula (ex.: laboratório), use a matriz da turma.'
                 }
                 value={String(aulasFixas.length)}
                 action={aulasFixas.length ? { to: paths.geracaoRegras, label: 'Ver aulas fixadas' } : undefined}
@@ -368,7 +406,8 @@ function CheckItem({
   value,
   action,
 }: {
-  state: 'ok' | 'warn' | 'info' | 'loading'
+  /** error: a geração não fecha assim; warn: gera, mas vale conferir */
+  state: 'ok' | 'warn' | 'error' | 'info' | 'loading'
   title: string
   detail: string
   value: string
@@ -381,13 +420,14 @@ function CheckItem({
           'mt-0.5 grid size-7 shrink-0 place-items-center rounded-full',
           state === 'ok' && 'bg-primary-soft text-primary',
           state === 'warn' && 'bg-warning-soft text-warning',
+          state === 'error' && 'bg-danger-soft text-danger',
           (state === 'info' || state === 'loading') && 'bg-paper text-muted',
         )}
         aria-hidden="true"
       >
         {state === 'ok' ? (
           <Icon name="check" width={15} height={15} />
-        ) : state === 'warn' ? (
+        ) : state === 'warn' || state === 'error' ? (
           <span className="text-[14px] font-bold">!</span>
         ) : (
           <span className="size-1.5 rounded-full bg-current" />

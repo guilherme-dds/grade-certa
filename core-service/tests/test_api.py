@@ -456,3 +456,56 @@ def test_geracao_usa_o_padrao_e_a_personalizacao_do_professor(ctx):
     ok = client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).json()["id"]
     _rodar_worker(db)
     assert client.get(f"/grades/{ok}/status").json()["status"] == "sucesso"
+
+
+@pytest.fixture
+def ctx_disciplinas():
+    from routers import disciplinas
+
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    def _db():
+        db = Session()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app = FastAPI()
+    app.include_router(disciplinas.router)
+    app.dependency_overrides[get_db] = _db
+    return TestClient(app), Session()
+
+
+def test_excluir_disciplina_tira_dos_professores(ctx_disciplinas):
+    from database.models import DisciplinaDB
+
+    client, db = ctx_disciplinas
+    arte, musica = DisciplinaDB(nome="Arte"), DisciplinaDB(nome="Música")
+    db.add_all([arte, musica])
+    db.flush()
+    prof = ProfessorDB(nome="Ana", email="ana@x.com", disciplinas=[arte.id, musica.id])
+    db.add(prof)
+    db.commit()
+    arte_id, musica_id, prof_id = arte.id, musica.id, prof.id
+
+    assert client.delete(f"/disciplinas/{musica_id}").status_code == 204
+    db.expire_all()
+    assert db.get(ProfessorDB, prof_id).disciplinas == [arte_id]
+    assert [d["nome"] for d in client.get("/disciplinas/").json()] == ["Arte"]
+    assert client.delete(f"/disciplinas/{musica_id}").status_code == 404
+
+
+def test_excluir_disciplina_em_matriz_e_recusado(ctx_disciplinas):
+    from database.models import DisciplinaDB
+
+    client, db = ctx_disciplinas
+    musica = DisciplinaDB(nome="Música")
+    db.add_all([musica, TurmaDB(nome="6º Ano A", turno="Manhã", matriz_curricular=[{"disciplina": "musica", "aulas_semanais": 2}])])
+    db.commit()
+
+    resp = client.delete(f"/disciplinas/{musica.id}")
+    assert resp.status_code == 409
+    assert "6º Ano A" in resp.json()["detail"]

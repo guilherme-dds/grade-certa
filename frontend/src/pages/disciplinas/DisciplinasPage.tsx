@@ -1,19 +1,23 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createDisciplina, getDisciplinas } from '@/api/disciplinas'
+import { createDisciplina, deleteDisciplina, getDisciplinas } from '@/api/disciplinas'
 import { getProfessores } from '@/api/professores'
 import { getTurmas } from '@/api/turmas'
 import { Button } from '@/components/ui/Button'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DataTable } from '@/components/ui/DataTable'
+import { RowMenu } from '@/components/ui/RowMenu'
+import { useToast } from '@/components/ui/Toast'
 import { QuickFilters, SearchInput, Toolbar } from '@/components/ui/FilterBar'
 import { paths } from '@/config/paths'
+import { getApiErrorMessage } from '@/lib/apiError'
 import { TabHeader } from '@/layouts/SectionLayout'
 import { atribuirProfessor, descreverVagas, vagasParaProfessor } from '@/lib/matrizVagas'
 import { SubjectDialog } from '@/pages/teachers/SubjectDialog'
 
 interface DisciplinaRow {
+  id?: number
   nome: string
   professores: string[]
   professorIds: number[]
@@ -26,9 +30,11 @@ interface DisciplinaRow {
 export function DisciplinasPage() {
   const queryClient = useQueryClient()
   const confirm = useConfirm()
+  const toast = useToast()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [filter, setFilter] = useState('todas')
   const [search, setSearch] = useState('')
+  const [erroExclusao, setErroExclusao] = useState<string | null>(null)
 
   const disciplinasQuery = useQuery({ queryKey: ['disciplinas'], queryFn: () => getDisciplinas() })
   const professoresQuery = useQuery({ queryKey: ['professores'], queryFn: () => getProfessores() })
@@ -36,7 +42,10 @@ export function DisciplinasPage() {
 
   const createMutation = useMutation({
     mutationFn: (nome: string) => createDisciplina({ nome }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['disciplinas'] }),
+    onSuccess: (d) => {
+      toast(`${d.nome} cadastrada`)
+      return queryClient.invalidateQueries({ queryKey: ['disciplinas'] })
+    },
   })
 
   const rows = useMemo<DisciplinaRow[]>(() => {
@@ -58,6 +67,7 @@ export function DisciplinasPage() {
           }
         }
         return {
+          id: d.id,
           nome: d.nome,
           professores: aptos.map((p) => p.nome),
           professorIds: aptos.flatMap((p) => (p.id != null ? [p.id] : [])),
@@ -80,6 +90,31 @@ export function DisciplinasPage() {
     if (!ok) return
     await atribuirProfessor(vagas, r.professorIds[0])
     await queryClient.invalidateQueries({ queryKey: ['turmas'] })
+  }
+
+  // Só sai disciplina que não está em nenhuma matriz; o cadastro dos professores é limpo junto
+  const excluir = async (r: DisciplinaRow) => {
+    if (r.id == null) return
+    const ok = await confirm({
+      title: `Excluir ${r.nome}?`,
+      description: r.professores.length
+        ? `${r.nome} também sai do cadastro de ${r.professores.join(', ')}. Não dá para desfazer.`
+        : 'Não dá para desfazer.',
+      confirmLabel: 'Excluir',
+      tone: 'danger',
+    })
+    if (!ok) return
+    setErroExclusao(null)
+    try {
+      await deleteDisciplina(r.id)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['disciplinas'] }),
+        queryClient.invalidateQueries({ queryKey: ['professores'] }),
+      ])
+      toast(`${r.nome} excluída`)
+    } catch (err) {
+      setErroExclusao(getApiErrorMessage(err, `Não foi possível excluir ${r.nome}.`))
+    }
   }
 
   const semProfessor = (r: DisciplinaRow) =>
@@ -124,6 +159,12 @@ export function DisciplinasPage() {
         </Toolbar>
       </div>
 
+      {erroExclusao && (
+        <p role="alert" className="mt-3 rounded-xl bg-danger-soft px-3.5 py-2.5 text-[13.5px] text-danger">
+          {erroExclusao}
+        </p>
+      )}
+
       {isLoading ? (
         <p className="my-6 text-center text-sm text-muted">Carregando disciplinas…</p>
       ) : visible.length === 0 ? (
@@ -164,7 +205,10 @@ export function DisciplinasPage() {
                 r.turmas.length ? (
                   <span className="text-[13.5px]" title={r.turmas.map((t) => t.nome).join(', ')}>
                     <span className="font-semibold tabular-nums">{r.turmas.length}</span>
-                    <span className="text-muted"> · {r.aulasSemana} aulas/semana</span>
+                    <span className="text-muted">
+                      {' '}
+                      · {r.aulasSemana} {r.aulasSemana === 1 ? 'aula' : 'aulas'}/semana
+                    </span>
                   </span>
                 ) : (
                   <span className="text-[13.5px] text-muted">Fora das matrizes</span>
@@ -198,6 +242,17 @@ export function DisciplinasPage() {
                 ) : (
                   <span className="text-[13.5px] text-muted">—</span>
                 ),
+            },
+            {
+              header: 'Ações',
+              className: 'w-px',
+              cell: (r) =>
+                foraDasMatrizes(r) ? (
+                  <RowMenu
+                    label={`Mais ações para ${r.nome}`}
+                    items={[{ label: 'Excluir disciplina', danger: true, onSelect: () => excluir(r) }]}
+                  />
+                ) : null,
             },
           ]}
         />

@@ -55,7 +55,7 @@ export function SubjectDialog({ availableSubjects, onAddSubject, onClose }: Subj
     >
       <form onSubmit={handleSubmit} className="p-6">
         <h3 id="subject-dialog-title" className="text-[17px] font-semibold">
-          Nova Disciplina
+          Nova disciplina
         </h3>
         <p className="mt-1 text-[13px] text-muted">
           Cadastre uma nova disciplina para disponibilizar no cadastro dos professores.

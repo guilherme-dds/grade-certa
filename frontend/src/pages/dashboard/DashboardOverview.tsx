@@ -8,6 +8,7 @@ import { getTurmas, type TurmaBackend } from '@/api/turmas'
 import { useAuth } from '@/auth/useAuth'
 import { buttonStyles } from '@/components/ui/buttonStyles'
 import { Icon, type IconName } from '@/components/ui/Icon'
+import { demandaPorProfessor, professoresAcimaDaCarga } from '@/lib/cargaDocente'
 import { cn } from '@/lib/cn'
 import { formatDateTime, weekDays } from '@/lib/schedule'
 import type { Lesson } from '@/schedule/ScheduleContext'
@@ -76,18 +77,14 @@ export function DashboardOverview() {
       .filter((i) => Number(i.aulas_semanais) > 0 && !i.professor_ids?.length && !i.professores?.length)
       .map((i) => ({ nome: `${i.disciplina} (${t.nome})` })),
   )
-  const cargaPorProfessor = new Map<number, number>()
-  for (const t of turmas)
-    for (const i of t.matriz_curricular ?? [])
-      for (const id of i.professor_ids ?? [])
-        cargaPorProfessor.set(id, (cargaPorProfessor.get(id) ?? 0) + Number(i.aulas_semanais || 0))
-  const acimaDaCarga = ativos.filter((p) => p.id != null && (cargaPorProfessor.get(p.id) ?? 0) > p.carga_maxima_aulas)
+  const cargaPorProfessor = demandaPorProfessor(turmas)
+  const acimaDaCarga = professoresAcimaDaCarga(ativos, turmas).map((a) => a.professor)
   const pendencias = [
     conflicts.length > 0 && {
       tone: 'danger' as const,
       count: conflicts.length,
       title: conflicts.length === 1 ? 'Conflito na grade' : 'Conflitos na grade',
-      detail: 'Aulas em choque depois de edições manuais',
+      detail: 'Choques de horário ou regras não cumpridas na grade',
       action: 'Resolver',
       to: paths.conflitos,
     },

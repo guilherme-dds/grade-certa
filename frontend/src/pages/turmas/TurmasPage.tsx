@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getDisciplinas } from '@/api/disciplinas'
 import { getProfessores } from '@/api/professores'
 import { createTurma, deleteTurma, getTurmas, updateTurma, type ItemMatriz, type TurmaBackend } from '@/api/turmas'
+import { useToast } from '@/components/ui/Toast'
 import { Button } from '@/components/ui/Button'
 import { DataTable } from '@/components/ui/DataTable'
 import { RowMenu } from '@/components/ui/RowMenu'
@@ -62,6 +63,7 @@ export function TurmasPage() {
       { replace: true },
     )
 
+  const toast = useToast()
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['turmas'] })
   const createTurmaMutation = useMutation({ mutationFn: createTurma, onSuccess: invalidate })
   const updateTurmaMutation = useMutation({
@@ -85,14 +87,18 @@ export function TurmasPage() {
           matriz_curricular: existing?.matriz_curricular ?? [],
         },
       })
+      toast(`${data.nome} salva`)
     } else {
-      await createTurmaMutation.mutateAsync({
+      const criada = await createTurmaMutation.mutateAsync({
         nome: data.nome,
         turno: data.turno,
         nivel_ensino: data.nivel_ensino,
         tardes: data.tardes ?? [],
         matriz_curricular: [],
       })
+      toast(`${criada.nome} cadastrada. Agora monte a matriz.`)
+      // O próximo passo de uma turma nova é a matriz: abre direto
+      setMatrixTurma(criada)
     }
   }
 
@@ -103,6 +109,7 @@ export function TurmasPage() {
       payload: { ...matrixTurma, matriz_curricular: matriz },
     })
     setMatrixTurma(null)
+    toast(`Matriz de ${matrixTurma.nome} salva`)
   }
 
   const handleDeleteTurma = async (id: number) => {
@@ -175,7 +182,7 @@ export function TurmasPage() {
                     <span className="font-semibold">{itemsCount}</span>{' '}
                     <span className="text-muted">{itemsCount === 1 ? 'disciplina' : 'disciplinas'} ·</span>{' '}
                     <span className="font-semibold tabular-nums">{totalWeekly}</span>{' '}
-                    <span className="text-muted">aulas/semana</span>
+                    <span className="text-muted">{totalWeekly === 1 ? 'aula' : 'aulas'}/semana</span>
                   </span>
                 )
               },

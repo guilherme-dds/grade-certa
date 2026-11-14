@@ -8,6 +8,7 @@ import { getSalas } from '@/api/salas'
 import { getTurmas } from '@/api/turmas'
 import { useAuth } from '@/auth/useAuth'
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog'
+import { ToastProvider } from '@/components/ui/Toast'
 import { Icon } from '@/components/ui/Icon'
 import { Logo } from '@/components/ui/Logo'
 import {
@@ -28,9 +29,11 @@ import { useWorkflow } from '@/schedule/useWorkflow'
 export function AppLayout() {
   return (
     <ConfirmProvider>
-      <ScheduleProvider>
-        <Shell />
-      </ScheduleProvider>
+      <ToastProvider>
+        <ScheduleProvider>
+          <Shell />
+        </ScheduleProvider>
+      </ToastProvider>
     </ConfirmProvider>
   )
 }
@@ -74,7 +77,7 @@ function Shell() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar onOpenMenu={() => setMenuOpen(true)} menuOpen={menuOpen} />
-        <main className="min-w-0 flex-1 px-4 pt-5 pb-12 md:px-2 md:pt-6 print:p-0">
+        <main className="min-w-0 flex-1 px-4 pt-5 pb-12 md:px-2 md:pt-4 print:p-0">
           {/* A troca de tela entra com um leve fade; trocar só os filtros (?turma=) não repete o efeito */}
           <div key={pathname} className="animate-[page-in_220ms_ease-out] print:animate-none">
             <Outlet />
@@ -277,7 +280,7 @@ function Topbar({ onOpenMenu, menuOpen }: { onOpenMenu: () => void; menuOpen: bo
   const today = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())
 
   return (
-    <header className="sticky top-0 z-30 flex items-center gap-2 bg-canvas/85 px-3 py-3 backdrop-blur md:top-4 md:rounded-full md:px-2 md:py-0 print:hidden">
+    <header className="sticky top-0 z-30 flex items-center gap-2 bg-canvas px-3 py-3 md:-mt-4 md:px-2 md:pt-4 md:pb-2 print:hidden">
       <button
         type="button"
         onClick={onOpenMenu}

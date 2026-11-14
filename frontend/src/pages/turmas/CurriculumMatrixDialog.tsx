@@ -7,6 +7,7 @@ import { RowMenu } from '@/components/ui/RowMenu'
 import { Select } from '@/components/ui/Select'
 import { Sheet, SheetBody, SheetFooter, useSheetClose } from '@/components/ui/Sheet'
 import { cn } from '@/lib/cn'
+import { fixoIndisponivel, useDisponibilidades } from '@/lib/fixosIndisponiveis'
 import { capacidadeSemanal, horariosDaTurma, weekDays } from '@/lib/schedule'
 import { useHorarios } from '@/schedule/useHorarios'
 
@@ -101,6 +102,17 @@ export function CurriculumMatrixDialog({
   // Linha com o painel de dias/horários fixos aberto
   const [expanded, setExpanded] = useState<number | null>(null)
   const [filtro, setFiltro] = useState<Filtro>('todas')
+
+  // Disponibilidade de quem tem aula fixada (ou está fixando agora), para avisar de horário bloqueado
+  const disponibilidades = useDisponibilidades(
+    items.flatMap((i, idx) => ((i.horarios_fixos?.length ?? 0) > 0 || idx === expanded ? (i.professor_ids ?? []) : [])),
+  )
+  const nomeProfessor = (id: number) => teachers.find((t) => t.id === id)?.name ?? 'Professor'
+  /** Quem do item marcou este dia/horário como indisponível */
+  const indisponiveisNo = (item: ItemMatriz, fixo: HorarioFixo) =>
+    (item.professor_ids ?? [])
+      .filter((id) => fixoIndisponivel(fixo, turmaSlots, disponibilidades.get(id) ?? []))
+      .map(nomeProfessor)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -146,8 +158,8 @@ export function CurriculumMatrixDialog({
     const matriz = (origem.matriz_curricular ?? []).map(normalizarItem)
     if (items.length > 0) {
       const ok = await confirm({
-        title: `Substituir pela matriz do ${origem.nome}?`,
-        description: `As ${items.length} disciplinas atuais saem e entram as ${matriz.length} do ${origem.nome}, com aulas, professores e horários fixos. Nada é salvo até você clicar em Salvar matriz.`,
+        title: `Substituir pela matriz da turma ${origem.nome}?`,
+        description: `As ${items.length} disciplinas atuais saem e entram as ${matriz.length} da turma ${origem.nome}, com aulas, professores e horários fixos. Nada é salvo até você clicar em Salvar matriz.`,
         confirmLabel: 'Substituir',
         tone: 'danger',
       })
@@ -208,7 +220,7 @@ export function CurriculumMatrixDialog({
       width="xl"
       dirty={dirty}
       onClose={onClose}
-      title={`Matriz curricular do ${turma.nome}`}
+      title={`Matriz curricular · ${turma.nome}`}
       description={`${turma.nivel_ensino ? `${turma.nivel_ensino}, turno` : 'Turno'} ${turma.turno.toLowerCase()}. Quem dá cada disciplina nesta turma e quantas aulas ela tem por semana.`}
     >
       <form onSubmit={handleSubmit} className="contents">
@@ -275,11 +287,19 @@ export function CurriculumMatrixDialog({
                   const repetida = (contagem.get(chave(item.disciplina)) ?? 0) > 1
                   const fixos = item.horarios_fixos ?? []
                   const isOpen = expanded === idx
+                  const bloqueios = fixos.flatMap((f) =>
+                    indisponiveisNo(item, f).map((nome) => `${nome} marcou ${descricaoFixo(f)} como indisponível`),
+                  )
                   const opcoesDisciplina = disciplinasOrdenadas.includes(item.disciplina)
                     ? disciplinasOrdenadas
                     : [item.disciplina, ...disciplinasOrdenadas]
                   const temAvisos =
-                    professores.length === 0 || foraDoCadastro.length > 0 || repetida || item.extra || fixos.length > 0
+                    professores.length === 0 ||
+                    foraDoCadastro.length > 0 ||
+                    repetida ||
+                    item.extra ||
+                    fixos.length > 0 ||
+                    bloqueios.length > 0
 
                   return (
                     <li
@@ -361,6 +381,14 @@ export function CurriculumMatrixDialog({
                               {t.name} não tem {item.disciplina} no cadastro
                             </span>
                           ))}
+                          {bloqueios.map((texto) => (
+                            <span
+                              key={texto}
+                              className="rounded-full bg-danger-soft px-2.5 py-0.5 font-semibold text-danger"
+                            >
+                              {texto}
+                            </span>
+                          ))}
                           {repetida && (
                             <span className="rounded-full bg-paper px-2.5 py-0.5 text-muted">
                               {item.disciplina} está em {contagem.get(chave(item.disciplina))} linhas
@@ -387,6 +415,7 @@ export function CurriculumMatrixDialog({
                         <FixedSlotsEditor
                           item={item}
                           slots={turmaSlots}
+                          indisponiveis={(fixo) => indisponiveisNo(item, fixo)}
                           onChange={(changes) => updateItem(idx, changes)}
                         />
                       )}
@@ -448,7 +477,7 @@ function CapacityMeter({ aulas, extras, capacidade }: { aulas: number; extras: n
           >
             {aulas}
           </span>{' '}
-          aulas por semana
+          {aulas === 1 ? 'aula' : 'aulas'} por semana
           {extras > 0 && ` + ${extras} extra`}
           {capacidade != null && <span className="tabular-nums">, a turma tem {capacidade} horários</span>}
         </p>
@@ -678,11 +707,14 @@ const QUALQUER_HORARIO = ''
 function FixedSlotsEditor({
   item,
   slots,
+  indisponiveis,
   onChange,
 }: {
   item: ItemMatriz
   /** Horários de aula da turma */
   slots: string[]
+  /** Professores do item que marcaram este dia/horário como indisponível */
+  indisponiveis: (fixo: HorarioFixo) => string[]
   onChange: (changes: Partial<ItemMatriz>) => void
 }) {
   const fixos = item.horarios_fixos ?? []
@@ -691,6 +723,8 @@ function FixedSlotsEditor({
   // Um mesmo dia+horário só pode ser fixado uma vez; "qualquer horário" pode repetir (2 aulas na terça)
   const jaFixado = horario !== QUALQUER_HORARIO && fixos.some((f) => f.dia_semana === dia && f.horario === horario)
   const restantes = item.aulas_semanais - fixos.length
+  const bloqueadoPara = indisponiveis({ dia_semana: dia, horario: horario || null })
+  const bloqueioDoHorario = (h: string) => indisponiveis({ dia_semana: dia, horario: h })
 
   const fixar = () => onChange({ horarios_fixos: [...fixos, { dia_semana: dia, horario: horario || null }] })
   const remover = (indice: number) => onChange({ horarios_fixos: fixos.filter((_, i) => i !== indice) })
@@ -700,7 +734,9 @@ function FixedSlotsEditor({
       <p className="text-[13px] text-muted">
         Fixe as aulas que precisam cair num dia ou horário certo. Com “qualquer horário”, o gerador escolhe o horário
         dentro do dia.
-        {fixos.length > 0 && restantes > 0 && ` As outras ${restantes} ele distribui.`}
+        {fixos.length > 0 &&
+          restantes > 0 &&
+          (restantes === 1 ? ' A outra aula o gerador distribui.' : ` As outras ${restantes} o gerador distribui.`)}
       </p>
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         {fixos.map((f, i) => (
@@ -731,11 +767,16 @@ function FixedSlotsEditor({
             <Select
               label="Horário"
               size="sm"
+              menuMinWidth={250}
               value={horario}
               onChange={setHorario}
               options={[
                 { value: QUALQUER_HORARIO, label: 'qualquer horário' },
-                ...slots.map((h) => ({ value: h, label: h })),
+                ...slots.map((h) => ({
+                  value: h,
+                  label: h,
+                  hint: bloqueioDoHorario(h).length ? 'indisponível' : undefined,
+                })),
               ]}
             />
             <Button variant="dark" size="sm" onClick={fixar} disabled={jaFixado}>
@@ -746,6 +787,12 @@ function FixedSlotsEditor({
           <span className="text-[13px] text-muted">Todas as aulas já têm dia ou horário fixo.</span>
         )}
       </div>
+      {restantes > 0 && !jaFixado && bloqueadoPara.length > 0 && (
+        <p className="mt-2 text-[12.5px] font-medium text-danger" role="status">
+          {bloqueadoPara.join(' e ')} {bloqueadoPara.length > 1 ? 'marcaram' : 'marcou'}{' '}
+          {horario ? `${dia}, ${horario}` : `${dia} (o dia todo)`} como indisponível. Com esse fixo, a grade não fecha.
+        </p>
+      )}
     </div>
   )
 }
