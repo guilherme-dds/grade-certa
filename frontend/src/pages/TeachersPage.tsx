@@ -266,8 +266,10 @@ export function TeachersPage() {
   }
 
   const handleDeleteTeacher = async (id: string) => {
+    const nome = deletingTeacher?.name
     await deleteProfessorMutation.mutateAsync(Number(id))
     setDeletingTeacher(null)
+    if (nome) toast(`${nome} excluído`)
   }
 
   const handleToggleStatus = async (teacher: TeacherRow) => {

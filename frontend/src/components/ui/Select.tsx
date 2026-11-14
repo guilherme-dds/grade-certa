@@ -240,7 +240,7 @@ export function Select({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
-        aria-label={prefix ? undefined : `${label}: ${selected?.label ?? placeholder}`}
+        aria-label={selected || placeholder !== label ? `${label}: ${selected?.label ?? placeholder}` : label}
         data-open={open ? '' : undefined}
         onClick={() => {
           if (open) fechar()

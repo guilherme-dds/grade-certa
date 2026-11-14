@@ -35,8 +35,10 @@ export function SalasPage() {
   }
 
   const handleDeleteSala = async (id: number) => {
+    const nome = deletingSala?.nome
     await deleteSalaMutation.mutateAsync(id)
     setDeletingSala(null)
+    if (nome) toast(`${nome} excluída`)
   }
 
   // Lido da query para refletir os horários adicionados/removidos sem fechar o modal

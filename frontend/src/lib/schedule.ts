@@ -71,7 +71,17 @@ export function shortTeacherName(name?: string | null) {
   if (!name) return 'Sem professor'
   const [first, ...rest] = name.trim().split(' ')
   const last = rest.at(-1)
+  // Códigos como "Educação Física 1" ficam inteiros: abreviar viraria "Educação 1."
+  if (last && /^\d+$/.test(last)) return name.trim()
   return last ? `${first} ${last[0]}.` : first
+}
+
+/** Tempo de busca do gerador: 45 → "45 s", 120.05 → "2 min", 600.3 → "10 min". */
+export function formatDuracao(segundos: number) {
+  const s = Math.max(1, Math.round(segundos))
+  if (s < 60) return `${s} s`
+  const resto = s % 60
+  return resto ? `${Math.floor(s / 60)} min ${resto} s` : `${s / 60} min`
 }
 
 /** "07:20 - 08:10" → ["07:20", "08:10"] */

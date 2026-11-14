@@ -113,8 +113,10 @@ export function TurmasPage() {
   }
 
   const handleDeleteTurma = async (id: number) => {
+    const nome = deletingTurma?.nome
     await deleteTurmaMutation.mutateAsync(id)
     setDeletingTurma(null)
+    if (nome) toast(`${nome} excluída`)
   }
 
   const turmas = turmasQuery.data ?? []

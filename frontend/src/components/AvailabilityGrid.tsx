@@ -4,6 +4,8 @@ import { slotKey, type AvailabilitySlots, type SlotState } from '@/lib/availabil
 import { cn } from '@/lib/cn'
 import { weekDays, type NivelEnsino } from '@/lib/schedule'
 
+const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`
+
 const slotStyles: Record<SlotState, { label: string; cell: string; swatch: string; mark: string }> = {
   indisponivel: {
     label: 'Indisponível',
@@ -138,8 +140,8 @@ export function AvailabilityGrid({ niveis, horarios, slots, onChange }: Availabi
       </div>
 
       <p className="mt-3 text-[13px] text-muted">
-        Clique ou arraste sobre os horários. {count('indisponivel')} indisponíveis e {count('preferencial')}{' '}
-        preferenciais em {activeNivel}; o resto está livre.
+        Clique ou arraste sobre os horários. {plural(count('indisponivel'), 'indisponível', 'indisponíveis')} e{' '}
+        {plural(count('preferencial'), 'preferencial', 'preferenciais')} em {activeNivel}; o resto está livre.
       </p>
 
       <div className="mt-4 grid gap-6 lg:grid-cols-2">

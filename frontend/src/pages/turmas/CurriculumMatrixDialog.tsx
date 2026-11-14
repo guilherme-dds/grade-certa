@@ -159,7 +159,7 @@ export function CurriculumMatrixDialog({
     if (items.length > 0) {
       const ok = await confirm({
         title: `Substituir pela matriz da turma ${origem.nome}?`,
-        description: `As ${items.length} disciplinas atuais saem e entram as ${matriz.length} da turma ${origem.nome}, com aulas, professores e horários fixos. Nada é salvo até você clicar em Salvar matriz.`,
+        description: `${items.length === 1 ? 'A disciplina atual sai' : `As ${items.length} disciplinas atuais saem`} e ${matriz.length === 1 ? 'entra a única' : `entram as ${matriz.length}`} da turma ${origem.nome}, com aulas, professores e horários fixos. Nada é salvo até você clicar em Salvar matriz.`,
         confirmLabel: 'Substituir',
         tone: 'danger',
       })

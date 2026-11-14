@@ -383,7 +383,7 @@ def test_janela_inevitavel_e_permitida_e_informada():
     res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
     assert res.sucesso, res.mensagem
     assert res.janelas == [("ana", "Seg", SLOTS[1])]
-    assert "1 janela(s)" in res.mensagem
+    assert "1 janela de professor" in res.mensagem
 
 
 def montar_em_2025():

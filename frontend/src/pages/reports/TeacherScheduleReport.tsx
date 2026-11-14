@@ -48,9 +48,11 @@ export function TeacherScheduleReport({ professor, lessons, planejamentos, janel
       title={professor}
       summary={
         <>
-          {aulas.length} aulas · {planos.length} planejamentos
-          {planos.length > 0 && ` (${compartilhados} compartilhados)`} ·{' '}
-          {vagos.length === 0 ? 'sem janelas' : `${vagos.length} janela(s)`}
+          {aulas.length} {aulas.length === 1 ? 'aula' : 'aulas'} · {planos.length}{' '}
+          {planos.length === 1 ? 'planejamento' : 'planejamentos'}
+          {planos.length > 0 && ` (${compartilhados} ${compartilhados === 1 ? 'compartilhado' : 'compartilhados'})`}{' '}
+          ·{' '}
+          {vagos.length === 0 ? 'sem janelas' : `${vagos.length} ${vagos.length === 1 ? 'janela' : 'janelas'}`}
         </>
       }
     >

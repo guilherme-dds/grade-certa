@@ -35,10 +35,10 @@ export function DeleteTeacherDialog({ teacher, onClose, onConfirm }: DeleteTeach
       className="m-auto w-[min(400px,calc(100%-2rem))] card p-6 text-ink"
     >
       <h3 id="delete-teacher-dialog-title" className="text-base font-semibold">
-        Excluir Professor
+        Excluir professor
       </h3>
       <p className="mt-2 text-xs leading-relaxed text-muted">
-        Tem certeza que deseja remover <strong>{teacher.name}</strong>? Esta ação não pode ser desfeita na memória local.
+        Tem certeza que deseja remover <strong>{teacher.name}</strong>? O nome sai das matrizes das turmas e a disponibilidade registrada é apagada. Esta ação não pode ser desfeita.
       </p>
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="secondary" onClick={close}>

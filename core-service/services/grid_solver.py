@@ -874,10 +874,10 @@ def resolver_grade(
 
     janelas_restantes = sorted(k for k, v in janelas.items() if solver.Value(v))
     mensagem = "Grade gerada com sucesso respeitando todas as regras!"
-    if janelas_restantes:
-        mensagem = (
-            f"Grade gerada com sucesso. {len(janelas_restantes)} janela(s) de professor não puderam ser evitadas."
-        )
+    if len(janelas_restantes) == 1:
+        mensagem = "Grade gerada com sucesso. 1 janela de professor não pôde ser evitada."
+    elif janelas_restantes:
+        mensagem = f"Grade gerada com sucesso. {len(janelas_restantes)} janelas de professor não puderam ser evitadas."
 
     return SolverResult(
         sucesso=True,

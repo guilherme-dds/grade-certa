@@ -49,7 +49,7 @@ export function DeleteTurmaDialog({ turma, onClose, onConfirm }: DeleteTurmaDial
     >
       <div className="p-6">
         <h3 id="delete-turma-dialog-title" className="text-[17px] font-semibold text-danger">
-          Excluir Turma
+          Excluir turma
         </h3>
         <p className="mt-2 text-[14px] text-ink">
           Tem certeza que deseja excluir a turma <strong className="font-semibold">{turma.nome}</strong> ({turma.turno})?

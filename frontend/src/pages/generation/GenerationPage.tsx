@@ -14,7 +14,7 @@ import { getApiErrorMessage } from '@/lib/apiError'
 import { professoresAcimaDaCarga } from '@/lib/cargaDocente'
 import { cn } from '@/lib/cn'
 import { fixoIndisponivel, useDisponibilidades } from '@/lib/fixosIndisponiveis'
-import { capacidadeSemanal, formatDateTime, horariosDaTurma } from '@/lib/schedule'
+import { capacidadeSemanal, formatDateTime, formatDuracao, horariosDaTurma } from '@/lib/schedule'
 import { useHorarios } from '@/schedule/useHorarios'
 import { useSchedule } from '@/schedule/useSchedule'
 import { isFalha, STATUS_LABEL } from './generationShared'
@@ -344,7 +344,8 @@ export function GenerationPage() {
                 Grade gerada
               </p>
               <p className="mt-1 text-[13.5px] text-muted">
-                {geracao.total_aulas} aulas distribuídas em {detalhes?.tempo_resolucao_seg ?? '—'} s.
+                {geracao.total_aulas} aulas distribuídas
+                {detalhes?.tempo_resolucao_seg != null && ` em ${formatDuracao(detalhes.tempo_resolucao_seg)}`}.
                 {planejamentos.length > 0 &&
                   ` Planejamentos compartilhados com colega da mesma área: ${planejamentos.filter((p) => p.compartilhado).length} de ${planejamentos.length}.`}
               </p>

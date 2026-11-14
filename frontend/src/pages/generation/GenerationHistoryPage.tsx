@@ -1,11 +1,15 @@
 import { Link, useNavigate } from 'react-router'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getHistoricoGrades, type GradeResumo } from '@/api/grades'
+import { deleteGrade, getHistoricoGrades, type GradeResumo } from '@/api/grades'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useToast } from '@/components/ui/Toast'
 import { buttonStyles } from '@/components/ui/buttonStyles'
 import { paths } from '@/config/paths'
 import { TabHeader } from '@/layouts/SectionLayout'
 import { cn } from '@/lib/cn'
-import { formatDateTime } from '@/lib/schedule'
+import { getApiErrorMessage } from '@/lib/apiError'
+import { formatDateTime, formatDuracao } from '@/lib/schedule'
 import { useSchedule } from '@/schedule/useSchedule'
 import { isFalha, STATUS_LABEL } from './generationShared'
 
@@ -21,6 +25,28 @@ export function GenerationHistoryPage() {
   } = useQuery<GradeResumo[]>({ queryKey: ['historicoGrades'], queryFn: () => getHistoricoGrades() })
 
   const concluidas = historico.filter((g) => g.status === 'sucesso').length
+  const confirm = useConfirm()
+  const toast = useToast()
+  const [erro, setErro] = useState<string | null>(null)
+
+  // Geração que não deu certo não tem grade para abrir; só sai do histórico
+  const excluirFalha = async (g: GradeResumo) => {
+    const ok = await confirm({
+      title: `Excluir ${g.nome}?`,
+      description: 'A geração sai do histórico. Nenhuma grade é apagada, porque esta não chegou a ser montada.',
+      confirmLabel: 'Excluir',
+      tone: 'danger',
+    })
+    if (!ok) return
+    setErro(null)
+    try {
+      await deleteGrade(g.id)
+      await refetch()
+      toast(`${g.nome} saiu do histórico`)
+    } catch (err) {
+      setErro(getApiErrorMessage(err, 'Não foi possível excluir a geração.'))
+    }
+  }
 
   return (
     <>
@@ -43,6 +69,11 @@ export function GenerationHistoryPage() {
         }
       />
 
+      {erro && (
+        <p role="alert" className="mb-3 rounded-xl bg-danger-soft px-4 py-3 text-[13.5px] text-danger">
+          {erro}
+        </p>
+      )}
       <section className="card p-2 md:p-3" aria-label="Gerações">
         {isLoading ? (
           <div className="h-48 animate-pulse rounded-2xl bg-paper" />
@@ -93,7 +124,7 @@ export function GenerationHistoryPage() {
                       <td className="px-3 py-3 text-muted">{g.ano_semestre ?? '—'}</td>
                       <td className="px-3 py-3 text-right tabular-nums">{g.total_aulas}</td>
                       <td className="px-3 py-3 text-right text-muted tabular-nums">
-                        {g.detalhes?.tempo_resolucao_seg != null ? `${g.detalhes.tempo_resolucao_seg} s` : '—'}
+                        {g.detalhes?.tempo_resolucao_seg != null ? formatDuracao(g.detalhes.tempo_resolucao_seg) : '—'}
                       </td>
                       <td className="px-3 py-3">
                         <span
@@ -121,6 +152,15 @@ export function GenerationHistoryPage() {
                             className="rounded-full bg-ink px-3.5 py-1.5 text-[12.5px] font-semibold text-white hover:bg-ink-soft"
                           >
                             {exibida ? 'Revisar' : 'Abrir'}
+                          </button>
+                        )}
+                        {isFalha(g.status) && (
+                          <button
+                            type="button"
+                            onClick={() => excluirFalha(g)}
+                            className="rounded-full px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:bg-danger-soft hover:text-danger"
+                          >
+                            Excluir
                           </button>
                         )}
                         {g.status === 'gerando' && (

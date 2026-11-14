@@ -54,7 +54,7 @@ export function DeleteGradeDialog({ grade, onClose, onConfirm }: DeleteGradeDial
     >
       <div className="p-6">
         <h3 id="delete-grade-dialog-title" className="text-[17px] font-semibold text-danger">
-          Excluir Grade
+          Excluir grade
         </h3>
         <p className="mt-2 text-[14px] text-ink">
           Tem certeza que deseja excluir a grade <strong className="font-semibold">{grade.nome}</strong>, gerada em{' '}

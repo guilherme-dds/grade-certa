@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { buttonStyles } from '@/components/ui/buttonStyles'
 import { Icon } from '@/components/ui/Icon'
 import { Select, type SelectOption } from '@/components/ui/Select'
+import { useToast } from '@/components/ui/Toast'
 import { paths } from '@/config/paths'
 import { cn } from '@/lib/cn'
 import { formatDateTime } from '@/lib/schedule'
@@ -20,6 +21,7 @@ export function SchedulePage() {
   const { lessons, activeGrade, horariosTurmas, isLoading, refreshSchedule, changes, undoLastChange } = useSchedule()
   const [params, setParams] = useSearchParams()
   const queryClient = useQueryClient()
+  const toast = useToast()
   const [isDeleting, setIsDeleting] = useState(false)
   const [isDuplicating, setIsDuplicating] = useState(false)
   const [isUndoing, setIsUndoing] = useState(false)
@@ -49,6 +51,7 @@ export function SchedulePage() {
   }))
 
   const handleDeleteGrade = async () => {
+    const nome = activeGrade!.nome
     await deleteGrade(activeGrade!.id!)
     await queryClient.invalidateQueries({ queryKey: ['historicoGrades'] })
     // Volta para a grade mais recente que sobrou
@@ -62,12 +65,14 @@ export function SchedulePage() {
       { replace: true },
     )
     await refreshSchedule()
+    toast(`${nome} excluída`)
   }
 
   const handleDuplicateGrade = async (nome: string) => {
     const copia = await duplicarGrade(activeGrade!.id!, nome)
     await queryClient.invalidateQueries({ queryKey: ['historicoGrades'] })
     setParam('gradeId', String(copia.id))
+    toast(`${copia.nome} criada`)
   }
 
   const gradeIdParam = params.get('gradeId')
@@ -241,7 +246,7 @@ export function SchedulePage() {
           <p className={undoMessage && !undoMessage.ok ? 'text-danger' : 'text-muted'} role="status">
             {undoMessage ? undoMessage.text : `Última alteração: ${changes[0].descricao}`}
             {changes.length > 0 &&
-              ` · ${changes.length} alteraç${changes.length > 1 ? 'ões' : 'ão'} manual(is) nesta grade`}
+              ` · ${changes.length} ${changes.length > 1 ? 'alterações manuais' : 'alteração manual'} nesta grade`}
           </p>
           {changes.length > 0 && (
             <Button variant="secondary" size="sm" onClick={handleUndo} disabled={isUndoing}>
