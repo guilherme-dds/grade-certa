@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createSala, deleteSala, getSalas, updateSala, type SalaBackend } from '@/api/salas'
 import { Button } from '@/components/ui/Button'
 import { DataTable } from '@/components/ui/DataTable'
+import { RowMenu } from '@/components/ui/RowMenu'
 import { TabHeader } from '@/layouts/SectionLayout'
 import { DeleteSalaDialog } from './DeleteSalaDialog'
 import { SalaDialog } from './SalaDialog'
@@ -89,31 +90,25 @@ export function SalasPage() {
               header: 'Ações',
               className: 'text-right',
               cell: (row) => (
-                <div className="flex items-center justify-end gap-2">
+                <div className="flex items-center justify-end gap-1">
                   {row.id && (
                     <Button variant="secondary" size="sm" onClick={() => setHorariosSalaId(row.id!)}>
-                      Horários
+                      Bloquear horários
                     </Button>
                   )}
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      setEditingSala(row)
-                      setIsSalaDialogOpen(true)
-                    }}
-                  >
-                    Editar
-                  </Button>
-                  {row.id && (
-                    <button
-                      type="button"
-                      onClick={() => setDeletingSala(row)}
-                      className="rounded-full px-2 py-1.5 text-[13px] text-muted transition-colors hover:text-danger"
-                    >
-                      Excluir
-                    </button>
-                  )}
+                  <RowMenu
+                    label={`Mais ações para ${row.nome}`}
+                    items={[
+                      {
+                        label: 'Editar sala',
+                        onSelect: () => {
+                          setEditingSala(row)
+                          setIsSalaDialogOpen(true)
+                        },
+                      },
+                      ...(row.id ? [{ label: 'Excluir', danger: true, onSelect: () => setDeletingSala(row) }] : []),
+                    ]}
+                  />
                 </div>
               ),
             },

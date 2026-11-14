@@ -1,20 +1,37 @@
-import { useEffect, useState } from 'react'
-import { Link, NavLink, Outlet, useLocation } from 'react-router'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Link, Outlet, ScrollRestoration, useLocation } from 'react-router'
+import { useQueryClient } from '@tanstack/react-query'
+import { getDisciplinas } from '@/api/disciplinas'
+import { getHistoricoGrades } from '@/api/grades'
+import { getProfessores } from '@/api/professores'
+import { getSalas } from '@/api/salas'
+import { getTurmas } from '@/api/turmas'
 import { useAuth } from '@/auth/useAuth'
+import { ConfirmProvider } from '@/components/ui/ConfirmDialog'
 import { Icon } from '@/components/ui/Icon'
 import { Logo } from '@/components/ui/Logo'
-import { navGroups, navItems, settingsItem, tabLabels, type NavItem } from '@/config/navigation'
+import {
+  currentPage,
+  isNavItemActive,
+  navGroups,
+  settingsGroup,
+  type NavBadge,
+  type NavGroup,
+  type NavItem,
+} from '@/config/navigation'
 import { paths } from '@/config/paths'
 import { cn } from '@/lib/cn'
 import { ScheduleProvider } from '@/schedule/ScheduleProvider'
 import { useSchedule } from '@/schedule/useSchedule'
-import { useWorkflow, type StepState } from '@/schedule/useWorkflow'
+import { useWorkflow } from '@/schedule/useWorkflow'
 
 export function AppLayout() {
   return (
-    <ScheduleProvider>
-      <Shell />
-    </ScheduleProvider>
+    <ConfirmProvider>
+      <ScheduleProvider>
+        <Shell />
+      </ScheduleProvider>
+    </ConfirmProvider>
   )
 }
 
@@ -47,9 +64,9 @@ function Shell() {
             type="button"
             aria-label="Fechar menu"
             onClick={() => setMenuOpen(false)}
-            className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]"
+            className="absolute inset-0 animate-[fade-in_200ms_ease-out] bg-ink/40 backdrop-blur-[2px]"
           />
-          <div className="relative h-full w-[272px] p-3">
+          <div className="relative h-full w-[272px] animate-[drawer-in_260ms_cubic-bezier(0.2,0.8,0.2,1)] p-3">
             <Sidebar />
           </div>
         </div>
@@ -58,8 +75,12 @@ function Shell() {
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar onOpenMenu={() => setMenuOpen(true)} menuOpen={menuOpen} />
         <main className="min-w-0 flex-1 px-4 pt-5 pb-12 md:px-2 md:pt-6 print:p-0">
-          <Outlet />
+          {/* A troca de tela entra com um leve fade; trocar só os filtros (?turma=) não repete o efeito */}
+          <div key={pathname} className="animate-[page-in_220ms_ease-out] print:animate-none">
+            <Outlet />
+          </div>
         </main>
+        <ScrollRestoration />
       </div>
     </div>
   )
@@ -68,36 +89,72 @@ function Shell() {
 function Sidebar() {
   const { user, logout } = useAuth()
   const { conflicts } = useSchedule()
-  const { steps } = useWorkflow()
+  const { turmasSemMatriz, docentesSemDisponibilidade } = useWorkflow()
+  const { pathname } = useLocation()
+  const navRef = useRef<HTMLElement>(null)
+  const pillRef = useRef<HTMLDivElement>(null)
+  const hasUser = Boolean(user)
+
+  // Um único fundo escuro desliza até o item ativo, em vez de cada item acender sozinho
+  useLayoutEffect(() => {
+    const nav = navRef.current
+    const pill = pillRef.current
+    if (!nav || !pill) return
+    let first = !pill.dataset.ready
+    const measure = () => {
+      const active = nav.querySelector<HTMLElement>('a[data-nav-item][aria-current="page"]')
+      if (!active || nav.clientHeight === 0) {
+        pill.style.opacity = '0'
+        return
+      }
+      const top = active.getBoundingClientRect().top - nav.getBoundingClientRect().top + nav.scrollTop
+      // Na primeira medida o fundo aparece já no lugar, sem deslizar a partir do topo
+      pill.style.transitionProperty = first ? 'none' : 'transform, height, opacity'
+      pill.style.transform = `translateY(${top}px)`
+      pill.style.height = `${active.offsetHeight}px`
+      pill.style.opacity = '1'
+      pill.dataset.ready = 'true'
+      first = false
+    }
+    measure()
+    // Fontes carregando ou a janela mudando de tamanho: reposiciona (sem animar se nada mudou)
+    const observer = new ResizeObserver(measure)
+    observer.observe(nav)
+    if (nav.firstElementChild) observer.observe(nav.firstElementChild)
+    return () => observer.disconnect()
+  }, [pathname, hasUser])
+
   if (!user) return null
 
+  const badges: Record<NavBadge, number> = {
+    conflitos: conflicts.length,
+    semMatriz: turmasSemMatriz.length,
+    semDisponibilidade: docentesSemDisponibilidade.length,
+  }
+
   return (
-    <nav aria-label="Principal" className="card flex h-full flex-col overflow-y-auto px-3 py-6">
-      <Link to={paths.home} className="mx-3 mb-7 rounded-lg">
+    <nav
+      ref={navRef}
+      aria-label="Principal"
+      className="card scrollbar-none relative flex h-full flex-col overflow-y-auto px-3 pt-5 pb-3"
+    >
+      <div
+        ref={pillRef}
+        aria-hidden="true"
+        className="pointer-events-none absolute top-0 right-3 left-3 rounded-full bg-ink opacity-0 shadow-[0_6px_16px_-8px_rgb(21_22_26/0.6)] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
+      />
+      <Link to={paths.home} className="mx-3 mb-4 rounded-lg">
         <Logo />
       </Link>
 
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-3.5">
         {navGroups.map((group, gi) => (
-          <div key={group.label ?? gi}>
-            {group.label && <p className="mb-1.5 px-3 text-[12px] font-medium text-muted/80">{group.label}</p>}
-            <ul className={cn('flex flex-col gap-0.5', group.items.some((i) => i.step) && 'relative')}>
-              {group.items.map((item) => (
-                <li key={item.to}>
-                  <SidebarLink
-                    item={item}
-                    state={item.step ? steps[item.step.key] : undefined}
-                    badge={item.step?.key === 'revisao' ? conflicts.length : 0}
-                  />
-                </li>
-              ))}
-            </ul>
-          </div>
+          <SidebarGroup key={group.label ?? gi} group={group} badges={badges} />
         ))}
       </div>
 
-      <div className="mt-auto flex flex-col gap-2 pt-6">
-        <SidebarLink item={settingsItem} />
+      <div className="mt-auto flex flex-col gap-3 pt-3">
+        <SidebarGroup group={settingsGroup} badges={badges} />
         <div className="flex items-center gap-3 rounded-2xl bg-paper p-2.5">
           <Avatar name={user.name} />
           <Link to={paths.conta} className="min-w-0 flex-1 rounded-md hover:underline">
@@ -119,51 +176,95 @@ function Sidebar() {
   )
 }
 
-const STEP_HINT: Record<StepState, string> = { done: 'concluído', current: 'próximo passo', todo: 'pendente' }
+const BADGE_HINT: Record<NavBadge, string> = {
+  conflitos: 'conflitos',
+  semMatriz: 'sem matriz',
+  semDisponibilidade: 'sem disponibilidade',
+}
 
-function SidebarLink({ item, state, badge = 0 }: { item: NavItem; state?: StepState; badge?: number }) {
+function SidebarGroup({ group, badges }: { group: NavGroup; badges: Record<NavBadge, number> }) {
+  const id = group.label ? `menu-${group.label.toLowerCase().replace(/\s+/g, '-')}` : undefined
   return (
-    <NavLink
-      to={item.to}
-      end={item.end}
-      className={({ isActive }) =>
-        cn(
-          'group flex items-center gap-3 rounded-full px-3 py-2.5 text-[14px] transition-colors',
-          isActive
-            ? 'bg-ink font-semibold text-white shadow-[0_6px_16px_-8px_rgb(21_22_26/0.6)]'
-            : 'text-muted hover:bg-paper hover:text-ink',
-        )
-      }
-    >
-      {({ isActive }) => (
-        <>
-          {item.step && state ? (
-            <span
-              className={cn(
-                'grid size-[22px] shrink-0 place-items-center rounded-full text-[11.5px] font-bold tabular-nums',
-                state === 'done' && 'bg-accent text-ink',
-                state === 'current' && (isActive ? 'bg-white text-ink' : 'bg-ink text-white'),
-                state === 'todo' && (isActive ? 'ring-1 ring-white/40' : 'ring-1 ring-line'),
-              )}
-            >
-              {state === 'done' ? <Icon name="check" width={13} height={13} strokeWidth={2.6} /> : item.step.number}
-            </span>
-          ) : (
-            <Icon name={item.icon} className="shrink-0" />
-          )}
-          <span className="flex-1 truncate">
-            {item.label}
-            {item.step && state && <span className="sr-only">, {STEP_HINT[state]}</span>}
-          </span>
-          {badge > 0 && (
-            <span className="rounded-full bg-danger px-1.5 py-px text-[11px] font-semibold text-white tabular-nums">
-              {badge}
-              <span className="sr-only"> conflitos</span>
-            </span>
-          )}
-        </>
+    <div>
+      {group.label && (
+        <p id={id} className="mb-1 px-3 text-[12px] font-semibold text-muted">
+          {group.label}
+        </p>
       )}
-    </NavLink>
+      <ul aria-labelledby={id} className="flex flex-col gap-px">
+        {group.items.map((item) => (
+          <li key={item.to}>
+            <SidebarLink
+              item={item}
+              badge={item.badge ? badges[item.badge] : 0}
+              badgeHint={item.badge && BADGE_HINT[item.badge]}
+            />
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+const q = {
+  professores: { queryKey: ['professores'], queryFn: () => getProfessores() },
+  turmas: { queryKey: ['turmas'], queryFn: () => getTurmas() },
+  disciplinas: { queryKey: ['disciplinas'], queryFn: () => getDisciplinas() },
+  salas: { queryKey: ['salas'], queryFn: () => getSalas() },
+  historico: { queryKey: ['historicoGrades'], queryFn: () => getHistoricoGrades() },
+}
+
+const PREFETCH: Record<string, { queryKey: string[]; queryFn: () => Promise<unknown> }[]> = {
+  [paths.professores]: [q.professores, q.disciplinas],
+  [paths.turmas]: [q.turmas, q.professores, q.disciplinas],
+  [paths.disciplinas]: [q.disciplinas],
+  [paths.salas]: [q.salas],
+  [paths.geracao]: [q.historico, q.turmas, q.professores],
+  [paths.geracaoRegras]: [q.turmas, q.professores],
+  [paths.geracaoHistorico]: [q.historico],
+  [paths.grade]: [q.historico],
+  [paths.resumo]: [q.historico, q.professores, q.salas],
+  [paths.escola]: [q.professores],
+}
+
+function SidebarLink({ item, badge = 0, badgeHint }: { item: NavItem; badge?: number; badgeHint?: string }) {
+  const { pathname } = useLocation()
+  const queryClient = useQueryClient()
+  const isActive = isNavItemActive(item, pathname)
+  // Busca os dados da tela ao apontar para o item, para ela abrir já preenchida
+  const prefetch = () => {
+    for (const q of PREFETCH[item.to] ?? []) queryClient.prefetchQuery({ ...q, staleTime: 30_000 })
+  }
+  return (
+    <Link
+      to={item.to}
+      data-nav-item
+      aria-current={isActive ? 'page' : undefined}
+      onMouseEnter={prefetch}
+      onFocus={prefetch}
+      className={cn(
+        'group relative flex items-center gap-3 rounded-full px-3 py-[7px] text-[14px] transition-colors duration-200',
+        isActive ? 'font-semibold text-white' : 'text-muted hover:bg-paper hover:text-ink',
+      )}
+    >
+      <Icon name={item.icon} width={17} height={17} className="shrink-0" />
+      <span className="flex-1 truncate">{item.label}</span>
+      {badge > 0 && (
+        <span
+          className={cn(
+            'min-w-5 rounded-full px-1.5 py-0.5 text-center text-[11px] leading-none font-semibold tabular-nums',
+            item.badge === 'conflitos'
+              ? 'bg-danger text-white'
+              : isActive
+                ? 'bg-white/20 text-white'
+                : 'bg-warning-soft text-warning',
+          )}
+        >
+          {badge}
+          <span className="sr-only"> {badgeHint}</span>
+        </span>
+      )}
+    </Link>
   )
 }
 
@@ -171,8 +272,7 @@ function Topbar({ onOpenMenu, menuOpen }: { onOpenMenu: () => void; menuOpen: bo
   const { user } = useAuth()
   const { activeGrade, conflicts } = useSchedule()
   const { pathname } = useLocation()
-  const section = navItems.find((i) => (i.to === paths.home ? pathname === paths.home : pathname.startsWith(i.to)))
-  const tab = tabLabels[pathname]
+  const { group, title } = currentPage(pathname)
 
   const today = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())
 
@@ -189,17 +289,15 @@ function Topbar({ onOpenMenu, menuOpen }: { onOpenMenu: () => void; menuOpen: bo
       </button>
 
       <p className="hidden min-w-0 flex-1 truncate text-[14px] sm:block" aria-label="Você está em">
-        {section && (
-          <Link to={section.to} className={cn('font-medium', tab ? 'text-muted hover:text-ink' : 'text-ink')}>
-            {section.label}
-          </Link>
-        )}
-        {tab && (
+        {group && (
           <>
-            <span className="mx-2 text-line" aria-hidden="true">/</span>
-            <span className="font-medium text-ink">{tab}</span>
+            <span className="text-muted">{group}</span>
+            <span className="mx-2 text-line" aria-hidden="true">
+              /
+            </span>
           </>
         )}
+        {title && <span className="font-medium text-ink">{title}</span>}
       </p>
       <span className="flex-1 sm:hidden" />
 

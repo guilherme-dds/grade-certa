@@ -1,16 +1,16 @@
 import type { ReactNode } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { getHistoricoGrades, type GradeResumo } from '@/api/grades'
 import { getProfessores } from '@/api/professores'
 import { getSalas } from '@/api/salas'
-import { getTurmas } from '@/api/turmas'
+import { getTurmas, type TurmaBackend } from '@/api/turmas'
 import { useAuth } from '@/auth/useAuth'
-import { useProfessorLogado } from '@/auth/useProfessorLogado'
 import { buttonStyles } from '@/components/ui/buttonStyles'
 import { Icon, type IconName } from '@/components/ui/Icon'
 import { cn } from '@/lib/cn'
-import { formatDateTime } from '@/lib/schedule'
+import { formatDateTime, weekDays } from '@/lib/schedule'
+import type { Lesson } from '@/schedule/ScheduleContext'
 import { paths } from '@/config/paths'
 import { useSchedule } from '@/schedule/useSchedule'
 import { useWorkflow, type StepState } from '@/schedule/useWorkflow'
@@ -24,19 +24,9 @@ const STATUS_LABEL: Record<string, string> = {
   erro: 'Erro',
 }
 
-const STATUS_BADGE_STYLE: Record<string, string> = {
-  sucesso: 'bg-primary-soft text-primary',
-  gerando: 'bg-warning-soft text-warning',
-  inviavel: 'bg-danger-soft text-danger',
-  tempo_esgotado: 'bg-danger-soft text-danger',
-  erro: 'bg-danger-soft text-danger',
-}
-
 export function DashboardOverview() {
-  const navigate = useNavigate()
   const { user } = useAuth()
-  const { conflicts, activeGrade, lessons, changes, isLoading: scheduleLoading, refreshSchedule } = useSchedule()
-  const { professor } = useProfessorLogado()
+  const { conflicts, activeGrade, lessons, changes, isLoading: scheduleLoading } = useSchedule()
 
   const professoresQuery = useQuery({ queryKey: ['professores'], queryFn: () => getProfessores() })
   const historicoQuery = useQuery({ queryKey: ['historicoGrades'], queryFn: getHistoricoGrades })
@@ -72,9 +62,68 @@ export function DashboardOverview() {
   const prontidao = partes.length ? Math.round((partes.reduce((a, b) => a + b, 0) / partes.length) * 100) : 0
   const cadastrosLoading = turmasQuery.isLoading || professoresQuery.isLoading
 
-  const aulasDoProfessor = professor ? lessons.filter((l) => l.teachers.some((t) => t.id === professor.id)) : []
   const ultimaAlteracao = changes[0]
   const firstName = user?.name.split(' ')[0]
+
+  // Tudo o que precisa de atenção, do mais grave ao mais leve, cada item com o caminho para resolver
+  const nomes = (lista: { nome: string }[]) =>
+    lista
+      .slice(0, 4)
+      .map((x) => x.nome)
+      .join(', ') + (lista.length > 4 ? ` e mais ${lista.length - 4}` : '')
+  const aulasSemProfessor = turmas.flatMap((t) =>
+    (t.matriz_curricular ?? [])
+      .filter((i) => Number(i.aulas_semanais) > 0 && !i.professor_ids?.length && !i.professores?.length)
+      .map((i) => ({ nome: `${i.disciplina} (${t.nome})` })),
+  )
+  const cargaPorProfessor = new Map<number, number>()
+  for (const t of turmas)
+    for (const i of t.matriz_curricular ?? [])
+      for (const id of i.professor_ids ?? [])
+        cargaPorProfessor.set(id, (cargaPorProfessor.get(id) ?? 0) + Number(i.aulas_semanais || 0))
+  const acimaDaCarga = ativos.filter((p) => p.id != null && (cargaPorProfessor.get(p.id) ?? 0) > p.carga_maxima_aulas)
+  const pendencias = [
+    conflicts.length > 0 && {
+      tone: 'danger' as const,
+      count: conflicts.length,
+      title: conflicts.length === 1 ? 'Conflito na grade' : 'Conflitos na grade',
+      detail: 'Aulas em choque depois de edições manuais',
+      action: 'Resolver',
+      to: paths.conflitos,
+    },
+    turmasSemMatriz.length > 0 && {
+      tone: 'danger' as const,
+      count: turmasSemMatriz.length,
+      title: turmasSemMatriz.length === 1 ? 'Turma sem matriz curricular' : 'Turmas sem matriz curricular',
+      detail: `${nomes(turmasSemMatriz)}: ficam de fora da grade`,
+      action: 'Montar matriz',
+      to: paths.turmas,
+    },
+    aulasSemProfessor.length > 0 && {
+      tone: 'danger' as const,
+      count: aulasSemProfessor.length,
+      title: aulasSemProfessor.length === 1 ? 'Disciplina sem professor' : 'Disciplinas sem professor',
+      detail: nomes(aulasSemProfessor),
+      action: 'Ver disciplinas',
+      to: paths.disciplinas,
+    },
+    acimaDaCarga.length > 0 && {
+      tone: 'warning' as const,
+      count: acimaDaCarga.length,
+      title: acimaDaCarga.length === 1 ? 'Professor acima da carga máxima' : 'Professores acima da carga máxima',
+      detail: nomes(acimaDaCarga),
+      action: 'Ver professores',
+      to: `${paths.professores}?filtro=acima-da-carga`,
+    },
+    semDisponibilidade > 0 && {
+      tone: 'warning' as const,
+      count: semDisponibilidade,
+      title: 'Sem disponibilidade registrada',
+      detail: 'Até registrar, o gerador considera a semana toda livre',
+      action: 'Registrar',
+      to: paths.professoresSemDisponibilidade,
+    },
+  ].filter((p) => p !== false)
 
   const resumo = scheduleLoading
     ? 'Carregando a grade…'
@@ -85,9 +134,9 @@ export function DashboardOverview() {
       : 'Nenhuma grade gerada ainda. Confira os cadastros e gere a primeira.'
 
   return (
-    <div className="space-y-4">
-      {/* Linha 1: lousa + prontidão */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:min-h-[calc(100svh-9.5rem)] xl:grid-cols-[minmax(0,1fr)_360px]">
+      {/* Coluna principal: lousa, avisos, pendências e turmas */}
+      <div className="flex min-w-0 flex-col gap-4">
         <section className="relative overflow-hidden rounded-[28px] bg-board p-6 text-white md:p-8">
           {/* Brilho sutil no canto, como reflexo na lousa */}
           <div
@@ -106,12 +155,18 @@ export function DashboardOverview() {
               <p className="mt-3 max-w-[38ch] text-[15px] leading-relaxed text-white/65">{resumo}</p>
 
               <div className="mt-6 flex flex-wrap gap-2">
-                <Link to={paths.geracao} className={buttonStyles({}, 'bg-white text-ink shadow-none hover:bg-white/90')}>
+                <Link
+                  to={paths.geracao}
+                  className={buttonStyles({}, 'bg-white text-ink shadow-none hover:bg-white/90')}
+                >
                   Gerar grade
                 </Link>
                 <Link
                   to={paths.grade}
-                  className={buttonStyles({}, 'bg-white/10 text-white shadow-none ring-1 ring-white/15 hover:bg-white/15')}
+                  className={buttonStyles(
+                    {},
+                    'bg-white/10 text-white shadow-none ring-1 ring-white/15 hover:bg-white/15',
+                  )}
                 >
                   Revisar grade
                 </Link>
@@ -146,142 +201,93 @@ export function DashboardOverview() {
           </div>
         </section>
 
-        <WorkflowCard percent={prontidao} loading={cadastrosLoading} conflitos={conflicts.length} />
-      </div>
+        {/* Avisos de geração */}
+        {isGerando && (
+          <Notice
+            tone="warning"
+            title="Geração em andamento"
+            text="O solver está distribuindo as aulas. Você pode continuar usando o sistema enquanto isso."
+            action={
+              <Link to={paths.geracao} className={buttonStyles({ size: 'sm' })}>
+                Acompanhar geração
+              </Link>
+            }
+            spinning
+          />
+        )}
+        {isFalha && (
+          <Notice
+            tone="danger"
+            title="A última geração não encontrou uma grade viável"
+            text={ultimaGeracao?.detalhes?.mensagem ?? 'Revise as restrições e tente de novo.'}
+            action={
+              <Link to={paths.geracao} className={buttonStyles({ variant: 'secondary', size: 'sm' })}>
+                Ver diagnóstico
+              </Link>
+            }
+          />
+        )}
 
-      {/* Avisos de geração */}
-      {isGerando && (
-        <Notice
-          tone="warning"
-          title="Geração em andamento"
-          text="O solver está distribuindo as aulas. Você pode continuar usando o sistema enquanto isso."
-          action={
-            <Link to={paths.geracao} className={buttonStyles({ size: 'sm' })}>
-              Acompanhar geração
-            </Link>
-          }
-          spinning
-        />
-      )}
-      {isFalha && (
-        <Notice
-          tone="danger"
-          title="A última geração não encontrou uma grade viável"
-          text={ultimaGeracao?.detalhes?.mensagem ?? 'Revise as restrições e tente de novo.'}
-          action={
-            <Link to={paths.geracao} className={buttonStyles({ variant: 'secondary', size: 'sm' })}>
-              Ver diagnóstico
-            </Link>
-          }
-        />
-      )}
-
-      {/* Atalho do professor logado */}
-      {professor && (
-        <section className="card flex flex-wrap items-center justify-between gap-4 p-5">
-          <div className="flex items-center gap-4">
-            <span className="grid size-12 place-items-center rounded-2xl bg-primary-soft text-primary">
-              <Icon name="calendarUser" width={22} height={22} />
-            </span>
-            <div>
-              <p className="font-display text-[17px] font-bold">Sua semana, {professor.nome.split(' ')[0]}</p>
-              <p className="text-[14px] text-muted">
-                {activeGrade
-                  ? `${aulasDoProfessor.length} ${aulasDoProfessor.length === 1 ? 'aula' : 'aulas'} na grade ${activeGrade.nome}.`
-                  : 'A coordenação ainda não publicou uma grade.'}
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link to={paths.minhaGrade} className={buttonStyles({ size: 'sm' })}>
-              Ver minha grade
-            </Link>
-            <Link to={paths.professores} className={buttonStyles({ variant: 'secondary', size: 'sm' })}>
-              Atualizar disponibilidade
-            </Link>
-          </div>
-        </section>
-      )}
-
-      {/* Linha 2: execuções + cadastros */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <section className="card p-5 md:p-6">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="font-display text-[18px] font-bold">Gerações recentes</h2>
-            <Link to={paths.geracao} className="text-[13px] font-semibold text-muted hover:text-ink">
-              Ver histórico
-            </Link>
-          </div>
-
-          {historicoQuery.isLoading ? (
+        <section className="card p-5 md:p-6" aria-labelledby="pendencias">
+          <h2 id="pendencias" className="mb-2 font-display text-[18px] font-bold">
+            Pendências
+          </h2>
+          {cadastrosLoading || scheduleLoading ? (
             <div className="space-y-2">
               {[0, 1, 2].map((i) => (
-                <div key={i} className="h-12 animate-pulse rounded-xl bg-paper" />
+                <div key={i} className="h-14 animate-pulse rounded-2xl bg-paper" />
               ))}
             </div>
-          ) : historico.length === 0 ? (
-            <div className="rounded-2xl border-2 border-dashed border-line p-8 text-center">
-              <p className="font-semibold">Nenhuma grade gerada</p>
-              <p className="mt-1 text-[14px] text-muted">Gere a primeira grade para vê-la aqui.</p>
-              <Link to={paths.geracao} className={buttonStyles({ size: 'sm' }, 'mt-4')}>
-                Gerar grade
-              </Link>
+          ) : pendencias.length === 0 ? (
+            <div className="flex items-center gap-3 rounded-2xl bg-primary-soft px-4 py-4">
+              <span className="grid size-9 place-items-center rounded-full bg-accent text-ink">
+                <Icon name="check" width={18} height={18} strokeWidth={2.4} />
+              </span>
+              <div>
+                <p className="font-semibold">Nada pendente</p>
+                <p className="text-[13.5px] text-muted">Cadastros completos e grade sem conflitos.</p>
+              </div>
             </div>
           ) : (
-            <div className="-mx-2 overflow-x-auto">
-              <table className="w-full min-w-[520px] text-[14px]">
-                <thead>
-                  <tr className="text-left text-[12.5px] text-muted">
-                    <th scope="col" className="px-2 pb-2 font-medium">Grade</th>
-                    <th scope="col" className="px-2 pb-2 font-medium">Gerada em</th>
-                    <th scope="col" className="px-2 pb-2 text-right font-medium">Aulas</th>
-                    <th scope="col" className="px-2 pb-2 font-medium">Situação</th>
-                    <th scope="col" className="px-2 pb-2"><span className="sr-only">Ações</span></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {historico.slice(0, 5).map((g) => (
-                    <tr key={g.id} className="border-t border-line-soft">
-                      <td className="max-w-[220px] truncate px-2 py-3 font-semibold">{g.nome}</td>
-                      <td className="px-2 py-3 whitespace-nowrap text-muted tabular-nums">{formatDateTime(g.criado_em)}</td>
-                      <td className="px-2 py-3 text-right tabular-nums">{g.total_aulas}</td>
-                      <td className="px-2 py-3">
-                        <span
-                          className={cn(
-                            'inline-flex rounded-full px-2.5 py-1 text-[12px] font-semibold whitespace-nowrap',
-                            STATUS_BADGE_STYLE[g.status] ?? 'bg-paper text-muted',
-                          )}
-                        >
-                          {STATUS_LABEL[g.status] ?? g.status}
-                        </span>
-                      </td>
-                      <td className="px-2 py-3 text-right">
-                        {g.status === 'sucesso' && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await refreshSchedule(g.id)
-                              navigate(`${paths.grade}?gradeId=${g.id}`)
-                            }}
-                            className="rounded-full bg-ink px-3.5 py-1.5 text-[12.5px] font-semibold text-white hover:bg-ink-soft"
-                          >
-                            Abrir
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ul className="divide-y divide-line-soft">
+              {pendencias.map((p) => (
+                <li key={p.title} className="flex flex-wrap items-center gap-3 py-3">
+                  <span
+                    className={cn(
+                      'grid size-9 shrink-0 place-items-center rounded-full font-display text-[14px] font-bold tabular-nums',
+                      p.tone === 'danger' ? 'bg-danger-soft text-danger' : 'bg-warning-soft text-warning',
+                    )}
+                  >
+                    {p.count}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold">{p.title}</p>
+                    <p className="truncate text-[13px] text-muted">{p.detail}</p>
+                  </div>
+                  <Link
+                    to={p.to}
+                    className={buttonStyles({ variant: p.tone === 'danger' ? 'primary' : 'secondary', size: 'sm' })}
+                  >
+                    {p.action}
+                  </Link>
+                </li>
+              ))}
+            </ul>
           )}
 
           {ultimaAlteracao && (
-            <p className="mt-4 rounded-xl bg-paper px-3.5 py-2.5 text-[13px] text-muted">
+            <p className="mt-3 rounded-xl bg-paper px-3.5 py-2.5 text-[13px] text-muted">
               <span className="font-semibold text-ink">Última edição manual:</span> {ultimaAlteracao.descricao}
             </p>
           )}
         </section>
+
+        <TurmasPanel turmas={turmas} lessons={lessons} hasGrade={Boolean(activeGrade)} loading={cadastrosLoading} />
+      </div>
+
+      {/* Coluna lateral: prontidão, cadastros e carga */}
+      <div className="flex flex-col gap-4">
+        <WorkflowCard percent={prontidao} loading={cadastrosLoading} conflitos={conflicts.length} />
 
         <section className="card p-5 md:p-6">
           <h2 className="mb-3 font-display text-[18px] font-bold">Cadastros</h2>
@@ -297,7 +303,9 @@ export function DashboardOverview() {
             <InventoryRow
               icon="teachers"
               title="Professores ativos"
-              detail={semDisponibilidade ? `${semDisponibilidade} sem disponibilidade` : 'Disponibilidade em dia'}
+              detail={
+                semDisponibilidade ? `${semDisponibilidade} sem disponibilidade registrada` : 'Disponibilidade em dia'
+              }
               value={ativos.length}
               warn={semDisponibilidade > 0}
               to={semDisponibilidade ? paths.professoresSemDisponibilidade : paths.professores}
@@ -327,8 +335,176 @@ export function DashboardOverview() {
             </p>
           )}
         </section>
+
+        <CargaPanel
+          professores={ativos.flatMap((p) =>
+            p.id != null ? [{ nome: p.nome, aulas: cargaPorProfessor.get(p.id) ?? 0, max: p.carga_maxima_aulas }] : [],
+          )}
+          loading={cadastrosLoading}
+        />
       </div>
     </div>
+  )
+}
+
+/** Uma ficha por turma: aulas na grade (ou previstas na matriz) e como se espalham pela semana */
+function TurmasPanel({
+  turmas,
+  lessons,
+  hasGrade,
+  loading,
+}: {
+  turmas: TurmaBackend[]
+  lessons: Lesson[]
+  hasGrade: boolean
+  loading: boolean
+}) {
+  return (
+    <section className="card flex flex-1 flex-col p-5 md:p-6" aria-labelledby="turmas-painel">
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h2 id="turmas-painel" className="font-display text-[18px] font-bold">
+          Turmas
+        </h2>
+        <p className="text-[13px] text-muted">
+          {hasGrade
+            ? 'Aulas por dia na grade ativa. Clique numa turma para abrir a grade dela.'
+            : 'Aulas previstas na matriz de cada turma.'}
+        </p>
+      </div>
+      {loading ? (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="h-28 animate-pulse rounded-2xl bg-paper" />
+          ))}
+        </div>
+      ) : turmas.length === 0 ? (
+        <div className="grid flex-1 place-items-center rounded-2xl border-2 border-dashed border-line p-8 text-center">
+          <div>
+            <p className="font-semibold">Nenhuma turma cadastrada</p>
+            <Link to={paths.turmas} className={buttonStyles({ size: 'sm' }, 'mt-3')}>
+              Cadastrar turmas
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <ul className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] content-start gap-3">
+          {turmas.map((t) => {
+            const previstas = (t.matriz_curricular ?? []).reduce((acc, i) => acc + Number(i.aulas_semanais || 0), 0)
+            const daTurma = lessons.filter((l) => l.classGroup === t.nome)
+            const porDia = weekDays.map((d) => daTurma.filter((l) => l.day === d).length)
+            const maxDia = Math.max(1, ...porDia)
+            const faltam = hasGrade && previstas > 0 ? Math.max(0, previstas - daTurma.length) : 0
+            const status =
+              previstas === 0
+                ? { text: 'Sem matriz', className: 'bg-warning-soft text-warning' }
+                : faltam > 0
+                  ? { text: `Faltam ${faltam}`, className: 'bg-danger-soft text-danger' }
+                  : hasGrade
+                    ? { text: 'Completa', className: 'bg-primary-soft text-primary' }
+                    : { text: 'Matriz pronta', className: 'bg-paper text-muted' }
+            return (
+              <li key={t.id ?? t.nome}>
+                <Link
+                  to={
+                    previstas === 0 || !hasGrade ? paths.turmas : `${paths.grade}?turma=${encodeURIComponent(t.nome)}`
+                  }
+                  className="group flex h-full flex-col rounded-2xl border border-line-soft p-4 transition-colors hover:border-ink/20 hover:bg-paper/50"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate font-display text-[17px] font-bold">{t.nome}</p>
+                      <p className="truncate text-[12.5px] text-muted">{t.turno}</p>
+                    </div>
+                    <span
+                      className={cn('shrink-0 rounded-full px-2.5 py-0.5 text-[12px] font-semibold', status.className)}
+                    >
+                      {status.text}
+                    </span>
+                  </div>
+                  <div className="mt-auto flex items-end justify-between gap-3 pt-3">
+                    <p className="text-[13px] text-muted">
+                      <span className="font-display text-[20px] font-bold text-ink tabular-nums">
+                        {hasGrade ? daTurma.length : previstas}
+                      </span>{' '}
+                      aulas/sem
+                    </p>
+                    {hasGrade && (
+                      <div
+                        className="flex items-end gap-1"
+                        role="img"
+                        aria-label={`Aulas por dia: ${weekDays.map((d, i) => `${d} ${porDia[i]}`).join(', ')}`}
+                      >
+                        {porDia.map((n, i) => (
+                          <span key={weekDays[i]} className="flex flex-col items-center gap-0.5">
+                            <span
+                              className="w-3 rounded-sm bg-ink/80 transition-colors group-hover:bg-primary"
+                              style={{ height: `${Math.max(3, (n / maxDia) * 24)}px` }}
+                            />
+                            <span className="text-[9px] leading-none text-muted">{weekDays[i][0]}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+/** Carga prevista pelas matrizes de cada professor ativo, da maior para a menor */
+function CargaPanel({
+  professores,
+  loading,
+}: {
+  professores: { nome: string; aulas: number; max: number }[]
+  loading: boolean
+}) {
+  const ordenados = [...professores].sort((a, b) => b.aulas - a.aulas)
+  return (
+    <section className="card flex min-h-[280px] flex-1 basis-0 flex-col p-5 md:p-6" aria-labelledby="carga-painel">
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <h2 id="carga-painel" className="font-display text-[18px] font-bold">
+          Carga dos professores
+        </h2>
+        <Link to={paths.gradeProfessores} className="text-[13px] font-semibold text-primary hover:underline">
+          Grade por professor
+        </Link>
+      </div>
+      {loading ? (
+        <div className="flex-1 animate-pulse rounded-2xl bg-paper" />
+      ) : ordenados.length === 0 ? (
+        <p className="text-[13.5px] text-muted">Nenhum professor ativo.</p>
+      ) : (
+        <ul className="-mr-2 min-h-0 flex-1 space-y-3 overflow-y-auto pr-2">
+          {ordenados.map((p) => {
+            const acima = p.aulas > p.max
+            const pct = p.max > 0 ? Math.min(100, (p.aulas / p.max) * 100) : 0
+            return (
+              <li key={p.nome}>
+                <div className="flex items-baseline justify-between gap-3 text-[13.5px]">
+                  <span className="truncate font-medium">{p.nome}</span>
+                  <span className="shrink-0 text-muted tabular-nums">
+                    <span className={cn('font-semibold', acima ? 'text-danger' : 'text-ink')}>{p.aulas}</span> de{' '}
+                    {p.max}
+                  </span>
+                </div>
+                <div className="mt-1 h-1.5 rounded-full bg-line-soft">
+                  <div
+                    className={cn('h-full rounded-full', acima ? 'bg-danger' : 'bg-primary')}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
   )
 }
 
@@ -388,8 +564,8 @@ function WorkflowCard({ percent, loading, conflitos }: { percent: number; loadin
         : conflitos > 0
           ? { to: paths.conflitos, label: `Resolver ${conflitos} ${conflitos === 1 ? 'conflito' : 'conflitos'}` }
           : steps.cadastros !== 'done'
-            ? { to: paths.professoresSemDisponibilidade, label: 'Completar disponibilidade' }
-            : { to: paths.relatorios, label: 'Ver relatórios' }
+            ? { to: paths.professoresSemDisponibilidade, label: 'Registrar disponibilidade' }
+            : { to: paths.resumo, label: 'Ver resumo da grade' }
 
   const rows: { key: keyof typeof steps; label: string; to: string; hint: Record<StepState, string> }[] = [
     {
@@ -408,7 +584,11 @@ function WorkflowCard({ percent, loading, conflitos }: { percent: number; loadin
       key: 'revisao',
       label: 'Revisar grade',
       to: paths.grade,
-      hint: { done: 'Sem conflitos', current: `${conflitos} ${conflitos === 1 ? 'conflito' : 'conflitos'}`, todo: 'Aguardando grade' },
+      hint: {
+        done: 'Sem conflitos',
+        current: `${conflitos} ${conflitos === 1 ? 'conflito' : 'conflitos'}`,
+        todo: 'Aguardando grade',
+      },
     },
   ]
 
@@ -433,7 +613,9 @@ function WorkflowCard({ percent, loading, conflitos }: { percent: number; loadin
             className="transition-[stroke-dashoffset] duration-700 ease-out"
           />
         </svg>
-        <p className="font-display text-[32px] font-bold tracking-[-0.03em] tabular-nums">{loading ? '…' : `${percent}%`}</p>
+        <p className="font-display text-[32px] font-bold tracking-[-0.03em] tabular-nums">
+          {loading ? '…' : `${percent}%`}
+        </p>
       </div>
 
       <ol className="space-y-1">
@@ -441,7 +623,10 @@ function WorkflowCard({ percent, loading, conflitos }: { percent: number; loadin
           const state = steps[row.key]
           return (
             <li key={row.key}>
-              <Link to={row.to} className="flex items-center gap-3 rounded-2xl px-2 py-2 transition-colors hover:bg-paper">
+              <Link
+                to={row.to}
+                className="flex items-center gap-3 rounded-2xl px-2 py-2 transition-colors hover:bg-paper"
+              >
                 <span
                   className={cn(
                     'grid size-7 shrink-0 place-items-center rounded-full text-[12.5px] font-bold',
@@ -456,7 +641,9 @@ function WorkflowCard({ percent, loading, conflitos }: { percent: number; loadin
                 <span
                   className={cn(
                     'text-[12.5px]',
-                    state === 'current' && row.key === 'revisao' && conflitos > 0 ? 'font-semibold text-danger' : 'text-muted',
+                    state === 'current' && row.key === 'revisao' && conflitos > 0
+                      ? 'font-semibold text-danger'
+                      : 'text-muted',
                   )}
                 >
                   {row.hint[state]}

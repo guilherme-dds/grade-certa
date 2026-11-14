@@ -59,7 +59,7 @@ export function TeacherScheduleReport({ professor, lessons, planejamentos, janel
       {!temItens ? (
         <p className="text-[13px] text-muted">Sem aulas nem planejamentos nesta grade.</p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <div className="grid min-w-[640px] grid-cols-5 gap-2 text-[12px]">
             {dias.map(({ dia, itens }) => (
               <div key={dia}>

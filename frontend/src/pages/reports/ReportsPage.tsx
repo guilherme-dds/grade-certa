@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/Button'
 import { buttonStyles } from '@/components/ui/buttonStyles'
 import { paths } from '@/config/paths'
 import { TabHeader } from '@/layouts/SectionLayout'
-import { cn } from '@/lib/cn'
 import { formatDateTime } from '@/lib/schedule'
 import { useSchedule } from '@/schedule/useSchedule'
 import { ClassScheduleReport } from './ClassScheduleReport'
@@ -18,15 +17,24 @@ import { cargaPorProfessor, nomesOrdenados, ocupacaoSalas } from './reportMetric
 
 const TODOS = 'todos'
 
-const abas = [
-  { id: 'geral', label: 'Visão geral' },
-  { id: 'professores', label: 'Professores' },
-  { id: 'turmas', label: 'Turmas' },
-  { id: 'salas', label: 'Salas' },
-] as const
+export type AbaRelatorio = 'resumo' | 'professores' | 'turmas' | 'salas'
 
-// Aba e filtros ficam na URL: /relatorios?aba=salas&sala=…
-export function ReportsPage() {
+const TITULO: Record<AbaRelatorio, string> = {
+  resumo: 'Resumo da grade',
+  professores: 'Grade por professor',
+  turmas: 'Impressão por turma',
+  salas: 'Grade por sala',
+}
+
+const DESCRICAO: Record<AbaRelatorio, string> = {
+  resumo: 'Indicadores da grade, carga dos professores e ocupação das salas.',
+  professores: 'Grade individual de cada professor, com planejamentos e janelas. Pronta para imprimir e entregar.',
+  turmas: 'Grade de cada turma em sequência, uma por página na impressão.',
+  salas: 'Ocupação de cada sala ao longo da semana.',
+}
+
+// Filtros ficam na URL: /grade/salas?sala=…
+export function ReportsPage({ aba }: { aba: AbaRelatorio }) {
   const { lessons, conflicts, activeGrade, horariosTurmas, isLoading, refreshSchedule } = useSchedule()
   const [params, setParams] = useSearchParams()
   const { data: historico = [] } = useQuery({ queryKey: ['historicoGrades'], queryFn: getHistoricoGrades })
@@ -42,8 +50,6 @@ export function ReportsPage() {
   const professores = nomesOrdenados(cargas.map((c) => c.nome))
   const turmas = nomesOrdenados(lessons.map((l) => l.classGroup))
   const salas = ocupacoes.map((o) => o.nome)
-
-  const aba = abas.find((a) => a.id === params.get('aba'))?.id ?? 'geral'
 
   /** Filtro da URL; um valor fora da grade atual (ex.: depois de trocar de grade) volta ao primeiro */
   const filtro = (chave: string, opcoes: string[]) => {
@@ -66,12 +72,6 @@ export function ReportsPage() {
       { replace: true },
     )
 
-  const hrefDaAba = (id: string) => {
-    const next = new URLSearchParams(params)
-    next.set('aba', id)
-    return `?${next}`
-  }
-
   if (isLoading || professoresQuery.isLoading || salasQuery.isLoading) {
     return <p className="py-16 text-center text-sm text-muted">Carregando grade...</p>
   }
@@ -81,7 +81,7 @@ export function ReportsPage() {
       <>
         <div className="max-w-xl rounded-[20px] border-2 border-dashed border-line bg-white/60 px-6 py-8">
           <p className="text-sm font-semibold">Nenhuma grade gerada</p>
-          <p className="mt-1 text-[13px] text-muted">Os relatórios usam a grade gerada. Gere uma grade primeiro.</p>
+          <p className="mt-1 text-[13px] text-muted">Esta visão usa a grade gerada. Gere uma grade primeiro.</p>
           <Link to={paths.geracao} className={buttonStyles({ variant: 'secondary', size: 'sm' }, 'mt-4')}>
             Gerar grade
           </Link>
@@ -93,8 +93,8 @@ export function ReportsPage() {
   return (
     <>
       <TabHeader
-        title="Relatórios"
-        description={`Carga dos professores, grade de cada turma e ocupação das salas. Gerada em ${formatDateTime(activeGrade.criado_em)}.`}
+        title={TITULO[aba]}
+        description={`${DESCRICAO[aba]} Grade gerada em ${formatDateTime(activeGrade.criado_em)}.`}
         actions={
           <div className="flex flex-wrap items-center gap-2 print:hidden">
             {gradesGeradas.length > 1 && (
@@ -132,32 +132,17 @@ export function ReportsPage() {
                 onChange={(v) => setParam('sala', v)}
               />
             )}
+            {aba === 'turmas' && (
+              <Link to={paths.grade} className={buttonStyles({ variant: 'secondary' })}>
+                Voltar à grade
+              </Link>
+            )}
             <Button variant="dark" onClick={() => window.print()}>
-              Exportar PDF
+              {aba === 'resumo' ? 'Exportar PDF' : 'Imprimir'}
             </Button>
           </div>
         }
       />
-
-      <nav
-        aria-label="Tipos de relatório"
-        className="mb-5 inline-flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-line-soft p-1 print:hidden"
-      >
-        {abas.map(({ id, label }) => (
-          <Link
-            key={id}
-            to={hrefDaAba(id)}
-            replace
-            aria-current={id === aba ? 'page' : undefined}
-            className={cn(
-              'rounded-lg px-3.5 py-1.5 text-[13.5px] font-medium whitespace-nowrap transition-colors',
-              id === aba ? 'bg-white font-semibold text-ink shadow-xs' : 'text-muted hover:text-ink',
-            )}
-          >
-            {label}
-          </Link>
-        ))}
-      </nav>
 
       {(professoresQuery.isError || salasQuery.isError) && (
         <p role="alert" className="mb-4 rounded-2xl border border-danger/30 bg-danger-soft px-4 py-3 text-[13px]">
@@ -165,7 +150,7 @@ export function ReportsPage() {
         </p>
       )}
 
-      {aba === 'geral' && (
+      {aba === 'resumo' && (
         <OverviewReport
           lessons={lessons}
           conflitos={conflicts.length}

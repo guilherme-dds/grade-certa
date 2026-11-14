@@ -1,7 +1,8 @@
 import { cn } from '@/lib/cn'
 
 interface MultiSelectChipsProps {
-  options: { value: string; label: string }[]
+  /** Com `group`, o seletor separa as opções em grupos (ex.: aptos primeiro) */
+  options: { value: string; label: string; group?: string }[]
   value: string[]
   onChange: (value: string[]) => void
   /** Texto do seletor para adicionar mais um */
@@ -42,11 +43,23 @@ export function MultiSelectChips({ options, value, onChange, addLabel, emptyLabe
           className="max-w-full min-w-0 flex-1 rounded-lg border border-dashed border-line bg-white px-2 py-1 text-xs text-muted outline-none focus:border-primary"
         >
           <option value="">{addLabel}</option>
-          {remaining.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
+          {remaining.some((o) => o.group)
+            ? [...new Set(remaining.map((o) => o.group ?? ''))].map((g) => (
+                <optgroup key={g} label={g}>
+                  {remaining
+                    .filter((o) => (o.group ?? '') === g)
+                    .map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                </optgroup>
+              ))
+            : remaining.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
         </select>
       )}
     </div>

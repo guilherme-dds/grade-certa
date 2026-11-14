@@ -1,69 +1,68 @@
-import { Navigate, useLocation } from 'react-router'
+import { Navigate, useLocation, useSearchParams } from 'react-router'
 import { paths } from '@/config/paths'
-import { useWorkflow } from '@/schedule/useWorkflow'
 import { useSchedule } from '@/schedule/useSchedule'
-import { SectionLayout } from './SectionLayout'
+import { SectionLayout, SubTabs } from './SectionLayout'
 
 export function CadastrosSection() {
-  const { turmas, ativos, turmasSemMatriz, docentesSemDisponibilidade } = useWorkflow()
+  return <SectionLayout section="Cadastros" step={1} />
+}
+
+export function GeracaoSection() {
+  return <SectionLayout section="Gerar grade" step={2} />
+}
+
+export function GradeSection() {
+  const { activeGrade } = useSchedule()
   return (
     <SectionLayout
-      step={1}
-      title="Cadastros"
-      description="Tudo o que o gerador precisa saber: quem ensina, quem aprende e onde."
-      tabs={[
-        {
-          to: paths.professores,
-          label: 'Professores',
-          count: docentesSemDisponibilidade.length || ativos.length,
-          countTone: docentesSemDisponibilidade.length ? 'danger' : 'neutral',
-        },
-        {
-          to: paths.turmas,
-          label: 'Turmas',
-          count: turmasSemMatriz.length || turmas.length,
-          countTone: turmasSemMatriz.length ? 'danger' : 'neutral',
-        },
-        { to: paths.salas, label: 'Salas' },
-      ]}
+      section="Revisar grade"
+      step={3}
+      description={
+        activeGrade
+          ? `${activeGrade.nome}${activeGrade.ano_semestre ? `, semestre ${activeGrade.ano_semestre}` : ''}`
+          : undefined
+      }
     />
   )
 }
 
-export function GradeSection() {
-  const { conflicts, activeGrade } = useSchedule()
+/** Grade da semana vista por turma, por professor ou por sala */
+export function GradeViews() {
   return (
-    <SectionLayout
-      step={3}
-      title="Revisar grade"
-      description={
-        activeGrade
-          ? `${activeGrade.nome}${activeGrade.ano_semestre ? ` · Semestre ${activeGrade.ano_semestre}` : ''}`
-          : 'Veja a grade por turma, resolva conflitos e exporte relatórios.'
-      }
+    <SubTabs
+      label="Ver a grade"
       tabs={[
-        { to: paths.grade, label: 'Por turma', end: true },
-        { to: paths.conflitos, label: 'Conflitos', count: conflicts.length, countTone: 'danger' },
-        { to: paths.relatorios, label: 'Relatórios' },
+        { to: paths.grade, label: 'Por turma', end: true, also: [paths.gradeImpressao] },
+        { to: paths.gradeProfessores, label: 'Por professor' },
+        { to: paths.gradeSalas, label: 'Por sala' },
       ]}
     />
   )
 }
 
 export function ConfiguracoesSection() {
-  return (
-    <SectionLayout
-      title="Configurações"
-      tabs={[
-        { to: paths.conta, label: 'Minha conta' },
-        { to: paths.usuarios, label: 'Usuários' },
-      ]}
-    />
-  )
+  return <SectionLayout section="Configurações" />
 }
 
 /** Endereço antigo → novo, mantendo os parâmetros (ex.: ?matriz=3) */
 export function Moved({ to }: { to: string }) {
   const { search } = useLocation()
   return <Navigate to={`${to}${search}`} replace />
+}
+
+// Os relatórios eram uma aba só, com subabas em ?aba=; hoje cada um é uma aba de Revisar grade
+const RELATORIO_ANTIGO: Record<string, string> = {
+  geral: paths.resumo,
+  professores: paths.gradeProfessores,
+  turmas: paths.gradeImpressao,
+  salas: paths.gradeSalas,
+}
+
+export function MovedRelatorios() {
+  const [params] = useSearchParams()
+  const destino = RELATORIO_ANTIGO[params.get('aba') ?? ''] ?? paths.resumo
+  const resto = new URLSearchParams(params)
+  resto.delete('aba')
+  const query = resto.toString()
+  return <Navigate to={query ? `${destino}?${query}` : destino} replace />
 }

@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useState } from 'react'
 import type { ProfessorBackend } from '@/api/professores'
 import { ProfessorAvailabilityEditor } from '@/components/ProfessorAvailabilityEditor'
-import { Button } from '@/components/ui/Button'
+import { Sheet } from '@/components/ui/Sheet'
 
 interface TeacherAvailabilityDialogProps {
   professor: ProfessorBackend
@@ -9,62 +9,17 @@ interface TeacherAvailabilityDialogProps {
 }
 
 export function TeacherAvailabilityDialog({ professor, onClose }: TeacherAvailabilityDialogProps) {
-  const dialogRef = useRef<HTMLDialogElement>(null)
-
-  useEffect(() => {
-    const dialog = dialogRef.current
-    if (dialog && !dialog.open) {
-      dialog.showModal()
-    }
-  }, [])
-
-  const close = () => {
-    dialogRef.current?.close()
-    onClose()
-  }
+  const [dirty, setDirty] = useState(false)
 
   return (
-    <dialog
-      ref={dialogRef}
-      onCancel={(e) => {
-        e.preventDefault()
-        close()
-      }}
-      onClick={(e) => e.target === e.currentTarget && close()}
-      aria-labelledby="availability-dialog-title"
-      className="m-auto w-[min(740px,calc(100%-2rem))] card p-0 text-ink"
+    <Sheet
+      width="xl"
+      dirty={dirty}
+      onClose={onClose}
+      title={`Disponibilidade de ${professor.nome}`}
+      description="Tudo começa livre. Marque os horários em que o professor não pode dar aula e, se quiser, os que ele prefere: o gerador tenta usá-los primeiro."
     >
-      <div className="max-h-[90vh] overflow-y-auto p-6">
-        <div className="mb-4 flex items-start justify-between gap-4">
-          <div>
-            <h2 id="availability-dialog-title" className="text-[17px] font-semibold">
-              Horários de Disponibilidade — {professor.nome}
-            </h2>
-            <p className="mt-1 text-[13px] text-muted">
-              Todos os horários começam disponíveis. Marque os indisponíveis (o gerador não aloca aulas) e os
-              preferenciais (o gerador tenta usar primeiro).
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={close}
-            aria-label="Fechar"
-            className="rounded-lg p-1 text-sm font-semibold text-muted hover:bg-paper hover:text-ink"
-          >
-            ✕
-          </button>
-        </div>
-
-        <ProfessorAvailabilityEditor
-          professor={professor}
-          onSaved={() => setTimeout(close, 400)}
-          actions={
-            <Button variant="secondary" onClick={close}>
-              Cancelar
-            </Button>
-          }
-        />
-      </div>
-    </dialog>
+      <ProfessorAvailabilityEditor professor={professor} onSaved={onClose} onDirty={() => setDirty(true)} />
+    </Sheet>
   )
 }

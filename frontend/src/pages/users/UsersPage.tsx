@@ -39,11 +39,11 @@ export function UsersPage() {
     <>
       <TabHeader
         title="Usuários"
-        description="Quem acessa o GradeCerta. Todos têm o mesmo acesso; ninguém desativa ou exclui a própria conta."
+        description="Quem acessa o Grade Certa. Todos têm o mesmo acesso; ninguém desativa ou exclui a própria conta."
       />
 
       <div className="grid items-start gap-5 lg:grid-cols-[1fr_360px]">
-        <div className="overflow-x-auto card">
+        <div className="relative overflow-x-auto card">
           {error && (
             <p role="alert" className="border-b border-line px-4 py-2.5 text-[13px] text-danger">
               {error}

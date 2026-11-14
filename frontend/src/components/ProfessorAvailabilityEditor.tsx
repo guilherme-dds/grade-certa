@@ -1,37 +1,38 @@
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  getDisponibilidadeProfessor,
-  saveDisponibilidadeProfessor,
-  type ProfessorBackend,
-} from '@/api/professores'
+import { getDisponibilidadeProfessor, saveDisponibilidadeProfessor, type ProfessorBackend } from '@/api/professores'
 import { Button } from '@/components/ui/Button'
+import { SheetBody, SheetFooter, useSheetClose } from '@/components/ui/Sheet'
 import { getApiErrorMessage } from '@/lib/apiError'
+import { itemsToSlots, slotsToItems, type AvailabilitySlots } from '@/lib/availability'
 import { niveisEnsino, type NivelEnsino } from '@/lib/schedule'
 import { useHorarios } from '@/schedule/useHorarios'
-import { itemsToSlots, slotsToItems, type AvailabilitySlots } from '@/lib/availability'
 import { AvailabilityGrid } from './AvailabilityGrid'
 
 interface ProfessorAvailabilityEditorProps {
   professor: ProfessorBackend
   onSaved?: () => void
-  /** Botões extras ao lado de "Salvar" (ex.: Cancelar do modal) */
-  actions?: ReactNode
+  /** Avisa o painel quando há alterações não salvas */
+  onDirty?: () => void
 }
 
-/** Carrega, edita e salva no core-service a disponibilidade de um professor. */
-export function ProfessorAvailabilityEditor({ professor, onSaved, actions }: ProfessorAvailabilityEditorProps) {
+/** Carrega, edita e salva a disponibilidade de um professor. Feito para o corpo de um Sheet. */
+export function ProfessorAvailabilityEditor({ professor, onSaved, onDirty }: ProfessorAvailabilityEditorProps) {
   const horariosQuery = useHorarios()
   const disponibilidadeQuery = useQuery({
     queryKey: ['disponibilidade', professor.id],
     queryFn: () => getDisponibilidadeProfessor(professor.id!),
   })
 
-  if (horariosQuery.isLoading || disponibilidadeQuery.isLoading) {
-    return <p className="py-8 text-center text-sm text-muted">Carregando disponibilidade...</p>
-  }
-  if (!horariosQuery.data || !disponibilidadeQuery.data) {
-    return <p className="py-8 text-center text-sm text-danger">Não foi possível carregar a disponibilidade.</p>
+  if (horariosQuery.isLoading || disponibilidadeQuery.isLoading || !horariosQuery.data || !disponibilidadeQuery.data) {
+    const failed = !horariosQuery.isLoading && !disponibilidadeQuery.isLoading
+    return (
+      <SheetBody>
+        <p className={failed ? 'py-8 text-center text-sm text-danger' : 'py-8 text-center text-sm text-muted'}>
+          {failed ? 'Não foi possível carregar a disponibilidade.' : 'Carregando disponibilidade…'}
+        </p>
+      </SheetBody>
+    )
   }
 
   const niveis = (professor.niveis_ensino?.length ? professor.niveis_ensino : ['Anos Finais']).filter(
@@ -46,7 +47,7 @@ export function ProfessorAvailabilityEditor({ professor, onSaved, actions }: Pro
       initial={itemsToSlots(disponibilidadeQuery.data, niveis, horariosQuery.data)}
       horarios={horariosQuery.data}
       onSaved={onSaved}
-      actions={actions}
+      onDirty={onDirty}
     />
   )
 }
@@ -57,7 +58,7 @@ function EditorForm({
   initial,
   horarios,
   onSaved,
-  actions,
+  onDirty,
 }: Omit<ProfessorAvailabilityEditorProps, 'professor'> & {
   professor: ProfessorBackend
   niveis: NivelEnsino[]
@@ -65,24 +66,24 @@ function EditorForm({
   horarios: NonNullable<ReturnType<typeof useHorarios>['data']>
 }) {
   const queryClient = useQueryClient()
+  const close = useSheetClose()
   const [slots, setSlots] = useState(initial)
-  const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
   const handleSave = async () => {
     try {
       setIsSaving(true)
-      setStatus(null)
+      setError(null)
       await saveDisponibilidadeProfessor(professor.id!, slotsToItems(slots))
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['disponibilidade', professor.id] }),
         queryClient.invalidateQueries({ queryKey: ['professores'] }),
       ])
-      setStatus({ ok: true, text: '✓ Disponibilidade salva.' })
       onSaved?.()
     } catch (err) {
       console.error(err)
-      setStatus({ ok: false, text: getApiErrorMessage(err, 'Erro ao salvar disponibilidade. Tente novamente.') })
+      setError(getApiErrorMessage(err, 'Não foi possível salvar a disponibilidade. Tente novamente.'))
     } finally {
       setIsSaving(false)
     }
@@ -90,28 +91,36 @@ function EditorForm({
 
   return (
     <>
-      <AvailabilityGrid
-        niveis={niveis}
-        horarios={horarios}
-        slots={slots}
-        onChange={(next) => {
-          setSlots(next)
-          setStatus(null)
-        }}
-      />
-
-      {status && (
-        <p className={status.ok ? 'mt-3 text-xs font-semibold text-primary' : 'mt-3 text-xs text-danger'}>
-          {status.text}
-        </p>
-      )}
-
-      <div className="mt-5 flex justify-end gap-2">
-        {actions}
-        <Button onClick={handleSave} disabled={isSaving}>
-          {isSaving ? 'Salvando...' : 'Salvar disponibilidade'}
+      <SheetBody>
+        <AvailabilityGrid
+          niveis={niveis}
+          horarios={horarios}
+          slots={slots}
+          onChange={(update) => {
+            setSlots(update)
+            setError(null)
+            onDirty?.()
+          }}
+        />
+      </SheetBody>
+      <SheetFooter
+        start={
+          error ? (
+            <span role="alert" className="font-medium text-danger">
+              {error}
+            </span>
+          ) : (
+            'Até salvar, nada muda para o gerador.'
+          )
+        }
+      >
+        <Button variant="secondary" onClick={close} disabled={isSaving}>
+          Cancelar
         </Button>
-      </div>
+        <Button onClick={handleSave} disabled={isSaving}>
+          {isSaving ? 'Salvando…' : 'Salvar disponibilidade'}
+        </Button>
+      </SheetFooter>
     </>
   )
 }

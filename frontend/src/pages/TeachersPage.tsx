@@ -1,13 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { FormField } from '@/components/FormField'
-import { SelectField } from '@/components/SelectField'
 import { Button } from '@/components/ui/Button'
 import { DataTable } from '@/components/ui/DataTable'
-import { SectionHeader } from '@/components/ui/PageHeader'
+import { CompactSelect, QuickFilters, SearchInput, Toolbar } from '@/components/ui/FilterBar'
+import { RowMenu } from '@/components/ui/RowMenu'
 import { TabHeader } from '@/layouts/SectionLayout'
-import { StatCard, StatGrid } from '@/components/ui/StatCard'
+import { cn } from '@/lib/cn'
 import {
   getProfessores,
   createProfessor,
@@ -16,27 +15,30 @@ import {
   type ProfessorBackend,
   type NivelEnsinoType,
 } from '@/api/professores'
-import {
-  getDisciplinas,
-  createDisciplina,
-  type DisciplinaBackend,
-} from '@/api/disciplinas'
+import { getDisciplinas, createDisciplina, type DisciplinaBackend } from '@/api/disciplinas'
 import { getJornadaPadrao, type Jornada } from '@/api/configuracoes'
-import { getTurmas } from '@/api/turmas'
-import { formatDateTime } from '@/lib/schedule'
+import { getTurmas, type TurmaBackend } from '@/api/turmas'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { atribuirProfessor, descreverVagas, vagasParaProfessor } from '@/lib/matrizVagas'
+import { formatDateTime, niveisEnsino } from '@/lib/schedule'
 import { type NivelEnsino, type Teacher, type TeacherRow } from './teachers/types'
 import { DeleteTeacherDialog } from './teachers/DeleteTeacherDialog'
 import { resumoJornada } from './teachers/jornada'
-import { JornadaPadraoDialog } from './teachers/JornadaPadraoDialog'
-import { SubjectDialog } from './teachers/SubjectDialog'
 import { TeacherAvailabilityDialog } from './teachers/TeacherAvailabilityDialog'
 import { TeacherDialog } from './teachers/TeacherDialog'
 
 // Até a resposta do core-service chegar (mesmos valores do padrão do backend)
-const JORNADA_INICIAL: Jornada = { almoco_inicio: '11:30', almoco_fim: '14:30', almoco_minutos: 40, max_aulas_dia: 8, max_horas_dia: 9 }
+const JORNADA_INICIAL: Jornada = {
+  almoco_inicio: '11:30',
+  almoco_fim: '14:30',
+  almoco_minutos: 40,
+  max_aulas_dia: 8,
+  max_horas_dia: 9,
+}
 
 export function TeachersPage() {
   const queryClient = useQueryClient()
+  const confirm = useConfirm()
 
   // Filtros locais
   const [search, setSearch] = useState('')
@@ -58,8 +60,6 @@ export function TeachersPage() {
 
   // Modais
   const [isTeacherDialogOpen, setIsTeacherDialogOpen] = useState(false)
-  const [isSubjectDialogOpen, setIsSubjectDialogOpen] = useState(false)
-  const [isJornadaDialogOpen, setIsJornadaDialogOpen] = useState(false)
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null)
   const [deletingTeacher, setDeletingTeacher] = useState<Teacher | null>(null)
   const [availabilityTeacher, setAvailabilityTeacher] = useState<TeacherRow | null>(null)
@@ -120,9 +120,7 @@ export function TeachersPage() {
   const teachers: TeacherRow[] = useMemo(() => {
     const backendList = professoresQuery.data ?? []
     return backendList.map((p) => {
-      const subjectNames = (p.disciplinas ?? []).map(
-        (id) => disciplineNameById.get(id) ?? `Disciplina ${id}`,
-      )
+      const subjectNames = (p.disciplinas ?? []).map((id) => disciplineNameById.get(id) ?? `Disciplina ${id}`)
 
       return {
         id: String(p.id),
@@ -148,8 +146,7 @@ export function TeachersPage() {
   })
 
   const updateProfessorMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: number; payload: ProfessorBackend }) =>
-      updateProfessor(id, payload),
+    mutationFn: ({ id, payload }: { id: number; payload: ProfessorBackend }) => updateProfessor(id, payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['professores'] }),
   })
 
@@ -163,15 +160,15 @@ export function TeachersPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['disciplinas'] }),
   })
 
-  // 5. Estatísticas
-  const stats = useMemo(() => {
-    const total = teachers.length
-    const active = teachers.filter((t) => t.status === 'ativo').length
-    const totalHours = teachers.reduce((acc, t) => acc + t.currentWeeklyHours, 0)
-    const avgHours = active > 0 ? (totalHours / active).toFixed(1) : '0'
-
-    return { total, active, totalHours, avgHours }
-  }, [teachers])
+  // 5. Contagens dos filtros rápidos
+  const semDisponibilidade = (t: TeacherRow) => t.status === 'ativo' && !t.raw.disponibilidade_atualizada_em
+  const acimaDaCarga = (t: TeacherRow) => t.status === 'ativo' && t.currentWeeklyHours > t.maxWeeklyHours
+  const counts = {
+    todos: teachers.length,
+    semDisponibilidade: teachers.filter(semDisponibilidade).length,
+    acimaDaCarga: teachers.filter(acimaDaCarga).length,
+    inativos: teachers.filter((t) => t.status === 'inativo').length,
+  }
 
   // 6. Filtragem da tabela
   const filteredTeachers = useMemo(() => {
@@ -182,24 +179,21 @@ export function TeachersPage() {
         teacher.subjects.some((s) => s.toLowerCase().includes(search.toLowerCase()))
 
       const matchesStatus =
-        statusFilter === 'todos'
-          ? true
-          : statusFilter === 'ativos'
-            ? teacher.status === 'ativo'
-            : statusFilter === 'sem disponibilidade'
-              ? teacher.status === 'ativo' && !teacher.raw.disponibilidade_atualizada_em
-              : teacher.status === 'inativo'
+        statusFilter === 'sem disponibilidade'
+          ? semDisponibilidade(teacher)
+          : statusFilter === 'acima da carga'
+            ? acimaDaCarga(teacher)
+            : statusFilter === 'inativos'
+              ? teacher.status === 'inativo'
+              : true
 
-      const matchesSubject =
-        subjectFilter === 'todas' ? true : teacher.subjects.includes(subjectFilter)
+      const matchesSubject = subjectFilter === 'todas' ? true : teacher.subjects.includes(subjectFilter)
 
-      const matchesNivel =
-        nivelFilter === 'todos'
-          ? true
-          : teacher.niveisEnsino.includes(nivelFilter as NivelEnsino)
+      const matchesNivel = nivelFilter === 'todos' ? true : teacher.niveisEnsino.includes(nivelFilter as NivelEnsino)
 
       return matchesSearch && matchesStatus && matchesSubject && matchesNivel
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teachers, search, statusFilter, subjectFilter, nivelFilter])
 
   // 7. Handlers assíncronos integrados com o core-service
@@ -212,9 +206,7 @@ export function TeachersPage() {
     }
   }
 
-  const handleSaveTeacher = async (
-    teacherData: Omit<Teacher, 'id' | 'currentWeeklyHours'> & { id?: string },
-  ) => {
+  const handleSaveTeacher = async (teacherData: Omit<Teacher, 'id' | 'currentWeeklyHours'> & { id?: string }) => {
     const disciplineIds: number[] = []
     const currentDisciplinesData = queryClient.getQueryData<DisciplinaBackend[]>(['disciplinas']) ?? []
     const currentMap = new Map(currentDisciplinesData.map((d) => [d.nome.toLowerCase(), d.id!]))
@@ -240,14 +232,32 @@ export function TeachersPage() {
       jornada: teacherData.jornada,
     }
 
-    if (teacherData.id) {
-      await updateProfessorMutation.mutateAsync({
-        id: Number(teacherData.id),
-        payload,
-      })
-    } else {
-      await createProfessorMutation.mutateAsync(payload)
-    }
+    const salvo = teacherData.id
+      ? await updateProfessorMutation.mutateAsync({ id: Number(teacherData.id), payload })
+      : await createProfessorMutation.mutateAsync(payload)
+
+    // Sem esperar: o painel fecha e a pergunta aparece em seguida, sobre a lista
+    if (salvo.id != null && payload.ativo)
+      void oferecerVagas(salvo.id, salvo.nome, teacherData.subjects, payload.niveis_ensino)
+  }
+
+  /**
+   * Ter a disciplina no cadastro não coloca o professor nas turmas: quem dá cada aula é definido
+   * na matriz da turma. Se houver aula dessas disciplinas sem professor, oferece preencher.
+   */
+  const oferecerVagas = async (id: number, nome: string, disciplinas: string[], niveis: string[] = []) => {
+    const turmasAtuais = queryClient.getQueryData<TurmaBackend[]>(['turmas']) ?? []
+    const vagas = vagasParaProfessor(turmasAtuais, disciplinas, niveis)
+    if (vagas.length === 0) return
+    const ok = await confirm({
+      title: `Colocar ${nome} nas turmas?`,
+      description: `${descreverVagas(vagas)} ${vagas.length === 1 ? 'está' : 'estão'} sem professor na matriz curricular. Sem professor, essas aulas ficam fora da grade.`,
+      confirmLabel: vagas.length === 1 ? 'Atribuir' : `Atribuir nas ${vagas.length}`,
+      cancelLabel: 'Agora não',
+    })
+    if (!ok) return
+    await atribuirProfessor(vagas, id)
+    await queryClient.invalidateQueries({ queryKey: ['turmas'] })
   }
 
   const handleDeleteTeacher = async (id: string) => {
@@ -268,278 +278,229 @@ export function TeachersPage() {
 
   const isLoading = professoresQuery.isLoading || disciplinasQuery.isLoading || turmasQuery.isLoading
 
+  const hasFilters = search || statusFilter !== 'todos' || subjectFilter !== 'todas' || nivelFilter !== 'todos'
+  const clearFilters = () => {
+    setSearch('')
+    setStatusFilter('todos')
+    setSubjectFilter('todas')
+    setNivelFilter('todos')
+  }
+  const openNew = () => {
+    setEditingTeacher(null)
+    setIsTeacherDialogOpen(true)
+  }
+
   return (
     <>
       <TabHeader
         title="Professores"
-        description="Quem dá aula, em quais disciplinas e níveis, e quando está disponível."
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-
-              onClick={() => setIsJornadaDialogOpen(true)}
-              title={resumoJornada(jornadaPadrao)}
-            >
-              Jornada padrão
-            </Button>
-            <Button
-              variant="secondary"
-
-              onClick={() => setIsSubjectDialogOpen(true)}
-            >
-              Nova disciplina
-            </Button>
-            <Button
-
-              onClick={() => {
-                setEditingTeacher(null)
-                setIsTeacherDialogOpen(true)
-              }}
-            >
-              Novo professor
-            </Button>
-          </div>
-        }
+        description="Quem dá aula, em quais disciplinas e níveis, e quando cada um não pode dar aula."
+        actions={<Button onClick={openNew}>Novo professor</Button>}
       />
 
-      {/* Cards de Métricas */}
-      <section className="mb-7">
-        <StatGrid>
-          <StatCard label="Total de professores" value={stats.total} suffix="cadastrados" />
-          <StatCard label="Docentes ativos" value={stats.active} tone="success" suffix={`de ${stats.total}`} />
-          <StatCard label="Aulas atribuídas" value={stats.totalHours} suffix="nas matrizes" />
-          <StatCard label="Média por docente ativo" value={stats.avgHours} suffix="aulas / semana" />
-        </StatGrid>
-      </section>
+      <QuickFilters
+        label="Mostrar professores"
+        value={statusFilter}
+        onChange={setStatusFilter}
+        filters={[
+          { value: 'todos', label: 'Todos', count: counts.todos },
+          {
+            value: 'sem disponibilidade',
+            label: 'Sem disponibilidade',
+            count: counts.semDisponibilidade,
+            attention: true,
+          },
+          { value: 'acima da carga', label: 'Acima da carga', count: counts.acimaDaCarga, attention: true },
+          { value: 'inativos', label: 'Inativos', count: counts.inativos },
+        ]}
+      />
 
-      {/* Tabela e Filtros */}
-      <section>
-        <SectionHeader title={`Professores (${filteredTeachers.length})`} />
-
-        {/* Barra de Filtros */}
-        <div className="mb-4 flex flex-wrap items-end gap-3 card p-3.5">
-          <div className="min-w-[200px] flex-1">
-            <FormField
-              label="Buscar professor"
-              placeholder="Nome, e-mail ou disciplina..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-
-          <div className="w-36">
-            <SelectField
-              label="Status"
-              options={['todos', 'ativos', 'inativos', 'sem disponibilidade'] as const}
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            />
-          </div>
-
-          <div className="w-40">
-            <SelectField
-              label="Nível de Ensino"
-              options={['todos', 'Anos Iniciais', 'Anos Finais', 'Ensino Médio'] as const}
-              value={nivelFilter}
-              onChange={(e) => setNivelFilter(e.target.value)}
-            />
-          </div>
-
-          <div className="w-44">
-            <SelectField
-              label="Disciplina"
-              options={['todas', ...disciplinesList] as const}
-              value={subjectFilter}
-              onChange={(e) => setSubjectFilter(e.target.value)}
-            />
-          </div>
-
-          {(search || statusFilter !== 'todos' || subjectFilter !== 'todas' || nivelFilter !== 'todos') && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setSearch('')
-                setStatusFilter('todos')
-                setSubjectFilter('todas')
-                setNivelFilter('todos')
-              }}
-              className="h-[42px]"
+      <div className="mt-3">
+        <Toolbar>
+          <SearchInput
+            label="Buscar professor"
+            placeholder="Buscar por nome, e-mail ou disciplina"
+            value={search}
+            onChange={setSearch}
+          />
+          <CompactSelect
+            label="Nível"
+            value={nivelFilter}
+            onChange={setNivelFilter}
+            options={[{ value: 'todos', label: 'Todos' }, ...niveisEnsino.map((n) => ({ value: n, label: n }))]}
+          />
+          <CompactSelect
+            label="Disciplina"
+            value={subjectFilter}
+            onChange={setSubjectFilter}
+            options={[{ value: 'todas', label: 'Todas' }, ...disciplinesList.map((d) => ({ value: d, label: d }))]}
+          />
+          {hasFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="h-10 rounded-full px-3 text-[13.5px] font-semibold text-muted hover:bg-white hover:text-ink"
             >
-              Limpar filtros
-            </Button>
+              Limpar
+            </button>
+          )}
+        </Toolbar>
+      </div>
+
+      {isLoading ? (
+        <p className="my-6 text-center text-sm text-muted">Carregando professores…</p>
+      ) : filteredTeachers.length === 0 ? (
+        <div className="rounded-[20px] border-2 border-dashed border-line bg-white/60 p-10 text-center">
+          {teachers.length === 0 ? (
+            <>
+              <p className="font-semibold">Nenhum professor cadastrado</p>
+              <p className="mt-1 text-[14px] text-muted">Cadastre os professores com as disciplinas que cada um dá.</p>
+              <Button onClick={openNew} className="mt-4">
+                Cadastrar primeiro professor
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="font-semibold">Nenhum professor com esses filtros</p>
+              <Button variant="secondary" onClick={clearFilters} className="mt-4">
+                Limpar filtros
+              </Button>
+            </>
           )}
         </div>
-
-        {/* Indicador de Carregamento */}
-        {isLoading && (
-          <div className="my-6 text-center text-sm text-muted">
-            Carregando professores do core-service…
-          </div>
-        )}
-
-        {/* Tabela de Professores */}
-        {!isLoading && (
-          <DataTable
-            caption="Lista de professores"
-            rows={filteredTeachers}
-            rowKey={(row) => row.id}
-            columns={[
-              {
-                header: 'Professor',
-                cell: (row) => (
-                  <div>
-                    <p className="font-semibold text-ink">{row.name}</p>
-                    <p className="text-xs text-muted">{row.email}</p>
-                    <p className="text-[11px] text-muted">
-                      {row.raw.disponibilidade_atualizada_em
-                        ? `Disponibilidade atualizada em ${formatDateTime(row.raw.disponibilidade_atualizada_em)}`
-                        : 'Disponibilidade não informada'}
-                    </p>
-                    <p className="text-[11px] text-muted">
-                      {row.jornada ? `Jornada personalizada: ${resumoJornada(row.jornada)}` : 'Jornada padrão da escola'}
-                    </p>
-                  </div>
-                ),
-              },
-              {
-                header: 'Níveis de Ensino',
-                cell: (row) => (
-                  <div className="flex flex-wrap gap-1">
-                    {(row.niveisEnsino ?? ['Anos Finais']).map((n) => (
-                      <span
-                        key={n}
-                        className="inline-block rounded-lg border border-line-soft bg-paper px-2 py-0.5 text-xs font-semibold text-ink whitespace-nowrap"
-                      >
-                        {n}
+      ) : (
+        <DataTable
+          caption="Professores"
+          rows={filteredTeachers}
+          rowKey={(row) => row.id}
+          columns={[
+            {
+              header: 'Professor',
+              cell: (row) => (
+                <div className={cn('min-w-[180px]', row.status === 'inativo' && 'opacity-55')}>
+                  <p className="font-semibold">
+                    {row.name}
+                    {row.status === 'inativo' && (
+                      <span className="ml-2 rounded-full bg-paper px-2 py-0.5 text-[11.5px] font-semibold text-muted">
+                        Inativo
                       </span>
-                    ))}
-                  </div>
-                ),
-              },
-              {
-                header: 'Disciplinas',
-                cell: (row) => (
-                  <div className="flex flex-wrap gap-1">
-                    {row.subjects.map((sub) => (
-                      <span
-                        key={sub}
-                        className="rounded-lg border border-primary-soft-line bg-primary-soft/40 px-2 py-0.5 text-xs font-medium text-primary"
-                      >
+                    )}
+                  </p>
+                  <p className="text-[12.5px] text-muted">
+                    {[(row.niveisEnsino ?? []).join(', '), row.email].filter(Boolean).join(' · ')}
+                  </p>
+                  {row.jornada && (
+                    <p
+                      className="mt-1 inline-flex rounded-full bg-lilac-soft px-2 py-0.5 text-[11.5px] font-semibold"
+                      title={resumoJornada(row.jornada)}
+                    >
+                      Jornada própria
+                    </p>
+                  )}
+                </div>
+              ),
+            },
+            {
+              header: 'Disciplinas',
+              cell: (row) => {
+                const shown = row.subjects.slice(0, 3)
+                const rest = row.subjects.length - shown.length
+                return (
+                  <div className="flex max-w-[260px] flex-wrap gap-1" title={row.subjects.join(', ')}>
+                    {shown.map((sub) => (
+                      <span key={sub} className="rounded-full bg-paper px-2.5 py-0.5 text-[12.5px] font-medium">
                         {sub}
                       </span>
                     ))}
+                    {rest > 0 && <span className="px-1 py-0.5 text-[12.5px] font-medium text-muted">+{rest}</span>}
                   </div>
-                ),
+                )
               },
-              {
-                header: 'Carga semanal',
-                cell: (row) => {
-                  const percentage = Math.min(
-                    100,
-                    Math.round((row.currentWeeklyHours / row.maxWeeklyHours) * 100),
-                  )
-                  return (
-                    <div className="w-32">
-                      <div className="flex justify-between text-xs mb-1 font-mono">
-                        <span>{row.currentWeeklyHours} aulas</span>
-                        <span className="text-muted">máx {row.maxWeeklyHours}</span>
-                      </div>
-                      <div className="h-1.5 w-full rounded-full bg-line-soft overflow-hidden">
-                        <div
-                          className={
-                            percentage >= 90
-                              ? 'h-full bg-warning transition-all'
-                              : 'h-full bg-primary transition-all'
-                          }
-                          style={{ width: `${percentage}%` }}
-                        />
-                      </div>
+            },
+            {
+              header: 'Carga semanal',
+              cell: (row) => {
+                const over = row.currentWeeklyHours > row.maxWeeklyHours
+                const pct = Math.min(100, Math.round((row.currentWeeklyHours / Math.max(1, row.maxWeeklyHours)) * 100))
+                return (
+                  <div className="w-36">
+                    <p className="mb-1 text-[13px] tabular-nums">
+                      <span className={cn('font-semibold', over && 'text-danger')}>{row.currentWeeklyHours}</span>
+                      <span className="text-muted"> de {row.maxWeeklyHours} aulas</span>
+                    </p>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-line-soft">
+                      <div
+                        className={cn(
+                          'h-full rounded-full',
+                          over ? 'bg-danger' : pct >= 90 ? 'bg-warning' : 'bg-accent',
+                        )}
+                        style={{ width: `${pct}%` }}
+                      />
                     </div>
-                  )
-                },
+                  </div>
+                )
               },
-              {
-                header: 'Status',
-                cell: (row) => (
+            },
+            {
+              header: 'Disponibilidade',
+              cell: (row) =>
+                row.raw.disponibilidade_atualizada_em ? (
                   <span
-                    className={
-                      row.status === 'ativo'
-                        ? 'inline-flex items-center gap-1 rounded-full border border-primary-soft-line bg-primary-soft px-2.5 py-0.5 text-xs font-medium text-primary'
-                        : 'inline-flex items-center gap-1 rounded-full border border-line-soft bg-paper px-2.5 py-0.5 text-xs font-medium text-muted'
-                    }
+                    className="inline-flex rounded-full bg-primary-soft px-2.5 py-1 text-[12.5px] font-semibold whitespace-nowrap text-primary"
+                    title={`Registrada em ${formatDateTime(row.raw.disponibilidade_atualizada_em)}`}
                   >
-                    <span
-                      className={
-                        row.status === 'ativo'
-                          ? 'h-1.5 w-1.5 rounded-full bg-primary'
-                          : 'h-1.5 w-1.5 rounded-full bg-muted'
-                      }
-                    />
-                    {row.status === 'ativo' ? 'Ativo' : 'Inativo'}
+                    Registrada
+                  </span>
+                ) : (
+                  <span
+                    className="inline-flex rounded-full bg-warning-soft px-2.5 py-1 text-[12.5px] font-semibold whitespace-nowrap text-warning"
+                    title="Sem registro, o gerador considera a semana toda livre"
+                  >
+                    Não registrada
                   </span>
                 ),
-              },
-              {
-                header: 'Ações',
-                cell: (row) => (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => setAvailabilityTeacher(row)}
-                      title="Gerenciar horários de disponibilidade"
-                    >
-                      Horários
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        setEditingTeacher(row)
-                        setIsTeacherDialogOpen(true)
-                      }}
-                    >
-                      Editar
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => handleToggleStatus(row)}
-                      title={row.status === 'ativo' ? 'Desativar professor' : 'Ativar professor'}
-                    >
-                      {row.status === 'ativo' ? 'Desativar' : 'Ativar'}
-                    </Button>
-                    <button
-                      type="button"
-                      onClick={() => setDeletingTeacher(row)}
-                      className="p-1.5 text-muted hover:text-danger transition-colors text-xs"
-                      title="Excluir professor"
-                    >
-                      Excluir
-                    </button>
-                  </div>
-                ),
-              },
-            ]}
-          />
-        )}
-
-        {!isLoading && filteredTeachers.length === 0 && (
-          <div className="mt-4 rounded-[20px] border-2 border-dashed border-line bg-white/60 p-8 text-center">
-            <p className="text-sm font-medium text-ink">Nenhum professor encontrado</p>
-            <p className="mt-1 text-xs text-muted">Tente ajustar os filtros ou cadastrar um novo professor.</p>
-          </div>
-        )}
-      </section>
+            },
+            {
+              header: 'Ações',
+              className: 'text-right',
+              cell: (row) => (
+                <div className="flex items-center justify-end gap-1">
+                  <Button
+                    variant={
+                      row.raw.disponibilidade_atualizada_em || row.status === 'inativo' ? 'secondary' : 'primary'
+                    }
+                    size="sm"
+                    onClick={() => setAvailabilityTeacher(row)}
+                  >
+                    Disponibilidade
+                  </Button>
+                  <RowMenu
+                    label={`Mais ações para ${row.name}`}
+                    items={[
+                      {
+                        label: 'Editar cadastro',
+                        onSelect: () => {
+                          setEditingTeacher(row)
+                          setIsTeacherDialogOpen(true)
+                        },
+                      },
+                      {
+                        label: row.status === 'ativo' ? 'Desativar' : 'Reativar',
+                        onSelect: () => handleToggleStatus(row),
+                      },
+                      { label: 'Excluir', danger: true, onSelect: () => setDeletingTeacher(row) },
+                    ]}
+                  />
+                </div>
+              ),
+            },
+          ]}
+        />
+      )}
 
       {/* Modal de Horários de Disponibilidade (salvos no core-service) */}
       {availabilityTeacher && (
-        <TeacherAvailabilityDialog
-          professor={availabilityTeacher.raw}
-          onClose={() => setAvailabilityTeacher(null)}
-        />
+        <TeacherAvailabilityDialog professor={availabilityTeacher.raw} onClose={() => setAvailabilityTeacher(null)} />
       )}
 
       {/* Modal de Criar / Editar Professor */}
@@ -554,20 +515,6 @@ export function TeachersPage() {
             setEditingTeacher(null)
           }}
           onSave={handleSaveTeacher}
-        />
-      )}
-
-      {/* Modal da Jornada Padrão da Escola */}
-      {isJornadaDialogOpen && (
-        <JornadaPadraoDialog jornada={jornadaPadrao} onClose={() => setIsJornadaDialogOpen(false)} />
-      )}
-
-      {/* Modal de Criar Nova Disciplina (Avulso) */}
-      {isSubjectDialogOpen && (
-        <SubjectDialog
-          availableSubjects={disciplinesList}
-          onAddSubject={handleAddSubject}
-          onClose={() => setIsSubjectDialogOpen(false)}
         />
       )}
 

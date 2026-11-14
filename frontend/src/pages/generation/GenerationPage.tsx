@@ -1,9 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { gerarGrade, getHistoricoGrades, getStatusGrade, type GradeResumo, type StatusGrade } from '@/api/grades'
+import { gerarGrade, getHistoricoGrades, getStatusGrade, type GradeResumo } from '@/api/grades'
 import { getProfessores, type ProfessorBackend } from '@/api/professores'
-import { getTurmas, professoresDoItem, type TurmaBackend } from '@/api/turmas'
+import { getTurmas, type TurmaBackend } from '@/api/turmas'
 import { GenerationWarnings } from '@/components/GenerationWarnings'
 import { Button } from '@/components/ui/Button'
 import { buttonStyles } from '@/components/ui/buttonStyles'
@@ -13,6 +13,7 @@ import { getApiErrorMessage } from '@/lib/apiError'
 import { cn } from '@/lib/cn'
 import { formatDateTime } from '@/lib/schedule'
 import { useSchedule } from '@/schedule/useSchedule'
+import { isFalha, STATUS_LABEL } from './generationShared'
 
 /** Mesmo padrão do backend: "2026.2" para o 2º semestre de 2026 */
 function semestreAtual() {
@@ -29,28 +30,7 @@ const TEMPOS_LIMITE = [
   { value: '900', label: '15 minutos' },
 ]
 
-const STATUS_LABEL: Record<string, string> = {
-  gerando: 'Gerando',
-  sucesso: 'Concluída',
-  inviavel: 'Inviável',
-  tempo_esgotado: 'Tempo esgotado',
-  erro: 'Erro',
-}
-
-// O que o gerador leva em conta, em linguagem de coordenação
-const REGRAS = [
-  'Aulas semanais de cada disciplina, conforme a matriz da turma',
-  'Disponibilidade de cada professor e horários bloqueados das salas',
-  'Aulas dobradas e aulas fixadas em dia ou horário',
-  'Sem janelas na agenda dos professores, sempre que possível',
-  'Almoço, limite de aulas e de horas por dia (jornada)',
-  '4 horários de planejamento por professor',
-]
-
-const isFalha = (status: StatusGrade) => status !== 'gerando' && status !== 'sucesso'
-
 export function GenerationPage() {
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { refreshSchedule } = useSchedule()
 
@@ -70,11 +50,10 @@ export function GenerationPage() {
     queryKey: ['professores'],
     queryFn: () => getProfessores(),
   })
-  const {
-    data: historico = [],
-    isLoading: isLoadingHistorico,
-    refetch: refetchHistorico,
-  } = useQuery<GradeResumo[]>({ queryKey: ['historicoGrades'], queryFn: () => getHistoricoGrades() })
+  const { data: historico = [], isLoading: isLoadingHistorico } = useQuery<GradeResumo[]>({
+    queryKey: ['historicoGrades'],
+    queryFn: () => getHistoricoGrades(),
+  })
 
   // Ao abrir a página com uma geração rodando (ex.: depois de recarregar), volta a acompanhá-la
   const emAndamento = historico.find((g) => g.status === 'gerando')
@@ -117,7 +96,6 @@ export function GenerationPage() {
   )
   const ativos = professores.filter((p) => p.ativo)
   const semDisponibilidade = ativos.filter((p) => !p.disponibilidade_atualizada_em)
-  const nomePorId = new Map(professores.flatMap((p) => (p.id ? [[p.id, p.nome] as const] : [])))
 
   // Aulas que a escola prendeu num dia/horário (ex.: laboratório), para conferir antes de gerar
   const aulasFixas = turmas.flatMap((t) =>
@@ -150,16 +128,7 @@ export function GenerationPage() {
 
   return (
     <>
-      <header className="mb-6">
-        <p className="mb-1 text-[13px] font-medium text-muted">Passo 2 de 3</p>
-        <h1 className="font-display text-[28px] leading-tight font-bold tracking-[-0.02em] md:text-[32px]">Gerar grade</h1>
-        <p className="mt-1.5 max-w-2xl text-[14px] leading-relaxed text-muted">
-          O gerador distribui todas as aulas da semana sem choque de horário. Confira os cadastros e inicie; você pode
-          sair desta tela enquanto ele trabalha.
-        </p>
-      </header>
-
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
         {/* Coluna esquerda: o que será usado */}
         <div className="space-y-4">
           <section className="card p-5 md:p-6" aria-labelledby="checagem">
@@ -178,19 +147,25 @@ export function GenerationPage() {
                       : 'Todas as turmas entram na grade.'
                 }
                 value={`${turmasValidas.length}/${turmas.length}`}
-                action={turmasSemMatriz.length > 0 || turmas.length === 0 ? { to: paths.turmas, label: 'Montar matrizes' } : undefined}
+                action={
+                  turmasSemMatriz.length > 0 || turmas.length === 0
+                    ? { to: paths.turmas, label: 'Montar matrizes' }
+                    : undefined
+                }
               />
               <CheckItem
                 state={loadingChecks ? 'loading' : semDisponibilidade.length === 0 ? 'ok' : 'warn'}
-                title="Professores com disponibilidade"
+                title="Disponibilidade registrada"
                 detail={
                   semDisponibilidade.length
-                    ? `${semDisponibilidade.length} ainda não ${semDisponibilidade.length === 1 ? 'informou' : 'informaram'}. Sem isso, o gerador considera a semana toda livre.`
-                    : 'Todos os professores ativos informaram seus horários.'
+                    ? `${semDisponibilidade.length} sem disponibilidade registrada. Até você registrar, o gerador considera a semana toda livre para ${semDisponibilidade.length === 1 ? 'ele' : 'eles'}.`
+                    : 'Todos os professores ativos têm disponibilidade registrada.'
                 }
                 value={`${ativos.length - semDisponibilidade.length}/${ativos.length}`}
                 action={
-                  semDisponibilidade.length ? { to: paths.professoresSemDisponibilidade, label: 'Ver quem falta' } : undefined
+                  semDisponibilidade.length
+                    ? { to: paths.professoresSemDisponibilidade, label: 'Registrar disponibilidade' }
+                    : undefined
                 }
               />
               <CheckItem
@@ -208,72 +183,12 @@ export function GenerationPage() {
                     : 'Nenhuma. Para fixar uma aula (ex.: laboratório), use a matriz da turma.'
                 }
                 value={String(aulasFixas.length)}
+                action={aulasFixas.length ? { to: paths.geracaoRegras, label: 'Ver aulas fixadas' } : undefined}
               />
             </ul>
-
-            {aulasFixas.length > 0 && (
-              <details className="group mt-2 rounded-2xl bg-paper">
-                <summary className="flex cursor-pointer list-none items-center justify-between rounded-2xl px-4 py-3 text-[14px] font-semibold">
-                  Ver aulas fixadas
-                  <span className="text-muted transition-transform group-open:rotate-180" aria-hidden="true">
-                    ▾
-                  </span>
-                </summary>
-                <div className="overflow-x-auto px-2 pb-2">
-                  <table className="w-full min-w-[520px] text-left text-[13.5px]">
-                    <thead>
-                      <tr className="text-[12.5px] text-muted">
-                        <th className="px-2 py-2 font-medium">Turma</th>
-                        <th className="px-2 py-2 font-medium">Disciplina</th>
-                        <th className="px-2 py-2 font-medium">Professores</th>
-                        <th className="px-2 py-2 font-medium">Quando</th>
-                        <th className="px-2 py-2"><span className="sr-only">Ações</span></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {aulasFixas.map(({ turma, item }) => (
-                        <tr key={`${turma.id}-${item.disciplina}`} className="border-t border-line">
-                          <td className="px-2 py-2.5 font-semibold">{turma.nome}</td>
-                          <td className="px-2 py-2.5">
-                            {item.disciplina}
-                            {item.extra && <span className="ml-1.5 text-[12px] text-muted">(extra)</span>}
-                          </td>
-                          <td className="px-2 py-2.5 text-muted">
-                            {professoresDoItem(item, nomePorId).join(', ') || 'Sem professor'}
-                          </td>
-                          <td className="px-2 py-2.5">
-                            {item.horarios_fixos!.map((f) => `${f.dia_semana}, ${f.horario ?? 'qualquer horário'}`).join('; ')}
-                          </td>
-                          <td className="px-2 py-2.5 text-right">
-                            <Link to={paths.matrizDaTurma(turma.id!)} className="font-semibold hover:underline">
-                              Editar
-                            </Link>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </details>
-            )}
           </section>
 
-          <details className="card group p-5 md:p-6">
-            <summary className="flex cursor-pointer list-none items-center justify-between font-display text-[16px] font-bold">
-              O que o gerador respeita
-              <span className="text-muted transition-transform group-open:rotate-180" aria-hidden="true">
-                ▾
-              </span>
-            </summary>
-            <ul className="mt-3 grid gap-2 text-[14px] sm:grid-cols-2">
-              {REGRAS.map((r) => (
-                <li key={r} className="flex gap-2">
-                  <Icon name="check" width={16} height={16} className="mt-0.5 shrink-0 text-primary" />
-                  {r}
-                </li>
-              ))}
-            </ul>
-          </details>
+          <UltimaGeracao historico={historico} carregando={isLoadingHistorico} />
         </div>
 
         {/* Coluna direita: gerar e acompanhar */}
@@ -397,7 +312,8 @@ export function GenerationPage() {
                     : 'Não existe grade possível com estes cadastros'}
               </p>
               <p className="mt-1 text-[13.5px]">
-                {detalhes?.mensagem ?? 'A geração foi interrompida (o serviço pode ter sido reiniciado). Tente de novo.'}
+                {detalhes?.mensagem ??
+                  'A geração foi interrompida (o serviço pode ter sido reiniciado). Tente de novo.'}
               </p>
               <p className="mt-3 text-[13px] font-semibold">O que costuma resolver</p>
               <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[13px] text-muted">
@@ -405,91 +321,13 @@ export function GenerationPage() {
                 <li>Conferir se as aulas da turma cabem nos horários do turno.</li>
                 <li>Conferir se a carga máxima dos professores cobre a demanda.</li>
                 <li>Conferir a disponibilidade dos professores nos dias e turnos das aulas.</li>
-                <li>Revisar a jornada (almoço, máximo de aulas e de horas por dia) em Cadastros › Professores.</li>
+                <li>Revisar a jornada (almoço, máximo de aulas e de horas por dia) em Configurações › Escola.</li>
               </ul>
               <GenerationWarnings avisos={detalhes?.avisos} />
             </div>
           )}
         </section>
       </div>
-
-      {/* Histórico */}
-      <section className="card mt-4 p-5 md:p-6">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="font-display text-[18px] font-bold">Histórico de gerações</h2>
-          <button
-            type="button"
-            onClick={() => refetchHistorico()}
-            disabled={isLoadingHistorico}
-            className="rounded-full px-3 py-1.5 text-[13px] font-semibold text-muted hover:bg-paper hover:text-ink"
-          >
-            Atualizar
-          </button>
-        </div>
-
-        {historico.length === 0 ? (
-          <p className="rounded-2xl border-2 border-dashed border-line p-6 text-center text-[14px] text-muted">
-            As grades geradas aparecem aqui.
-          </p>
-        ) : (
-          <div className="-mx-2 overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-[14px]">
-              <thead>
-                <tr className="text-[12.5px] text-muted">
-                  <th className="px-2 pb-2 font-medium">Grade</th>
-                  <th className="px-2 pb-2 font-medium">Semestre</th>
-                  <th className="px-2 pb-2 text-right font-medium">Aulas</th>
-                  <th className="px-2 pb-2 font-medium">Situação</th>
-                  <th className="px-2 pb-2 font-medium">Gerada em</th>
-                  <th className="px-2 pb-2"><span className="sr-only">Ações</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                {historico.map((g) => (
-                  <tr key={g.id} className="border-t border-line-soft">
-                    <td className="px-2 py-3 font-semibold">
-                      {g.nome}
-                      {g.detalhes?.tempo_resolucao_seg != null && (
-                        <span className="ml-2 text-[12px] font-normal text-muted">{g.detalhes.tempo_resolucao_seg} s</span>
-                      )}
-                    </td>
-                    <td className="px-2 py-3 text-muted">{g.ano_semestre ?? '—'}</td>
-                    <td className="px-2 py-3 text-right tabular-nums">{g.total_aulas}</td>
-                    <td className="px-2 py-3">
-                      <span
-                        title={isFalha(g.status) ? g.detalhes?.mensagem : undefined}
-                        className={cn(
-                          'inline-flex rounded-full px-2.5 py-1 text-[12px] font-semibold whitespace-nowrap',
-                          g.status === 'sucesso' && 'bg-primary-soft text-primary',
-                          g.status === 'gerando' && 'bg-warning-soft text-warning',
-                          isFalha(g.status) && 'bg-danger-soft text-danger',
-                        )}
-                      >
-                        {STATUS_LABEL[g.status] ?? g.status}
-                      </span>
-                    </td>
-                    <td className="px-2 py-3 whitespace-nowrap text-muted tabular-nums">{formatDateTime(g.criado_em)}</td>
-                    <td className="px-2 py-3 text-right">
-                      {g.status === 'sucesso' && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            await refreshSchedule(g.id)
-                            navigate(`${paths.grade}?gradeId=${g.id}`)
-                          }}
-                          className="rounded-full bg-ink px-3.5 py-1.5 text-[12.5px] font-semibold text-white hover:bg-ink-soft"
-                        >
-                          Abrir
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
     </>
   )
 }
@@ -533,11 +371,58 @@ function CheckItem({
         </p>
         <p className="mt-0.5 text-[13.5px] leading-relaxed text-muted">{detail}</p>
         {action && (
-          <Link to={action.to} className="mt-1.5 inline-block text-[13.5px] font-semibold text-ink underline-offset-2 hover:underline">
+          <Link
+            to={action.to}
+            className="mt-1.5 inline-block text-[13.5px] font-semibold text-ink underline-offset-2 hover:underline"
+          >
             {action.label}
           </Link>
         )}
       </div>
     </li>
+  )
+}
+
+/** Resumo da geração mais recente, com atalho para o histórico completo */
+function UltimaGeracao({ historico, carregando }: { historico: GradeResumo[]; carregando: boolean }) {
+  const ultima = historico[0]
+  return (
+    <section className="card p-5 md:p-6" aria-labelledby="ultima-geracao">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 id="ultima-geracao" className="font-display text-[18px] font-bold">
+          Última geração
+        </h2>
+        {historico.length > 0 && (
+          <Link to={paths.geracaoHistorico} className="text-[13px] font-semibold text-primary hover:underline">
+            Ver histórico ({historico.length})
+          </Link>
+        )}
+      </div>
+      {carregando ? (
+        <div className="mt-3 h-14 animate-pulse rounded-2xl bg-paper" />
+      ) : !ultima ? (
+        <p className="mt-2 text-[13.5px] text-muted">Nenhuma grade gerada ainda. A primeira aparece aqui.</p>
+      ) : (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-paper px-4 py-3">
+          <div className="min-w-0">
+            <p className="truncate font-semibold">{ultima.nome}</p>
+            <p className="text-[13px] text-muted tabular-nums">
+              {formatDateTime(ultima.criado_em)}
+              {ultima.status === 'sucesso' && ` · ${ultima.total_aulas} aulas`}
+            </p>
+          </div>
+          <span
+            className={cn(
+              'rounded-full px-2.5 py-1 text-[12px] font-semibold whitespace-nowrap',
+              ultima.status === 'sucesso' && 'bg-primary-soft text-primary',
+              ultima.status === 'gerando' && 'bg-warning-soft text-warning',
+              isFalha(ultima.status) && 'bg-danger-soft text-danger',
+            )}
+          >
+            {STATUS_LABEL[ultima.status] ?? ultima.status}
+          </span>
+        </div>
+      )}
+    </section>
   )
 }

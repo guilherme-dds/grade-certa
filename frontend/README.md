@@ -1,4 +1,4 @@
-# GradeCerta — Front-end
+# Grade Certa — Front-end
 
 React 19 + Vite + TypeScript + Tailwind v4. Design de referência no Claude Design
 (`GradeCerta.dc.html` e `Fluxos.dc.html`).

@@ -6,6 +6,7 @@ import { getProfessores } from '@/api/professores'
 import { createTurma, deleteTurma, getTurmas, updateTurma, type ItemMatriz, type TurmaBackend } from '@/api/turmas'
 import { Button } from '@/components/ui/Button'
 import { DataTable } from '@/components/ui/DataTable'
+import { RowMenu } from '@/components/ui/RowMenu'
 import { TabHeader } from '@/layouts/SectionLayout'
 import { temTardesParciais } from '@/lib/schedule'
 import { CurriculumMatrixDialog, type TeacherWithSubjects } from './CurriculumMatrixDialog'
@@ -143,7 +144,9 @@ export function TurmasPage() {
             {
               header: 'Turno',
               cell: (row) => (
-                <span className="inline-flex rounded-full bg-paper px-2.5 py-1 text-[12.5px] font-medium">{row.turno}</span>
+                <span className="inline-flex rounded-full bg-paper px-2.5 py-1 text-[12.5px] font-medium">
+                  {row.turno}
+                </span>
               ),
             },
             {
@@ -183,29 +186,23 @@ export function TurmasPage() {
               cell: (row) => {
                 const vazia = !(row.matriz_curricular ?? []).some((i) => Number(i.aulas_semanais) > 0)
                 return (
-                  <div className="flex items-center justify-end gap-2">
+                  <div className="flex items-center justify-end gap-1">
                     <Button variant={vazia ? 'primary' : 'secondary'} size="sm" onClick={() => setMatrixTurma(row)}>
                       {vazia ? 'Montar matriz' : 'Matriz'}
                     </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        setEditingTurma(row)
-                        setIsTurmaDialogOpen(true)
-                      }}
-                    >
-                      Editar
-                    </Button>
-                    {row.id && (
-                      <button
-                        type="button"
-                        onClick={() => setDeletingTurma(row)}
-                        className="rounded-full px-2 py-1.5 text-[13px] text-muted transition-colors hover:text-danger"
-                      >
-                        Excluir
-                      </button>
-                    )}
+                    <RowMenu
+                      label={`Mais ações para ${row.nome}`}
+                      items={[
+                        {
+                          label: 'Editar turma',
+                          onSelect: () => {
+                            setEditingTurma(row)
+                            setIsTurmaDialogOpen(true)
+                          },
+                        },
+                        ...(row.id ? [{ label: 'Excluir', danger: true, onSelect: () => setDeletingTurma(row) }] : []),
+                      ]}
+                    />
                   </div>
                 )
               },
@@ -219,6 +216,7 @@ export function TurmasPage() {
           turma={matrixTurma}
           availableSubjects={availableSubjects}
           teachers={teachersWithSubjects}
+          otherTurmas={turmas}
           onClose={() => setMatrixTurma(null)}
           onSave={handleSaveMatrix}
         />

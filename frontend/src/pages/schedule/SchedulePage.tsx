@@ -77,7 +77,9 @@ export function SchedulePage() {
   }, [gradeIdParam, refreshSchedule])
 
   const availableTurmas = useMemo(() => {
-    const fromLessons = Array.from(new Set(lessons.map((l) => l.classGroup))).filter(Boolean).sort()
+    const fromLessons = Array.from(new Set(lessons.map((l) => l.classGroup)))
+      .filter(Boolean)
+      .sort()
     return fromLessons
   }, [lessons])
 
@@ -149,7 +151,11 @@ export function SchedulePage() {
       {/* Grade exibida + ações sobre ela */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-[14px] text-muted">
-          {[origem && `Cópia de ${origem.nome}`, `${lessons.length} aulas na semana`, `${availableTurmas.length} turmas`]
+          {[
+            origem && `Cópia de ${origem.nome}`,
+            `${lessons.length} aulas na semana`,
+            `${availableTurmas.length} turmas`,
+          ]
             .filter(Boolean)
             .join(' · ')}
         </p>
@@ -162,6 +168,9 @@ export function SchedulePage() {
               onChange={(v) => setParam('gradeId', v)}
             />
           )}
+          <Link to={paths.gradeImpressao} className={buttonStyles({ variant: 'secondary', size: 'sm' })}>
+            Imprimir turmas
+          </Link>
           {activeGrade && (
             <Button variant="secondary" size="sm" onClick={() => setIsDuplicating(true)}>
               Duplicar
@@ -177,7 +186,7 @@ export function SchedulePage() {
 
       {/* Turmas: um clique troca a turma exibida */}
       <div className="card mb-4 p-2">
-        <div role="tablist" aria-label="Turmas" className="flex gap-1 overflow-x-auto">
+        <div role="tablist" aria-label="Turmas" className="scrollbar-none flex gap-1 overflow-x-auto">
           {availableTurmas.map((t) => (
             <button
               key={t}
@@ -229,7 +238,8 @@ export function SchedulePage() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-white px-4 py-2.5 text-[13px] shadow-(--shadow-float)">
           <p className={undoMessage && !undoMessage.ok ? 'text-danger' : 'text-muted'} role="status">
             {undoMessage ? undoMessage.text : `Última alteração: ${changes[0].descricao}`}
-            {changes.length > 0 && ` · ${changes.length} alteraç${changes.length > 1 ? 'ões' : 'ão'} manual(is) nesta grade`}
+            {changes.length > 0 &&
+              ` · ${changes.length} alteraç${changes.length > 1 ? 'ões' : 'ão'} manual(is) nesta grade`}
           </p>
           {changes.length > 0 && (
             <Button variant="secondary" size="sm" onClick={handleUndo} disabled={isUndoing}>

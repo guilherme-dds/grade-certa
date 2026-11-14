@@ -1,59 +1,107 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from 'react'
 import type { HorariosEscola } from '@/api/grades'
 import { slotKey, type AvailabilitySlots, type SlotState } from '@/lib/availability'
 import { cn } from '@/lib/cn'
 import { weekDays, type NivelEnsino } from '@/lib/schedule'
 
-const slotStyles: Record<SlotState, { label: string; className: string }> = {
-  disponivel: { label: 'Disponível', className: 'bg-primary text-white font-medium' },
+const slotStyles: Record<SlotState, { label: string; cell: string; swatch: string; mark: string }> = {
+  indisponivel: {
+    label: 'Indisponível',
+    cell: 'bg-ink text-white/70 hover:bg-ink-soft',
+    swatch: 'bg-ink',
+    mark: '×',
+  },
   preferencial: {
     label: 'Preferencial',
-    className: 'border-2 border-warning bg-warning-soft text-warning font-semibold',
+    cell: 'bg-primary-soft text-primary ring-1 ring-inset ring-primary-soft-line hover:bg-primary-soft-line/70',
+    swatch: 'bg-primary-soft ring-1 ring-inset ring-primary-soft-line',
+    mark: '★',
   },
-  indisponivel: { label: 'Indisponível', className: 'bg-line-soft hover:bg-line text-muted' },
+  disponivel: {
+    label: 'Livre',
+    cell: 'bg-paper text-transparent hover:bg-line-soft',
+    swatch: 'bg-paper ring-1 ring-inset ring-line',
+    mark: '',
+  },
 }
 
-const nextState: Record<SlotState, SlotState> = {
-  disponivel: 'preferencial',
-  preferencial: 'indisponivel',
-  indisponivel: 'disponivel',
-}
+const brushes: SlotState[] = ['indisponivel', 'preferencial', 'disponivel']
+
+export type SlotsUpdater = (update: (prev: AvailabilitySlots) => AvailabilitySlots) => void
 
 interface AvailabilityGridProps {
   niveis: readonly NivelEnsino[]
   horarios: HorariosEscola
   slots: AvailabilitySlots
-  onChange: (slots: AvailabilitySlots) => void
+  onChange: SlotsUpdater
 }
 
+/**
+ * Quadro semanal de disponibilidade. Escolhe-se um "pincel" (indisponível, preferencial ou livre)
+ * e clica-se ou arrasta-se sobre os horários; clicar de novo num horário já marcado o libera.
+ */
 export function AvailabilityGrid({ niveis, horarios, slots, onChange }: AvailabilityGridProps) {
   const [activeNivel, setActiveNivel] = useState<NivelEnsino>(niveis[0])
+  const [brush, setBrush] = useState<SlotState>('indisponivel')
   const current = horarios.niveis[activeNivel] ?? { manha: [], tarde: [] }
 
-  const toggle = (key: string) => onChange({ ...slots, [key]: nextState[slots[key] ?? 'disponivel'] })
-
-  const setMany = (times: readonly string[], state: SlotState) => {
-    const updated = { ...slots }
-    for (const day of weekDays) {
-      for (const time of times) updated[slotKey(activeNivel, day, time)] = state
+  // Estado aplicado enquanto o botão do mouse está pressionado (arrastar pinta vários horários)
+  const painting = useRef<SlotState | null>(null)
+  useEffect(() => {
+    const stop = () => (painting.current = null)
+    window.addEventListener('pointerup', stop)
+    window.addEventListener('pointercancel', stop)
+    return () => {
+      window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', stop)
     }
-    onChange(updated)
-  }
+  }, [])
+
+  const paint = (key: string, state: SlotState) => onChange((prev) => ({ ...prev, [key]: state }))
+  const targetFor = (key: string) => ((slots[key] ?? 'disponivel') === brush ? 'disponivel' : brush)
+
+  const setMany = (times: readonly string[], state: SlotState) =>
+    onChange((prev) => {
+      const updated = { ...prev }
+      for (const day of weekDays) for (const time of times) updated[slotKey(activeNivel, day, time)] = state
+      return updated
+    })
+
+  const all = [...current.manha, ...current.tarde]
+  const count = (state: SlotState) =>
+    weekDays.reduce(
+      (acc, day) => acc + all.filter((t) => (slots[slotKey(activeNivel, day, t)] ?? 'disponivel') === state).length,
+      0,
+    )
+
+  const cellHandlers = (key: string) => ({
+    onPointerDown: (e: PointerEvent<HTMLButtonElement>) => {
+      if (e.button !== 0) return
+      // Libera a captura para que os horários vizinhos recebam o "pointerenter" do arraste
+      e.currentTarget.releasePointerCapture?.(e.pointerId)
+      const state = targetFor(key)
+      painting.current = state
+      paint(key, state)
+    },
+    onPointerEnter: () => painting.current && paint(key, painting.current),
+    // Teclado (Enter/Espaço) não dispara pointerdown
+    onClick: (e: MouseEvent) => e.detail === 0 && paint(key, targetFor(key)),
+  })
 
   return (
     <div>
       {niveis.length > 1 && (
-        <div className="mb-3 flex flex-wrap gap-1.5 border-b border-line pb-2">
+        <div role="tablist" aria-label="Nível de ensino" className="mb-4 inline-flex gap-1 rounded-full bg-paper p-1">
           {niveis.map((nivel) => (
             <button
               key={nivel}
               type="button"
+              role="tab"
+              aria-selected={activeNivel === nivel}
               onClick={() => setActiveNivel(nivel)}
               className={cn(
-                'rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-colors',
-                activeNivel === nivel
-                  ? 'bg-navy text-white shadow-xs'
-                  : 'bg-paper text-muted hover:bg-line-soft hover:text-ink',
+                'rounded-full px-4 py-1.5 text-[13.5px] transition-colors',
+                activeNivel === nivel ? 'bg-ink font-semibold text-white' : 'text-muted hover:text-ink',
               )}
             >
               {nivel}
@@ -62,37 +110,83 @@ export function AvailabilityGrid({ niveis, horarios, slots, onChange }: Availabi
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line-soft bg-paper p-2.5">
-        <div className="flex flex-wrap gap-2">
-          <QuickAction onClick={() => setMany(current.manha, 'indisponivel')}>Manhã indisponível</QuickAction>
-          <QuickAction onClick={() => setMany(current.tarde, 'indisponivel')}>Tarde indisponível</QuickAction>
-          <QuickAction onClick={() => setMany([...current.manha, ...current.tarde], 'disponivel')}>
-            Liberar {activeNivel}
-          </QuickAction>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div role="radiogroup" aria-label="Marcar horários como" className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-[13px] text-muted">Marcar como</span>
+          {brushes.map((state) => (
+            <button
+              key={state}
+              type="button"
+              role="radio"
+              aria-checked={brush === state}
+              onClick={() => setBrush(state)}
+              className={cn(
+                'inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[13.5px] transition-colors',
+                brush === state ? 'border-ink bg-white font-semibold shadow-xs' : 'border-transparent text-muted hover:text-ink',
+              )}
+            >
+              <span className={cn('size-3.5 rounded-[4px]', slotStyles[state].swatch)} />
+              {slotStyles[state].label}
+            </button>
+          ))}
         </div>
-        <span className="text-[11px] text-muted">Clique na célula para alternar o estado.</span>
+        <div className="flex flex-wrap gap-1.5">
+          <QuickAction onClick={() => setMany(current.manha, brush)}>Manhã inteira</QuickAction>
+          <QuickAction onClick={() => setMany(current.tarde, brush)}>Tarde inteira</QuickAction>
+          <QuickAction onClick={() => setMany(all, 'disponivel')}>Liberar tudo</QuickAction>
+        </div>
       </div>
 
-      <div className="mt-4 space-y-5">
-        {(['manha', 'tarde'] as const).map((turno) => (
-          <div key={turno}>
-            <h3 className="mb-2 font-display text-[15px] font-bold text-ink">
-              Turno da {turno === 'manha' ? 'Manhã' : 'Tarde'} ({activeNivel})
-            </h3>
-            <SlotTable nivel={activeNivel} times={current[turno]} slots={slots} onToggle={toggle} />
-          </div>
-        ))}
-      </div>
+      <p className="mt-3 text-[13px] text-muted">
+        Clique ou arraste sobre os horários. {count('indisponivel')} indisponíveis e {count('preferencial')}{' '}
+        preferenciais em {activeNivel}; o resto está livre.
+      </p>
 
-      <ul className="mt-4 flex flex-wrap items-center gap-5 border-t border-line-soft pt-3 text-[12px] text-muted">
-        {(['disponivel', 'preferencial', 'indisponivel'] as const).map((state) => (
-          <li key={state} className="flex items-center gap-1.5">
-            <span className={cn('inline-block size-3.5 rounded-[3px]', slotStyles[state].className)} />
-            {slotStyles[state].label}
-            {state === 'preferencial' && ' (o gerador prioriza)'}
-          </li>
-        ))}
-      </ul>
+      <div className="mt-4 grid gap-6 lg:grid-cols-2">
+        {(['manha', 'tarde'] as const).map((turno) =>
+          current[turno].length ? (
+            <section key={turno} aria-label={turno === 'manha' ? 'Manhã' : 'Tarde'}>
+              <h3 className="mb-2 font-display text-[15px] font-bold">{turno === 'manha' ? 'Manhã' : 'Tarde'}</h3>
+              <div role="grid" aria-label={`${turno === 'manha' ? 'Manhã' : 'Tarde'}, ${activeNivel}`} className="select-none">
+                <div role="row" className="grid grid-cols-[84px_repeat(5,1fr)] gap-1">
+                  <div role="columnheader" />
+                  {weekDays.map((day) => (
+                    <div key={day} role="columnheader" className="pb-1 text-center text-[12.5px] font-semibold text-muted">
+                      {day}
+                    </div>
+                  ))}
+                </div>
+                {current[turno].map((time) => (
+                  <div key={time} role="row" className="mt-1 grid grid-cols-[84px_repeat(5,1fr)] gap-1">
+                    <div role="rowheader" className="flex items-center text-[12px] text-muted tabular-nums">
+                      {time}
+                    </div>
+                    {weekDays.map((day) => {
+                      const key = slotKey(activeNivel, day, time)
+                      const state = slots[key] ?? 'disponivel'
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          role="gridcell"
+                          aria-label={`${day}, ${time}: ${slotStyles[state].label}`}
+                          {...cellHandlers(key)}
+                          className={cn(
+                            'h-9 cursor-pointer rounded-lg text-[13px] font-semibold transition-colors',
+                            slotStyles[state].cell,
+                          )}
+                        >
+                          {slotStyles[state].mark}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null,
+        )}
+      </div>
     </div>
   )
 }
@@ -102,71 +196,9 @@ function QuickAction({ onClick, children }: { onClick: () => void; children: Rea
     <button
       type="button"
       onClick={onClick}
-      className="rounded-lg border border-line bg-white px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-paper"
+      className="h-9 rounded-full border border-line bg-white px-3.5 text-[13px] font-medium transition-colors hover:border-ink/25 hover:bg-paper"
     >
       {children}
     </button>
-  )
-}
-
-function SlotTable({
-  nivel,
-  times,
-  slots,
-  onToggle,
-}: {
-  nivel: string
-  times: readonly string[]
-  slots: AvailabilitySlots
-  onToggle: (key: string) => void
-}) {
-  return (
-    <div className="overflow-x-auto">
-      <div
-        role="grid"
-        aria-label={`Disponibilidade ${nivel}`}
-        className="grid min-w-[500px] grid-cols-[100px_repeat(5,1fr)] gap-1.5"
-      >
-        <div role="row" className="contents">
-          <div role="columnheader" />
-          {weekDays.map((day) => (
-            <div key={day} role="columnheader" className="rounded-lg bg-paper p-1.5 text-center text-xs font-semibold text-muted">
-              {day}
-            </div>
-          ))}
-        </div>
-
-        {times.map((time) => (
-          <div key={time} role="row" className="contents">
-            <div
-              role="rowheader"
-              className="flex items-center justify-center rounded-lg bg-paper/70 px-1 text-center font-mono text-[11px] font-medium text-muted"
-            >
-              {time}
-            </div>
-            {weekDays.map((day) => {
-              const key = slotKey(nivel, day, time)
-              const state = slots[key] ?? 'disponivel'
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  role="gridcell"
-                  onClick={() => onToggle(key)}
-                  aria-label={`${day}, ${time}: ${slotStyles[state].label}`}
-                  className={cn(
-                    'flex h-[34px] cursor-pointer items-center justify-center rounded-lg text-[11px] transition-all select-none',
-                    slotStyles[state].className,
-                  )}
-                >
-                  {state === 'disponivel' && '✓'}
-                  {state === 'preferencial' && '★'}
-                </button>
-              )
-            })}
-          </div>
-        ))}
-      </div>
-    </div>
   )
 }

@@ -16,7 +16,7 @@ interface DataTableProps<T> {
 
 export function DataTable<T>({ columns, rows, rowKey, caption }: DataTableProps<T>) {
   return (
-    <div className="card overflow-x-auto px-2 pb-2">
+    <div className="card relative overflow-x-auto px-2 pb-2">
       <table className="w-full border-collapse text-[13.5px]">
         {caption && <caption className="sr-only">{caption}</caption>}
         <thead>

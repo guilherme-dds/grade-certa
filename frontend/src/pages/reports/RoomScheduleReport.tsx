@@ -26,7 +26,7 @@ export function RoomScheduleReport({ ocupacao, horariosTurmas }: RoomScheduleRep
       {horarios.length === 0 ? (
         <p className="text-[13px] text-muted">Sem aulas nesta grade.</p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full min-w-[640px] table-fixed border-collapse text-[12px]">
             <thead>
               <tr className="bg-paper">
