@@ -153,6 +153,14 @@
   }
 }
 
+/* Lista dos seletores */
+@keyframes select-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
 /* Diálogo de confirmação */
 @keyframes confirm-in {
   from {

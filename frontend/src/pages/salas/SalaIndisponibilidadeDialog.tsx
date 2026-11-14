@@ -34,8 +34,7 @@ export function SalaIndisponibilidadeDialog({ sala, onClose, onChanged }: SalaIn
   const indisponibilidades = [...(sala.indisponibilidades ?? [])].sort(
     (a, b) =>
       weekDays.indexOf(a.dia_semana as (typeof weekDays)[number]) -
-        weekDays.indexOf(b.dia_semana as (typeof weekDays)[number]) ||
-      a.horario_inicio.localeCompare(b.horario_inicio),
+        weekDays.indexOf(b.dia_semana as (typeof weekDays)[number]) || a.horario_inicio.localeCompare(b.horario_inicio),
   )
 
   const handleAdd = async (e: FormEvent) => {
@@ -104,7 +103,7 @@ export function SalaIndisponibilidadeDialog({ sala, onClose, onChanged }: SalaIn
           <h3 className="mb-3 font-display text-[16px] font-bold">Bloquear um horário</h3>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <div className="col-span-2 sm:col-span-1">
-              <SelectField label="Dia" options={OPCOES_DIA} value={dia} onChange={(e) => setDia(e.target.value)} />
+              <SelectField label="Dia" options={OPCOES_DIA} value={dia} onChange={(v) => setDia(v)} />
             </div>
             <FormField label="Início" type="time" value={inicio} onChange={(e) => setInicio(e.target.value)} />
             <FormField label="Fim" type="time" value={fim} onChange={(e) => setFim(e.target.value)} />

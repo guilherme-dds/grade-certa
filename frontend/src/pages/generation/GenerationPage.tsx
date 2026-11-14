@@ -8,6 +8,7 @@ import { GenerationWarnings } from '@/components/GenerationWarnings'
 import { Button } from '@/components/ui/Button'
 import { buttonStyles } from '@/components/ui/buttonStyles'
 import { Icon } from '@/components/ui/Icon'
+import { Select } from '@/components/ui/Select'
 import { paths } from '@/config/paths'
 import { getApiErrorMessage } from '@/lib/apiError'
 import { cn } from '@/lib/cn'
@@ -216,19 +217,15 @@ export function GenerationPage() {
               <label htmlFor="tempoLimite" className="mb-1.5 block text-[13px] font-medium text-white/70">
                 Tempo máximo de busca
               </label>
-              <select
+              <Select
                 id="tempoLimite"
+                label="Tempo máximo de busca"
+                variant="dark"
                 value={tempoLimite}
                 disabled={isGenerating}
-                onChange={(e) => setTempoLimite(e.target.value)}
-                className="h-11 w-full rounded-xl border border-white/15 bg-white/[0.07] px-3 text-[14px] text-white outline-none focus:border-white/50 disabled:opacity-50 [&>option]:text-ink"
-              >
-                {TEMPOS_LIMITE.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
+                onChange={setTempoLimite}
+                options={TEMPOS_LIMITE}
+              />
               <p className="mt-1.5 text-[12.5px] text-white/45">Escolas maiores precisam de mais tempo.</p>
             </div>
           </div>

@@ -5,6 +5,7 @@ import { getProfessores } from '@/api/professores'
 import { getSalas } from '@/api/salas'
 import { Button } from '@/components/ui/Button'
 import { buttonStyles } from '@/components/ui/buttonStyles'
+import { Select, type SelectOption } from '@/components/ui/Select'
 import { paths } from '@/config/paths'
 import { TabHeader } from '@/layouts/SectionLayout'
 import { formatDateTime } from '@/lib/schedule'
@@ -103,7 +104,8 @@ export function ReportsPage({ aba }: { aba: AbaRelatorio }) {
                 value={String(activeGrade.id)}
                 options={gradesGeradas.map((g) => ({
                   value: String(g.id),
-                  label: `${g.nome} (${formatDateTime(g.criado_em)})`,
+                  label: g.nome,
+                  hint: formatDateTime(g.criado_em),
                 }))}
                 onChange={(v) => refreshSchedule(Number(v))}
               />
@@ -195,26 +197,21 @@ function opcoesComTodos(rotulo: string, opcoes: string[]) {
 interface ReportSelectProps {
   label: string
   value: string
-  options: { value: string; label: string }[]
+  options: SelectOption[]
   onChange: (value: string) => void
 }
 
 function ReportSelect({ label, value, options, onChange }: ReportSelectProps) {
   return (
-    <label className="flex items-center gap-1 rounded-xl border border-line bg-white py-1 pr-1 pl-3 text-[12.5px] focus-within:border-primary">
-      <span className="text-muted">{label}:</span>
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="max-w-56 cursor-pointer bg-transparent py-1 pr-1 font-medium outline-none"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
+    <Select
+      label={label}
+      prefix
+      size="sm"
+      value={value}
+      onChange={onChange}
+      options={options}
+      className="max-w-72"
+      menuMinWidth={380}
+    />
   )
 }

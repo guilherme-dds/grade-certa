@@ -5,6 +5,7 @@ import { MultiSelectChips } from '@/components/MultiSelectChips'
 import { Button } from '@/components/ui/Button'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { RowMenu } from '@/components/ui/RowMenu'
+import { Select } from '@/components/ui/Select'
 import { Sheet, SheetBody, SheetFooter, useSheetClose } from '@/components/ui/Sheet'
 import { cn } from '@/lib/cn'
 import { horariosDaTurma, temTardesParciais, weekDays } from '@/lib/schedule'
@@ -300,18 +301,14 @@ export function CurriculumMatrixDialog({
                       )}
                     >
                       <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_128px_36px] lg:items-center">
-                        <select
+                        <Select
+                          label="Disciplina"
+                          variant="ghost"
                           value={item.disciplina}
-                          onChange={(e) => updateItem(idx, { disciplina: e.target.value })}
-                          aria-label="Disciplina"
-                          className="h-10 w-full min-w-0 cursor-pointer rounded-xl border border-transparent bg-transparent px-2 text-[14.5px] font-semibold outline-none hover:border-line hover:bg-white focus:border-ink focus:bg-white"
-                        >
-                          {opcoesDisciplina.map((sub) => (
-                            <option key={sub} value={sub}>
-                              {sub}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={(v) => updateItem(idx, { disciplina: v })}
+                          options={opcoesDisciplina.map((sub) => ({ value: sub, label: sub }))}
+                          menuMinWidth={240}
+                        />
 
                         <div className="col-span-2 row-start-2 min-w-0 lg:col-span-1 lg:row-start-auto">
                           <MultiSelectChips
@@ -546,24 +543,25 @@ function CopyFrom({
   className?: string
 }) {
   return (
-    <label className={cn('flex items-center gap-2 text-[13px]', className)}>
+    <div className={cn('flex items-center gap-2 text-[13px]', className)}>
       <span className="text-muted">Copiar de</span>
-      <select
+      <Select
+        label="Copiar matriz de outra turma"
+        placeholder="outra turma…"
+        size="sm"
         value=""
-        onChange={(e) => {
-          const t = turmas.find((x) => String(x.id) === e.target.value)
+        onChange={(v) => {
+          const t = turmas.find((x) => String(x.id) === v)
           if (t) onPick(t)
         }}
-        className="h-9 cursor-pointer rounded-full border border-line bg-white px-3 text-[13px] font-medium outline-none hover:border-ink/30 focus:border-ink"
-      >
-        <option value="">outra turma…</option>
-        {turmas.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.nome} ({t.matriz_curricular?.length} disciplinas)
-          </option>
-        ))}
-      </select>
-    </label>
+        options={turmas.map((t) => ({
+          value: String(t.id),
+          label: t.nome,
+          hint: `${t.matriz_curricular?.length ?? 0} disciplinas`,
+        }))}
+        menuMinWidth={260}
+      />
+    </div>
   )
 }
 
@@ -597,19 +595,16 @@ function AddSubject({
         {first ? 'Adicionar a primeira disciplina' : 'Adicionar disciplina'}
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        <select
+        <Select
+          label="Disciplina a adicionar"
+          placeholder="Escolha a disciplina"
+          variant="field"
+          size="sm"
           value={disciplina}
-          onChange={(e) => setDisciplina(e.target.value)}
-          aria-label="Disciplina a adicionar"
-          className="h-10 min-w-0 flex-1 basis-56 rounded-xl border border-line bg-white px-3 text-[14px] outline-none focus:border-ink"
-        >
-          <option value="">Escolha a disciplina</option>
-          {options.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+          onChange={setDisciplina}
+          options={options.map((d) => ({ value: d, label: d }))}
+          className="min-w-0 flex-1 basis-56"
+        />
         <Stepper value={aulas} onChange={setAulas} label="Aulas por semana da nova disciplina" />
         <Button
           variant="dark"
@@ -711,9 +706,6 @@ function FixedSlotsEditor({
   const fixar = () => onChange({ horarios_fixos: [...fixos, { dia_semana: dia, horario: horario || null }] })
   const remover = (indice: number) => onChange({ horarios_fixos: fixos.filter((_, i) => i !== indice) })
 
-  const select =
-    'h-9 rounded-full border border-line bg-white px-3 text-[13px] outline-none hover:border-ink/20 focus:border-ink'
-
   return (
     <div className="mt-3 rounded-xl bg-white p-3 ring-1 ring-line-soft">
       <p className="text-[13px] text-muted">
@@ -740,26 +732,23 @@ function FixedSlotsEditor({
         ))}
         {restantes > 0 ? (
           <>
-            <select value={dia} onChange={(e) => setDia(e.target.value)} aria-label="Dia" className={select}>
-              {weekDays.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
-            <select
+            <Select
+              label="Dia"
+              size="sm"
+              value={dia}
+              onChange={setDia}
+              options={weekDays.map((d) => ({ value: d, label: d }))}
+            />
+            <Select
+              label="Horário"
+              size="sm"
               value={horario}
-              onChange={(e) => setHorario(e.target.value)}
-              aria-label="Horário"
-              className={select}
-            >
-              <option value={QUALQUER_HORARIO}>qualquer horário</option>
-              {slots.map((h) => (
-                <option key={h} value={h}>
-                  {h}
-                </option>
-              ))}
-            </select>
+              onChange={setHorario}
+              options={[
+                { value: QUALQUER_HORARIO, label: 'qualquer horário' },
+                ...slots.map((h) => ({ value: h, label: h })),
+              ]}
+            />
             <Button variant="dark" size="sm" onClick={fixar} disabled={jaFixado}>
               Fixar
             </Button>

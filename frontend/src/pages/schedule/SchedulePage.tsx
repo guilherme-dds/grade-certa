@@ -5,6 +5,7 @@ import { deleteGrade, duplicarGrade, getHistoricoGrades } from '@/api/grades'
 import { Button } from '@/components/ui/Button'
 import { buttonStyles } from '@/components/ui/buttonStyles'
 import { Icon } from '@/components/ui/Icon'
+import { Select, type SelectOption } from '@/components/ui/Select'
 import { paths } from '@/config/paths'
 import { cn } from '@/lib/cn'
 import { formatDateTime } from '@/lib/schedule'
@@ -43,7 +44,8 @@ export function SchedulePage() {
   const gradesGeradas = historico.filter((g) => g.status === 'sucesso')
   const gradeOptions = gradesGeradas.map((g) => ({
     value: String(g.id),
-    label: `${g.nome} (${formatDateTime(g.criado_em)})`,
+    label: g.nome,
+    hint: formatDateTime(g.criado_em),
   }))
 
   const handleDeleteGrade = async () => {
@@ -299,31 +301,25 @@ interface FilterChipProps {
   label: string
   value: string
   /** Texto simples (valor = rótulo) ou par valor/rótulo */
-  options: readonly (string | { value: string; label: string })[]
+  options: readonly (string | SelectOption)[]
   allLabel?: string
   onChange: (value: string) => void
 }
 
 function FilterChip({ label, value, options, allLabel, onChange }: FilterChipProps) {
   return (
-    <label className="flex h-9 items-center gap-1 rounded-full border border-line bg-white pr-1.5 pl-3.5 text-[13px] focus-within:border-ink">
-      <span className="text-muted">{label}:</span>
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="max-w-40 cursor-pointer bg-transparent py-1 pr-1 font-medium outline-none"
-      >
-        {allLabel && <option value="">{allLabel}</option>}
-        {options.map((option) => {
-          const { value: v, label: l } = typeof option === 'string' ? { value: option, label: option } : option
-          return (
-            <option key={v} value={v}>
-              {l}
-            </option>
-          )
-        })}
-      </select>
-    </label>
+    <Select
+      label={label}
+      prefix
+      size="sm"
+      value={value}
+      onChange={onChange}
+      className="max-w-72"
+      menuMinWidth={380}
+      options={[
+        ...(allLabel ? [{ value: '', label: allLabel }] : []),
+        ...options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o)),
+      ]}
+    />
   )
 }

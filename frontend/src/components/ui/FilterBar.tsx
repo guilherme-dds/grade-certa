@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/cn'
+import { Select } from './Select'
 
 export interface QuickFilter {
   value: string
@@ -110,20 +111,15 @@ export function CompactSelect({
   options: { value: string; label: string }[]
 }) {
   return (
-    <label className="flex h-10 items-center gap-1 rounded-full border border-line bg-white pr-2 pl-3.5 text-[13.5px] focus-within:border-ink">
-      <span className="text-muted">{label}:</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="max-w-40 cursor-pointer bg-transparent font-medium outline-none"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
+    <Select
+      label={label}
+      prefix
+      value={value}
+      onChange={onChange}
+      options={options}
+      className="max-w-64"
+      menuMinWidth={220}
+    />
   )
 }
 

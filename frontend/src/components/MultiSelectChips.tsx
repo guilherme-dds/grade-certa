@@ -1,4 +1,5 @@
 import { cn } from '@/lib/cn'
+import { Select } from './ui/Select'
 
 interface MultiSelectChipsProps {
   /** Com `group`, o seletor separa as opções em grupos (ex.: aptos primeiro) */
@@ -36,31 +37,17 @@ export function MultiSelectChips({ options, value, onChange, addLabel, emptyLabe
         </span>
       ))}
       {remaining.length > 0 && (
-        <select
+        <Select
+          label={addLabel}
+          placeholder={addLabel}
+          variant="dashed"
+          size="sm"
           value=""
-          aria-label={addLabel}
-          onChange={(e) => e.target.value && onChange([...value, e.target.value])}
-          className="max-w-full min-w-0 flex-1 rounded-lg border border-dashed border-line bg-white px-2 py-1 text-xs text-muted outline-none focus:border-primary"
-        >
-          <option value="">{addLabel}</option>
-          {remaining.some((o) => o.group)
-            ? [...new Set(remaining.map((o) => o.group ?? ''))].map((g) => (
-                <optgroup key={g} label={g}>
-                  {remaining
-                    .filter((o) => (o.group ?? '') === g)
-                    .map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                </optgroup>
-              ))
-            : remaining.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-        </select>
+          onChange={(v) => v && onChange([...value, v])}
+          options={remaining}
+          menuMinWidth={240}
+          className="max-w-full min-w-0"
+        />
       )}
     </div>
   )

@@ -110,7 +110,8 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
           Editar aula — {lesson.subject} · {lesson.classGroup}
         </h2>
         <p className="mt-1 text-[13px] text-muted">
-          Atualmente em {lesson.day}, {lesson.time}. Antes de salvar, os conflitos que a mudança criaria são mostrados aqui.
+          Atualmente em {lesson.day}, {lesson.time}. Antes de salvar, os conflitos que a mudança criaria são mostrados
+          aqui.
         </p>
 
         <div className="mt-5 space-y-4">
@@ -124,10 +125,10 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
               emptyLabel="Sem professor"
             />
           </div>
-          <SelectField label="Sala" options={salaOptions} value={values.room} onChange={(e) => set('room', e.target.value)} />
+          <SelectField label="Sala" options={salaOptions} value={values.room} onChange={(v) => set('room', v)} />
           <div className="grid grid-cols-2 gap-3">
-            <SelectField label="Dia" options={weekDays} value={values.day} onChange={(e) => set('day', e.target.value)} />
-            <SelectField label="Horário" options={horarios} value={values.time} onChange={(e) => set('time', e.target.value)} />
+            <SelectField label="Dia" options={weekDays} value={values.day} onChange={(v) => set('day', v)} />
+            <SelectField label="Horário" options={horarios} value={values.time} onChange={(v) => set('time', v)} />
           </div>
         </div>
 

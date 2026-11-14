@@ -80,9 +80,7 @@ export function TurmaDialog({ turma, onClose, onSave }: TurmaDialogProps) {
           {turma ? 'Editar Turma' : 'Nova Turma'}
         </h3>
         <p className="mt-1 text-[13px] text-muted">
-          {turma
-            ? 'Altere as informações da turma selecionada.'
-            : 'Cadastre uma nova turma com seu respectivo turno.'}
+          {turma ? 'Altere as informações da turma selecionada.' : 'Cadastre uma nova turma com seu respectivo turno.'}
         </p>
 
         <div className="mt-4 flex flex-col gap-4">
@@ -98,12 +96,7 @@ export function TurmaDialog({ turma, onClose, onSave }: TurmaDialogProps) {
             autoFocus
           />
 
-          <SelectField
-            label="Turno"
-            options={SHIFT_OPTIONS}
-            value={turno}
-            onChange={(e) => setTurno(e.target.value)}
-          />
+          <SelectField label="Turno" options={SHIFT_OPTIONS} value={turno} onChange={(v) => setTurno(v)} />
 
           {turno === TURNO_MANHA_E_TARDES && (
             <fieldset className="rounded-xl border border-line-soft bg-paper p-3">
@@ -126,7 +119,7 @@ export function TurmaDialog({ turma, onClose, onSave }: TurmaDialogProps) {
             label="Nível de ensino (define os horários das aulas)"
             options={niveisEnsino}
             value={nivel}
-            onChange={(e) => setNivel(e.target.value)}
+            onChange={(v) => setNivel(v)}
           />
         </div>
 
