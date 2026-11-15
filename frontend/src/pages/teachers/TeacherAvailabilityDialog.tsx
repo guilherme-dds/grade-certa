@@ -19,7 +19,7 @@ export function TeacherAvailabilityDialog({ professor, onClose }: TeacherAvailab
       dirty={dirty}
       onClose={onClose}
       title={`Disponibilidade de ${professor.nome}`}
-      description="Tudo começa livre. Marque os horários em que o professor não pode dar aula e, se quiser, os que ele prefere: o gerador tenta usá-los primeiro."
+      description="Tudo começa livre. Marque os horários em que o professor não pode dar aula e, se quiser, os que ele prefere evitar: o gerador só os usa se não houver outro jeito."
     >
       <ProfessorAvailabilityEditor
         professor={professor}

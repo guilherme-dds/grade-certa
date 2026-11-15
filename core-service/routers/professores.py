@@ -124,7 +124,7 @@ def salvar_disponibilidade_professor(
 ):
     """
     Substitui os horários marcados do professor. Horários não enviados ficam disponíveis;
-    "indisponivel" bloqueia aulas e "preferencial" é priorizado pelo gerador.
+    "indisponivel" bloqueia aulas e "evitar" só recebe aula se não houver outro jeito.
     """
     prof = db.query(ProfessorDB).filter(ProfessorDB.id == professor_id).first()
     if not prof:

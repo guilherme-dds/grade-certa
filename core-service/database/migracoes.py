@@ -52,6 +52,20 @@ def adicionar_colunas(engine: Engine) -> List[str]:
     return adicionadas
 
 
+def descartar_preferenciais(engine: Engine) -> int:
+    """
+    O tipo "preferencial" deu lugar a "evitar", de sentido oposto: converter mandaria o
+    gerador fugir do horário que o professor queria. Esses horários voltam a ficar livres.
+    """
+    if "disponibilidades" not in inspect(engine).get_table_names():
+        return 0
+    with engine.begin() as conn:
+        removidos = conn.execute(text("DELETE FROM disponibilidades WHERE tipo = 'preferencial'")).rowcount
+    if removidos:
+        logger.info("Migração: %s horários preferenciais voltaram a ficar livres", removidos)
+    return removidos
+
+
 def vincular_professores_por_id(session_factory) -> None:
     """Matrizes salvas com o nome do professor passam a guardar o id do cadastro."""
     from database.models import ProfessorDB, TurmaDB

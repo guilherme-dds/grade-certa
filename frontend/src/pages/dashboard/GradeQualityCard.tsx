@@ -27,9 +27,9 @@ function sobrepoe(aula: Lesson, marcado: DisponibilidadeItem) {
   return inicio < minutos(marcado.horario_fim) && minutos(marcado.horario_inicio) < fim
 }
 
-/** Quanto a grade exibida é boa, além de válida: janelas, planejamento junto e preferências. */
+/** Quanto a grade exibida é boa, além de válida: janelas, planejamento junto e horários a evitar. */
 export function GradeQualityCard({ grade, lessons, professores, loading }: GradeQualityCardProps) {
-  // Só quem registrou disponibilidade pode ter horário preferencial
+  // Só quem registrou disponibilidade pode ter horário a evitar
   const comDisponibilidade = professores.filter((p) => p.ativo && p.disponibilidade_atualizada_em && p.id != null)
   const disponibilidades = useDisponibilidades(comDisponibilidade.map((p) => p.id!))
 
@@ -38,7 +38,9 @@ export function GradeQualityCard({ grade, lessons, professores, loading }: Grade
       <section className="card flex flex-col p-6">
         <h2 className="font-display text-[18px] font-bold">Qualidade da grade</h2>
         <p className="mt-1 text-[13.5px] text-muted">
-          {loading ? 'Carregando a grade…' : 'Gere uma grade para ver as janelas, o planejamento e as preferências.'}
+          {loading
+            ? 'Carregando a grade…'
+            : 'Gere uma grade para ver as janelas, o planejamento e os horários a evitar.'}
         </p>
         {!loading && (
           <Link to={paths.geracao} className={buttonStyles({}, 'mt-5 w-full')}>
@@ -55,14 +57,14 @@ export function GradeQualityCard({ grade, lessons, professores, loading }: Grade
   const cargas = cargaPorProfessor(lessons, planejamentos, janelas, professores)
   const semJanela = percentual(cargas.filter((c) => c.janelas === 0).length, cargas.length)
 
-  // Cada horário marcado como preferencial conta como atendido se o professor tem aula nele
-  let preferencias = 0
-  let atendidas = 0
+  // Horários a evitar que acabaram recebendo aula do professor (o gerador só faz isso sem outro jeito)
+  let aEvitar = 0
+  let usados = 0
   for (const [id, marcados] of disponibilidades) {
     const aulas = lessons.filter((l) => l.teachers.some((t) => t.id === id))
-    for (const marcado of marcados.filter((m) => m.tipo === 'preferencial')) {
-      preferencias += 1
-      if (aulas.some((a) => sobrepoe(a, marcado))) atendidas += 1
+    for (const marcado of marcados.filter((m) => m.tipo === 'evitar')) {
+      aEvitar += 1
+      if (aulas.some((a) => sobrepoe(a, marcado))) usados += 1
     }
   }
 
@@ -82,11 +84,15 @@ export function GradeQualityCard({ grade, lessons, professores, loading }: Grade
       to: paths.gradeProfessores,
     },
     {
-      label: 'Preferências atendidas',
-      valor: preferencias ? `${atendidas} de ${preferencias}` : '—',
-      detalhe: preferencias ? 'Horários preferenciais com aula' : 'Nenhum horário preferencial registrado',
-      atencao: preferencias > 0 && atendidas < preferencias,
-      to: preferencias ? paths.gradeProfessores : paths.professores,
+      label: 'Horários a evitar usados',
+      valor: aEvitar ? `${usados} de ${aEvitar}` : '—',
+      detalhe: aEvitar
+        ? usados
+          ? 'Usados por falta de outra opção'
+          : 'Nenhuma aula caiu neles'
+        : 'Nenhum horário a evitar registrado',
+      atencao: usados > 0,
+      to: aEvitar ? paths.gradeProfessores : paths.professores,
     },
     {
       label: 'Professores sem janela',

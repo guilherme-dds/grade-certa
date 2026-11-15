@@ -163,7 +163,8 @@ class ProfessorInput:
     id: Optional[int] = None
     carga_maxima: Optional[int] = None
     indisponivel: List[Intervalo] = field(default_factory=list)
-    preferencial: List[Intervalo] = field(default_factory=list)
+    # Horários a evitar: recebem aula só quando não há outro jeito
+    evitar: List[Intervalo] = field(default_factory=list)
     almoco: Optional[Almoco] = None
     max_aulas_dia: Optional[int] = None
     # Da primeira à última atividade do dia (aula ou planejamento)
@@ -765,7 +766,7 @@ def resolver_grade(
 
     # ------------------------------------------------------------------
     # 6. Objetivo: planejamento compartilhado com ao menos 1 colega da mesma área
-    #    e aulas nos horários preferenciais dos professores
+    #    e menos aulas nos horários que os professores pediram para evitar
     # ------------------------------------------------------------------
     compartilhado: Dict[Tuple[str, str, str, str], cp_model.IntVar] = {}
     for (chave, dia, turno, h), p in plan.items():
@@ -783,29 +784,29 @@ def resolver_grade(
         model.Add(s <= p)
         model.Add(s <= sum(colegas))
         compartilhado[(chave, dia, turno, h)] = s
-    # Aulas em horários marcados como preferenciais pelo professor (peso menor)
-    preferidas = [
+    # Aulas em horários que o professor pediu para evitar
+    evitadas = [
         var
         for chave, prof in professores.items()
-        if prof.preferencial
+        if prof.evitar
         for var, dia, horario, nivel in prof_aulas_nivel.get(chave, [])
-        if any(pref.aplica(dia, horario, nivel) for pref in prof.preferencial)
+        if any(ev.aplica(dia, horario, nivel) for ev in prof.evitar)
     ]
-    # Concentrar as tardes vem antes de tudo: uma tarde a mais custa mais que o máximo
-    # que planejamento compartilhado e preferências juntos podem render
     # Prioridades (cada nível pesa mais que todos os de baixo juntos): janelas de professor,
-    # número de tardes, aulas regulares em tarde com aula fixa, planejamento/preferências
-    peso_fixo = 3 * len(compartilhado) + len(preferidas) + 1
+    # número de tardes, aulas regulares em tarde com aula fixa, horários a evitar e, por
+    # último, planejamento compartilhado
+    peso_evitar = 3 * len(compartilhado) + 1
+    peso_fixo = 3 * len(compartilhado) + peso_evitar * len(evitadas) + 1
     peso_tarde = peso_fixo * (len(regulares_em_tarde_fixa) + 1)
     # Janelas de professor pesam mais que tudo o resto junto, tardes incluídas
     peso_janela = peso_tarde * (len(tardes_usadas) + 1)
     objetivo_base = (
         3 * sum(compartilhado.values())
-        + sum(preferidas)
+        - peso_evitar * sum(evitadas)
         - peso_fixo * sum(regulares_em_tarde_fixa)
         - peso_tarde * sum(tardes_usadas)
     )
-    if compartilhado or preferidas or tardes_usadas or regulares_em_tarde_fixa or janelas:
+    if compartilhado or evitadas or tardes_usadas or regulares_em_tarde_fixa or janelas:
         model.Maximize(objetivo_base - peso_janela * sum(janelas.values()))
 
     # ------------------------------------------------------------------
@@ -822,7 +823,7 @@ def resolver_grade(
     # sem objetivo nenhum, o CP-SAT desliga as buscas por vizinhança que ajudam a achá-la.
     busca = model.Clone()
     busca.ClearObjective()
-    if compartilhado or preferidas or tardes_usadas or regulares_em_tarde_fixa:
+    if compartilhado or evitadas or tardes_usadas or regulares_em_tarde_fixa:
         busca.Maximize(objetivo_base)
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = tempo_limite_seg
@@ -833,7 +834,7 @@ def resolver_grade(
     if _foi_cancelado(cancelado):
         return _cancelada(avisos, tempo)
 
-    # Fase 2: melhora essa grade (menos janelas, tardes concentradas, preferências) no tempo que sobrou
+    # Fase 2: melhora essa grade (menos janelas, tardes concentradas, horários a evitar) no tempo que sobrou
     # (sem objetivo, a primeira solução já volta como OPTIMAL)
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE) and model.HasObjective():
         model.ClearHints()

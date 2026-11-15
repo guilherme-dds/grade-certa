@@ -213,7 +213,7 @@ def test_disponibilidade_do_professor_e_conflito_de_indisponibilidade(ctx):
     itens = [
         {"dia_semana": "Seg", "horario_inicio": "07:20", "horario_fim": "08:10",
          "tipo": "indisponivel", "nivel_ensino": "Anos Finais"},
-        {"dia_semana": "Ter", "horario_inicio": "07:20", "horario_fim": "08:10", "tipo": "preferencial"},
+        {"dia_semana": "Ter", "horario_inicio": "07:20", "horario_fim": "08:10", "tipo": "evitar"},
     ]
     r = client.put(f"/professores/{ana.id}/disponibilidades", json=itens)
     assert r.status_code == 200, r.text

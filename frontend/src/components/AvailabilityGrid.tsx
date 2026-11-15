@@ -13,11 +13,11 @@ const slotStyles: Record<SlotState, { label: string; cell: string; swatch: strin
     swatch: 'bg-ink',
     mark: '×',
   },
-  preferencial: {
-    label: 'Preferencial',
-    cell: 'bg-primary-soft text-primary ring-1 ring-inset ring-primary-soft-line hover:bg-primary-soft-line/70',
-    swatch: 'bg-primary-soft ring-1 ring-inset ring-primary-soft-line',
-    mark: '★',
+  evitar: {
+    label: 'Evitar',
+    cell: 'bg-warning-soft text-warning ring-1 ring-inset ring-warning/30 hover:bg-warning/15',
+    swatch: 'bg-warning-soft ring-1 ring-inset ring-warning/40',
+    mark: '!',
   },
   disponivel: {
     label: 'Livre',
@@ -27,7 +27,7 @@ const slotStyles: Record<SlotState, { label: string; cell: string; swatch: strin
   },
 }
 
-const brushes: SlotState[] = ['indisponivel', 'preferencial', 'disponivel']
+const brushes: SlotState[] = ['indisponivel', 'evitar', 'disponivel']
 
 export type SlotsUpdater = (update: (prev: AvailabilitySlots) => AvailabilitySlots) => void
 
@@ -39,7 +39,7 @@ interface AvailabilityGridProps {
 }
 
 /**
- * Quadro semanal de disponibilidade. Escolhe-se um "pincel" (indisponível, preferencial ou livre)
+ * Quadro semanal de disponibilidade. Escolhe-se um "pincel" (indisponível, evitar ou livre)
  * e clica-se ou arrasta-se sobre os horários; clicar de novo num horário já marcado o libera.
  */
 export function AvailabilityGrid({ niveis, horarios, slots, onChange }: AvailabilityGridProps) {
@@ -141,7 +141,8 @@ export function AvailabilityGrid({ niveis, horarios, slots, onChange }: Availabi
 
       <p className="mt-3 text-[13px] text-muted">
         Clique ou arraste sobre os horários. {plural(count('indisponivel'), 'indisponível', 'indisponíveis')} e{' '}
-        {plural(count('preferencial'), 'preferencial', 'preferenciais')} em {activeNivel}; o resto está livre.
+        {count('evitar')} a evitar em {activeNivel}; o resto está livre. Horários a evitar só recebem aula se não
+        houver outro jeito.
       </p>
 
       <div className="mt-4 grid gap-6 lg:grid-cols-2">

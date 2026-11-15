@@ -243,20 +243,34 @@ def test_disciplina_com_aulas_demais():
     assert "no máximo 10" in res.mensagem
 
 
-def test_indisponibilidade_de_outro_nivel_nao_bloqueia_e_preferencia_atrai_aulas():
+def test_indisponibilidade_de_outro_nivel_nao_bloqueia_e_horario_a_evitar_fica_vazio():
     turmas, professores = montar_escola()
     # Eva só dá aula nos Anos Finais: o bloqueio marcado no Ensino Médio não a afeta
     professores["eva"].indisponivel = [Intervalo(dia="Seg", horario=h, nivel="Ensino Médio") for h in SLOTS]
-    # Hugo (Inglês, sempre individual) prefere quarta-feira
-    professores["hugo"].preferencial = [Intervalo(dia="Qua", horario=h) for h in SLOTS]
+    # Hugo (Inglês, sempre individual) pede para evitar a quarta-feira
+    professores["hugo"].evitar = [Intervalo(dia="Qua", horario=h) for h in SLOTS]
     res = resolver_grade(turmas, professores, {}, tempo_limite_seg=60)
     verificar_regras(res, turmas)
-    assert sum(1 for a in res.aulas if "hugo" in a.professor_chaves and a.dia == "Qua") == 4
+    assert any("hugo" in a.professor_chaves for a in res.aulas)
+    assert not any("hugo" in a.professor_chaves and a.dia == "Qua" for a in res.aulas)
 
     professores["eva"].indisponivel = [Intervalo(dia="Seg", horario=h, nivel="Anos Finais") for h in SLOTS]
     res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
     verificar_regras(res, turmas)
     assert not any("eva" in a.professor_chaves and a.dia == "Seg" for a in res.aulas)
+
+
+
+def test_horario_a_evitar_e_usado_quando_nao_ha_outro_jeito():
+    turmas, professores = montar_escola()
+    # Hugo (8 aulas, no máximo 1 por turma por dia) só pode na quarta e na sexta e pediu para
+    # evitar a quarta: a sexta comporta 4, então a quarta recebe as outras 4
+    professores["hugo"].indisponivel = [Intervalo(dia=d, horario=h) for d in ("Seg", "Ter", "Qui") for h in SLOTS]
+    professores["hugo"].evitar = [Intervalo(dia="Qua", horario=h) for h in SLOTS]
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=60)
+    verificar_regras(res, turmas)
+    por_dia = {d: sum(1 for a in res.aulas if "hugo" in a.professor_chaves and a.dia == d) for d in ("Qua", "Sex")}
+    assert por_dia == {"Qua": 4, "Sex": 4}
 
 
 def test_aula_com_dois_professores_reserva_os_dois():

@@ -62,9 +62,9 @@ class GridGeneratorService:
         id_por_nome = {normalizar(p.nome): p.id for p in prof_by_id.values() if p.nome}
 
         indisp_prof: Dict[int, List[Intervalo]] = {}
-        pref_prof: Dict[int, List[Intervalo]] = {}
+        evitar_prof: Dict[int, List[Intervalo]] = {}
         for disp in self.db.query(DisponibilidadeDB).all():
-            destino = pref_prof if disp.tipo == "preferencial" else indisp_prof
+            destino = evitar_prof if disp.tipo == "evitar" else indisp_prof
             destino.setdefault(disp.professor_id, []).append(
                 Intervalo(
                     dia=disp.dia_semana,
@@ -101,7 +101,7 @@ class GridGeneratorService:
                 id=prof.id if prof else None,
                 carga_maxima=prof.carga_maxima_aulas if prof else None,
                 indisponivel=indisp_prof.get(prof.id, []) if prof else [],
-                preferencial=pref_prof.get(prof.id, []) if prof else [],
+                evitar=evitar_prof.get(prof.id, []) if prof else [],
                 almoco=(
                     Almoco(jornada.almoco_inicio, jornada.almoco_fim, jornada.almoco_minutos)
                     if jornada.almoco_minutos

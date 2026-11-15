@@ -65,7 +65,7 @@ class DisponibilidadeDB(Base):
     dia_semana = Column(String(50), nullable=False)
     horario_inicio = Column(String(50), nullable=False)
     horario_fim = Column(String(50), nullable=False)
-    # "indisponivel" (restrição rígida) ou "preferencial" (preferência do professor)
+    # "indisponivel" (restrição rígida) ou "evitar" (usado só se não houver outro jeito)
     tipo = Column(String(20), nullable=False, default="indisponivel")
     # Nível de ensino da grade em que o horário foi marcado (nulo = vale para todos)
     nivel_ensino = Column(String(100), nullable=True)

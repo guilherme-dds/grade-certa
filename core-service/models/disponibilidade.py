@@ -7,7 +7,7 @@ class Disponibilidade(BaseModel):
     dia_semana: str
     horario_inicio: str
     horario_fim: str
-    tipo: Literal["indisponivel", "preferencial"] = "indisponivel"
+    tipo: Literal["indisponivel", "evitar"] = "indisponivel"
     nivel_ensino: Optional[str] = None
 
     model_config = {"from_attributes": True}
@@ -18,5 +18,5 @@ class DisponibilidadeItem(BaseModel):
     dia_semana: str
     horario_inicio: str
     horario_fim: str
-    tipo: Literal["indisponivel", "preferencial"] = "indisponivel"
+    tipo: Literal["indisponivel", "evitar"] = "indisponivel"
     nivel_ensino: Optional[str] = None
