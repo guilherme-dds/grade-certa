@@ -2,7 +2,7 @@ import type { HorariosEscola } from '@/api/grades'
 import type { DisponibilidadeItem } from '@/api/professores'
 import { splitHorario, type NivelEnsino } from '@/lib/schedule'
 
-export type SlotState = 'disponivel' | 'preferencial' | 'indisponivel'
+export type SlotState = 'disponivel' | 'evitar' | 'indisponivel'
 export type AvailabilitySlots = Record<string, SlotState>
 
 export const slotKey = (nivel: string, day: string, time: string) => `${nivel}__${day}__${time}`
@@ -36,7 +36,7 @@ export function itemsToSlots(
   return slots
 }
 
-/** Só os horários indisponíveis e preferenciais são enviados; o restante fica disponível. */
+/** Só os horários indisponíveis e a evitar são enviados; o restante fica disponível. */
 export function slotsToItems(slots: AvailabilitySlots): DisponibilidadeItem[] {
   return Object.entries(slots)
     .filter(([, state]) => state !== 'disponivel')

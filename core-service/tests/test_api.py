@@ -213,7 +213,7 @@ def test_disponibilidade_do_professor_e_conflito_de_indisponibilidade(ctx):
     itens = [
         {"dia_semana": "Seg", "horario_inicio": "07:20", "horario_fim": "08:10",
          "tipo": "indisponivel", "nivel_ensino": "Anos Finais"},
-        {"dia_semana": "Ter", "horario_inicio": "07:20", "horario_fim": "08:10", "tipo": "preferencial"},
+        {"dia_semana": "Ter", "horario_inicio": "07:20", "horario_fim": "08:10", "tipo": "evitar"},
     ]
     r = client.put(f"/professores/{ana.id}/disponibilidades", json=itens)
     assert r.status_code == 200, r.text
@@ -396,6 +396,56 @@ def test_excluir_grade(ctx):
     assert [g["id"] for g in client.get("/grades/historico").json()] == [rodando.id]
 
 
+def test_cancelar_geracao_na_fila_apaga_na_hora(ctx):
+    client, db = ctx
+    _turma_para_gerar(db)
+    grade_id = client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).json()["id"]
+
+    r = client.post(f"/grades/{grade_id}/cancelar")
+    assert r.status_code == 200 and r.json()["status"] == "cancelada"
+    assert client.get(f"/grades/{grade_id}/status").status_code == 404
+    assert _rodar_worker(db) == 0
+    assert client.post(f"/grades/{grade_id}/cancelar").status_code == 404
+
+
+def test_cancelar_geracao_rodando_e_o_worker_apaga(ctx):
+    client, db = ctx
+    # Já pega pelo worker (tem tentativas): fica "cancelando" até o worker parar
+    rodando = GradeDB(nome="Rodando", status="gerando", total_aulas=0,
+                      detalhes={"tempo_limite_seg": 20, "tentativas": 1})
+    pronta = GradeDB(nome="Pronta", status="sucesso", total_aulas=0)
+    db.add_all([rodando, pronta])
+    db.commit()
+
+    assert client.post(f"/grades/{pronta.id}/cancelar").status_code == 409
+    r = client.post(f"/grades/{rodando.id}/cancelar")
+    assert r.json()["status"] == "cancelando"
+    assert client.get(f"/grades/{rodando.id}/status").json()["status"] == "cancelando"
+    assert client.delete(f"/grades/{rodando.id}").status_code == 409
+    # Uma nova geração pode entrar na fila enquanto a cancelada termina de parar
+    assert client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).status_code == 202
+
+    # O worker não estava rodando esta (ex.: caiu): apaga na volta seguinte do laço
+    from services.worker_geracao import apagar_canceladas
+
+    assert apagar_canceladas(db) == 1
+    assert client.get(f"/grades/{rodando.id}/status").status_code == 404
+
+
+def test_worker_para_e_apaga_quando_cancelada_durante_a_busca(ctx, monkeypatch):
+    import services.worker_geracao as worker
+
+    client, db = ctx
+    _turma_para_gerar(db)
+    grade_id = client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).json()["id"]
+    # Cancelada assim que a busca começa
+    monkeypatch.setattr(worker, "foi_cancelada", lambda *_: True)
+
+    assert _rodar_worker(db) == 1
+    assert client.get(f"/grades/{grade_id}/status").status_code == 404
+    assert client.get("/grades/historico").json() == []
+
+
 JORNADA = {"almoco_inicio": "12:00", "almoco_fim": "14:00", "almoco_minutos": 40, "max_aulas_dia": 6, "max_horas_dia": 10.5}
 
 
@@ -456,3 +506,110 @@ def test_geracao_usa_o_padrao_e_a_personalizacao_do_professor(ctx):
     ok = client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).json()["id"]
     _rodar_worker(db)
     assert client.get(f"/grades/{ok}/status").json()["status"] == "sucesso"
+
+
+@pytest.fixture
+def ctx_disciplinas():
+    from routers import disciplinas
+
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    def _db():
+        db = Session()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app = FastAPI()
+    app.include_router(disciplinas.router)
+    app.dependency_overrides[get_db] = _db
+    return TestClient(app), Session()
+
+
+def test_excluir_disciplina_tira_dos_professores(ctx_disciplinas):
+    from database.models import DisciplinaDB
+
+    client, db = ctx_disciplinas
+    arte, musica = DisciplinaDB(nome="Arte"), DisciplinaDB(nome="Música")
+    db.add_all([arte, musica])
+    db.flush()
+    prof = ProfessorDB(nome="Ana", email="ana@x.com", disciplinas=[arte.id, musica.id])
+    db.add(prof)
+    db.commit()
+    arte_id, musica_id, prof_id = arte.id, musica.id, prof.id
+
+    assert client.delete(f"/disciplinas/{musica_id}").status_code == 204
+    db.expire_all()
+    assert db.get(ProfessorDB, prof_id).disciplinas == [arte_id]
+    assert [d["nome"] for d in client.get("/disciplinas/").json()] == ["Arte"]
+    assert client.delete(f"/disciplinas/{musica_id}").status_code == 404
+
+
+def test_excluir_disciplina_em_matriz_e_recusado(ctx_disciplinas):
+    from database.models import DisciplinaDB
+
+    client, db = ctx_disciplinas
+    musica = DisciplinaDB(nome="Música")
+    db.add_all([musica, TurmaDB(nome="6º Ano A", turno="Manhã", matriz_curricular=[{"disciplina": "musica", "aulas_semanais": 2}])])
+    db.commit()
+
+    resp = client.delete(f"/disciplinas/{musica.id}")
+    assert resp.status_code == 409
+    assert "6º Ano A" in resp.json()["detail"]
+
+
+def test_excluir_disciplina_tirando_das_matrizes(ctx_disciplinas):
+    from database.models import DisciplinaDB
+
+    client, db = ctx_disciplinas
+    musica = DisciplinaDB(nome="Música", quantidade_aulas=2)
+    db.add(musica)
+    db.flush()
+    prof = ProfessorDB(nome="Ana", email="ana@x.com", disciplinas=[musica.id])
+    turma = TurmaDB(nome="6º Ano A", turno="Manhã", matriz_curricular=[
+        {"disciplina": "musica", "aulas_semanais": 2},
+        {"disciplina": "Arte", "aulas_semanais": 2},
+    ])
+    db.add_all([prof, turma])
+    db.commit()
+    musica_id, prof_id, turma_id = musica.id, prof.id, turma.id
+
+    r = client.delete(f"/disciplinas/{musica_id}", params={"tirar_das_matrizes": True})
+    assert r.status_code == 204, r.text
+    db.expire_all()
+    assert db.get(TurmaDB, turma_id).matriz_curricular == [{"disciplina": "Arte", "aulas_semanais": 2}]
+    assert db.get(ProfessorDB, prof_id).disciplinas == []
+
+
+def test_renomear_disciplina_troca_nas_matrizes_e_mantem_o_resto(ctx_disciplinas):
+    from database.models import DisciplinaDB
+
+    client, db = ctx_disciplinas
+    lp = DisciplinaDB(nome="LP - Gramatica", quantidade_aulas=4, area="Linguagens", aula_dobrada=True)
+    db.add_all([lp, DisciplinaDB(nome="Arte", quantidade_aulas=2)])
+    turma = TurmaDB(nome="6º Ano A", turno="Manhã", matriz_curricular=[
+        {"disciplina": "LP - Gramatica", "aulas_semanais": 4, "professor_ids": [1]},
+        {"disciplina": "Arte", "aulas_semanais": 2},
+    ])
+    db.add(turma)
+    db.commit()
+    lp_id, turma_id = lp.id, turma.id
+
+    r = client.put(f"/disciplinas/{lp_id}", json={"nome": "  LP – Gramática "})
+    assert r.status_code == 200, r.text
+    assert r.json()["nome"] == "LP – Gramática"
+    assert r.json()["area"] == "Linguagens" and r.json()["aula_dobrada"] is True
+    db.expire_all()
+    assert db.get(TurmaDB, turma_id).matriz_curricular == [
+        {"disciplina": "LP – Gramática", "aulas_semanais": 4, "professor_ids": [1]},
+        {"disciplina": "Arte", "aulas_semanais": 2},
+    ]
+
+    # Nome de outra disciplina (sem olhar acento e caixa) é recusado, ao renomear e ao criar
+    assert client.put(f"/disciplinas/{lp_id}", json={"nome": "arte"}).status_code == 409
+    assert client.post("/disciplinas/", json={"nome": "ÁRTE", "quantidade_aulas": 2}).status_code == 409
+    assert client.put(f"/disciplinas/{lp_id}", json={"nome": "  "}).status_code == 422
+

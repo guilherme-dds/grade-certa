@@ -100,6 +100,13 @@ class DetectorConflitos:
         disciplinas = {normalizar(d.nome): d for d in db.query(DisciplinaDB).all()}
         self.dobrada: Dict[str, bool] = {}
         self.fixos_exatos: Set[Tuple[int, str]] = set()
+        # (turma, disciplina) marcadas na matriz como só à tarde
+        self.so_tarde: Set[Tuple[int, str]] = {
+            (tid, normalizar(item.get("disciplina") or ""))
+            for tid, turma in self.turmas.items()
+            for item in turma.matriz_curricular or []
+            if isinstance(item, dict) and item.get("so_tarde")
+        }
         for aula in self.aulas:
             nome = normalizar(aula.disciplina_nome or "")
             if nome not in self.dobrada:
@@ -291,7 +298,16 @@ class DetectorConflitos:
     def _sala_indisponivel(self, aula: AulaDB, dia: str, horario: str) -> bool:
         return any(i.aplica(dia, horario) for i in self.indisp_sala.get(aula.sala_nome or "", []))
 
+    def _fora_da_tarde(self, aula: AulaDB, horario: str) -> bool:
+        """Disciplina só à tarde num horário da manhã."""
+        if (aula.turma_id, normalizar(aula.disciplina_nome or "")) not in self.so_tarde:
+            return False
+        turno, _ = self._turno_da_aula(aula, horario)
+        return turno is not None and turno != "tarde"
+
     def _horario_livre(self, aula: AulaDB, dia: str, horario: str) -> bool:
+        if self._fora_da_tarde(aula, horario):
+            return False
         for outra in self.aulas:
             if outra.id == aula.id or outra.dia_semana != dia or not slots_overlap(outra.horario, horario):
                 continue
@@ -365,6 +381,11 @@ class DetectorConflitos:
                 conflitos.append(self._conflito(
                     "Professor indisponível", "alto",
                     f"{nome} marcou {quando} como indisponível ({a.disciplina_nome}, {a.turma_nome}).", a,
+                ))
+            if self._fora_da_tarde(a, a.horario):
+                conflitos.append(self._conflito(
+                    "Fora da tarde", "medio",
+                    f"{a.disciplina_nome} em {a.turma_nome} deve ficar à tarde, mas está em {quando}.", a,
                 ))
             if a.sala_nome and self._sala_indisponivel(a, a.dia_semana, a.horario):
                 conflitos.append(self._conflito(

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { cn } from '@/lib/cn'
+import { Icon } from './Icon'
 
 const tones = {
   default: 'text-ink',
@@ -9,16 +10,23 @@ const tones = {
   danger: 'text-danger',
 }
 
+const dots = {
+  default: 'bg-line',
+  success: 'bg-accent',
+  warning: 'bg-warning',
+  danger: 'bg-danger',
+}
+
 const sizes = {
-  lg: 'text-[26px]',
-  md: 'text-lg',
-  sm: 'text-base',
+  lg: 'text-[30px]',
+  md: 'text-[20px]',
+  sm: 'text-[17px]',
 }
 
 interface StatCardProps {
   label: string
   value: ReactNode
-  /** Texto menor ao lado do valor, ex.: "de 42 professores" */
+  /** Texto menor abaixo do valor, ex.: "de 42 professores" */
   suffix?: string
   tone?: keyof typeof tones
   size?: keyof typeof sizes
@@ -37,39 +45,44 @@ export function StatCard({
 }: StatCardProps) {
   const inner = (
     <>
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted">{label}</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="flex items-center gap-2 text-[13px] font-medium text-muted">
+          <span className={cn('size-2 rounded-full', dots[tone])} aria-hidden="true" />
+          {label}
+        </p>
         {to && (
-          <span className="text-[11px] text-primary/70 transition-transform group-hover:translate-x-0.5" aria-hidden="true">
-            →
+          <span
+            className="grid size-7 place-items-center rounded-full bg-paper text-muted transition-colors group-hover:bg-ink group-hover:text-white"
+            aria-hidden="true"
+          >
+            <Icon name="arrowUpRight" width={14} height={14} />
           </span>
         )}
       </div>
       {isLoading ? (
-        <div className="mt-2.5 h-7 w-28 animate-pulse rounded bg-line-soft" />
+        <div className="mt-4 h-8 w-28 animate-pulse rounded-lg bg-line-soft" />
       ) : (
-        <p className={cn('mt-1.5 font-bold', tones[tone], sizes[size])}>
-          {value}
-          {suffix && <span className="ml-1 text-sm font-normal text-muted">{suffix}</span>}
-        </p>
+        <div className="mt-3">
+          <p className={cn('truncate font-display leading-tight font-bold tabular-nums', tones[tone], sizes[size])}>
+            {value}
+          </p>
+          {suffix && <p className="mt-0.5 truncate text-[13px] text-muted">{suffix}</p>}
+        </div>
       )}
     </>
   )
 
   if (to) {
     return (
-      <Link
-        to={to}
-        className="group block rounded-lg border border-line bg-white p-[18px] transition hover:border-primary/50 hover:shadow-xs"
-      >
+      <Link to={to} className="group card block p-5 transition-shadow hover:shadow-[0_12px_32px_-16px_rgb(21_22_26/0.3)]">
         {inner}
       </Link>
     )
   }
 
-  return <div className="rounded-lg border border-line bg-white p-[18px]">{inner}</div>
+  return <div className="card p-5">{inner}</div>
 }
 
 export function StatGrid({ children }: { children: ReactNode }) {
-  return <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3.5">{children}</div>
+  return <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3">{children}</div>
 }

@@ -6,9 +6,10 @@ aulas e os horários de planejamento alocados. Fica separado do GridGeneratorSer
 para poder ser testado sem MySQL.
 """
 import re
+import threading
 import unicodedata
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from ortools.sat.python import cp_model
 
@@ -34,6 +35,7 @@ REGRAS = {
     "primeira_ultima": "quem dá a primeira aula do turno não dá a última",
     "planejamento": f"{PLANEJAMENTOS_SEMANAIS} horários de planejamento por professor",
     "horarios_fixos": "aulas com dia ou horário fixos",
+    "so_tarde": "disciplinas só à tarde",
     "manha_completa": "manhãs completas nas turmas de manhã + tardes",
     "estrutura_tardes": "tardes completas ou meia tarde nas turmas de manhã + tardes",
     "almoco": "almoço dos professores",
@@ -115,6 +117,8 @@ class ItemInput:
     # na quarta à tarde). Horário None = qualquer horário daquele dia. As aulas restantes,
     # se houver, o gerador distribui.
     horarios_fixos: List[Tuple[str, Optional[str]]] = field(default_factory=list)
+    # Só nos horários da tarde da turma
+    so_tarde: bool = False
 
     def fixos_exatos(self) -> set:
         return {(dia, h) for dia, h in self.horarios_fixos if h}
@@ -162,7 +166,8 @@ class ProfessorInput:
     id: Optional[int] = None
     carga_maxima: Optional[int] = None
     indisponivel: List[Intervalo] = field(default_factory=list)
-    preferencial: List[Intervalo] = field(default_factory=list)
+    # Horários a evitar: recebem aula só quando não há outro jeito
+    evitar: List[Intervalo] = field(default_factory=list)
     almoco: Optional[Almoco] = None
     max_aulas_dia: Optional[int] = None
     # Da primeira à última atividade do dia (aula ou planejamento)
@@ -212,6 +217,48 @@ class SolverResult:
     tempo_seg: float = 0.0
 
 
+MENSAGEM_CANCELADA = "Geração cancelada antes de terminar."
+# De quanto em quanto tempo a busca confere se a geração foi cancelada
+INTERVALO_CANCELAMENTO_SEG = 1.0
+
+
+def _foi_cancelado(cancelado: Optional[Callable[[], bool]]) -> bool:
+    if cancelado is None:
+        return False
+    try:
+        return bool(cancelado())
+    except Exception:
+        # Uma falha ao conferir (ex.: banco fora do ar) não derruba a geração
+        return False
+
+
+def _resolver(solver: cp_model.CpSolver, model: cp_model.CpModel, cancelado: Optional[Callable[[], bool]]):
+    """Solve que para a busca no meio quando `cancelado()` passa a devolver True."""
+    if cancelado is None:
+        return solver.Solve(model)
+    terminou = threading.Event()
+
+    def vigiar():
+        while not terminou.wait(INTERVALO_CANCELAMENTO_SEG):
+            if _foi_cancelado(cancelado):
+                solver.stop_search()
+                return
+
+    vigia = threading.Thread(target=vigiar, daemon=True)
+    vigia.start()
+    try:
+        return solver.Solve(model)
+    finally:
+        terminou.set()
+        vigia.join()
+
+
+def _cancelada(avisos: List[str], tempo: float) -> SolverResult:
+    return SolverResult(
+        sucesso=False, status="cancelada", mensagem=MENSAGEM_CANCELADA, avisos=avisos, tempo_seg=tempo
+    )
+
+
 def _inviavel(mensagem: str, avisos: List[str]) -> SolverResult:
     return SolverResult(sucesso=False, status="inviavel", mensagem=mensagem, avisos=avisos)
 
@@ -257,6 +304,27 @@ def _opcoes_almoco(almoco: Almoco, horarios: List[str]) -> List[List[int]]:
     return [o for o in opcoes if not any(set(m) < set(o) for m in opcoes)]
 
 
+def _erro_so_tarde(t: TurmaInput, item: ItemInput, slots: List[dict]) -> Optional[str]:
+    """Mensagem quando a disciplina só à tarde não cabe nas tardes da turma (None se cabe)."""
+    onde = f"'{item.disciplina}' na turma '{t.nome}'"
+    tarde = [s["horario"] for s in slots if s["turno"] == "tarde"]
+    if not tarde:
+        return f"Inviável: {onde} está marcada só à tarde, mas o turno '{t.turno}' não tem aulas à tarde."
+    dias = t.dias_com_tarde()
+    for dia, horario in item.horarios_fixos:
+        if horario is not None and horario not in tarde:
+            return f"Inviável: {onde} está marcada só à tarde, mas tem horário fixo de manhã ({dia}, {horario})."
+        if horario is None and dia not in dias:
+            return f"Inviável: {onde} está marcada só à tarde, mas está fixa em {dia}, um dia sem aula à tarde."
+    por_dia = min(len(tarde), 2 if item.aula_dobrada else 1)
+    if item.aulas_semanais > por_dia * len(dias):
+        return (
+            f"Inviável: {onde} tem {item.aulas_semanais} aulas e está marcada só à tarde, mas as "
+            f"{len(dias)} tardes da turma comportam no máximo {por_dia * len(dias)} aulas dela."
+        )
+    return None
+
+
 def resolver_grade(
     turmas: List[TurmaInput],
     professores: Dict[str, ProfessorInput],
@@ -264,6 +332,7 @@ def resolver_grade(
     tempo_limite_seg: float = 45.0,
     workers: int = 8,
     regras_desligadas: Tuple[str, ...] = (),
+    cancelado: Optional[Callable[[], bool]] = None,
 ) -> SolverResult:
     avisos: List[str] = []
     turmas = [t for t in turmas if any(i.aulas_semanais > 0 for i in t.itens)]
@@ -322,6 +391,10 @@ def resolver_grade(
                         f"que não é um horário de aula da turma no turno '{t.turno}'.",
                         avisos,
                     )
+            if item.so_tarde:
+                erro = _erro_so_tarde(t, item, slots)
+                if erro:
+                    return _inviavel(erro, avisos)
             max_semana = len(DIAS_SEMANA) * (2 if item.aula_dobrada else 1)
             if item.aulas_semanais > max_semana:
                 regra = "no máximo 2 por dia" if item.aula_dobrada else "aulas individuais, 1 por dia"
@@ -334,6 +407,14 @@ def resolver_grade(
                 aulas_por_prof[chave] = aulas_por_prof.get(chave, 0) + item.aulas_semanais
             if not item.professores:
                 avisos.append(f"'{item.disciplina}' na turma '{t.nome}' está sem professor.")
+        so_tarde = sum(i.aulas_semanais for i in t.itens if i.so_tarde)
+        horarios_tarde = len(t.dias_com_tarde()) * sum(1 for s in slots if s["turno"] == "tarde")
+        if so_tarde > horarios_tarde:
+            return _inviavel(
+                f"Inviável: a turma '{t.nome}' tem {so_tarde} aulas de disciplinas só à tarde, mas as "
+                f"tardes dela têm {horarios_tarde} horários na semana.",
+                avisos,
+            )
 
     for chave, total in aulas_por_prof.items():
         prof = professores[chave]
@@ -472,6 +553,15 @@ def resolver_grade(
                     for s in slots
                     if s["turno"] == "tarde" and (dia, s["horario"]) not in fixos_tarde
                 ]
+
+    # Disciplinas só à tarde: nenhuma aula nos horários da manhã
+    for t in turmas:
+        manha = [s["ordem"] for s in turma_slots[t.id] if s["turno"] != "tarde"]
+        for idx, item in enumerate(t.itens):
+            if item.so_tarde:
+                for dia in DIAS_SEMANA:
+                    for o in manha:
+                        model.Add(x[(t.id, idx, dia, o)] == 0).OnlyEnforceIf(lits["so_tarde"])
 
     # Aulas com dia (e horário) definidos pela escola
     for t in turmas:
@@ -721,7 +811,7 @@ def resolver_grade(
 
     # ------------------------------------------------------------------
     # 6. Objetivo: planejamento compartilhado com ao menos 1 colega da mesma área
-    #    e aulas nos horários preferenciais dos professores
+    #    e menos aulas nos horários que os professores pediram para evitar
     # ------------------------------------------------------------------
     compartilhado: Dict[Tuple[str, str, str, str], cp_model.IntVar] = {}
     for (chave, dia, turno, h), p in plan.items():
@@ -739,29 +829,29 @@ def resolver_grade(
         model.Add(s <= p)
         model.Add(s <= sum(colegas))
         compartilhado[(chave, dia, turno, h)] = s
-    # Aulas em horários marcados como preferenciais pelo professor (peso menor)
-    preferidas = [
+    # Aulas em horários que o professor pediu para evitar
+    evitadas = [
         var
         for chave, prof in professores.items()
-        if prof.preferencial
+        if prof.evitar
         for var, dia, horario, nivel in prof_aulas_nivel.get(chave, [])
-        if any(pref.aplica(dia, horario, nivel) for pref in prof.preferencial)
+        if any(ev.aplica(dia, horario, nivel) for ev in prof.evitar)
     ]
-    # Concentrar as tardes vem antes de tudo: uma tarde a mais custa mais que o máximo
-    # que planejamento compartilhado e preferências juntos podem render
     # Prioridades (cada nível pesa mais que todos os de baixo juntos): janelas de professor,
-    # número de tardes, aulas regulares em tarde com aula fixa, planejamento/preferências
-    peso_fixo = 3 * len(compartilhado) + len(preferidas) + 1
+    # número de tardes, aulas regulares em tarde com aula fixa, horários a evitar e, por
+    # último, planejamento compartilhado
+    peso_evitar = 3 * len(compartilhado) + 1
+    peso_fixo = 3 * len(compartilhado) + peso_evitar * len(evitadas) + 1
     peso_tarde = peso_fixo * (len(regulares_em_tarde_fixa) + 1)
     # Janelas de professor pesam mais que tudo o resto junto, tardes incluídas
     peso_janela = peso_tarde * (len(tardes_usadas) + 1)
     objetivo_base = (
         3 * sum(compartilhado.values())
-        + sum(preferidas)
+        - peso_evitar * sum(evitadas)
         - peso_fixo * sum(regulares_em_tarde_fixa)
         - peso_tarde * sum(tardes_usadas)
     )
-    if compartilhado or preferidas or tardes_usadas or regulares_em_tarde_fixa or janelas:
+    if compartilhado or evitadas or tardes_usadas or regulares_em_tarde_fixa or janelas:
         model.Maximize(objetivo_base - peso_janela * sum(janelas.values()))
 
     # ------------------------------------------------------------------
@@ -778,16 +868,18 @@ def resolver_grade(
     # sem objetivo nenhum, o CP-SAT desliga as buscas por vizinhança que ajudam a achá-la.
     busca = model.Clone()
     busca.ClearObjective()
-    if compartilhado or preferidas or tardes_usadas or regulares_em_tarde_fixa:
+    if compartilhado or evitadas or tardes_usadas or regulares_em_tarde_fixa:
         busca.Maximize(objetivo_base)
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = tempo_limite_seg
     solver.parameters.num_workers = workers
     solver.parameters.stop_after_first_solution = True
-    status = solver.Solve(busca)
+    status = _resolver(solver, busca, cancelado)
     tempo = round(solver.WallTime(), 3)
+    if _foi_cancelado(cancelado):
+        return _cancelada(avisos, tempo)
 
-    # Fase 2: melhora essa grade (menos janelas, tardes concentradas, preferências) no tempo que sobrou
+    # Fase 2: melhora essa grade (menos janelas, tardes concentradas, horários a evitar) no tempo que sobrou
     # (sem objetivo, a primeira solução já volta como OPTIMAL)
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE) and model.HasObjective():
         model.ClearHints()
@@ -797,8 +889,10 @@ def resolver_grade(
         melhoria = cp_model.CpSolver()
         melhoria.parameters.max_time_in_seconds = max(5.0, tempo_limite_seg - tempo)
         melhoria.parameters.num_workers = workers
-        status_melhoria = melhoria.Solve(model)
+        status_melhoria = _resolver(melhoria, model, cancelado)
         tempo = round(tempo + melhoria.WallTime(), 3)
+        if _foi_cancelado(cancelado):
+            return _cancelada(avisos, tempo)
         # As duas cópias têm as mesmas variáveis, então a extração funciona com qualquer um dos solvers
         if status_melhoria in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             solver, status = melhoria, status_melhoria
@@ -811,8 +905,10 @@ def resolver_grade(
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = tempo_limite_seg
         solver.parameters.num_workers = workers
-        solver.Solve(diagnostico)
+        _resolver(solver, diagnostico, cancelado)
         tempo = round(tempo + solver.WallTime(), 3)
+        if _foi_cancelado(cancelado):
+            return _cancelada(avisos, tempo)
         indices = set(solver.SufficientAssumptionsForInfeasibility())
         conflito = [nome for nome, lit in lits.items() if lit.Index() in indices]
         if conflito:
@@ -874,10 +970,10 @@ def resolver_grade(
 
     janelas_restantes = sorted(k for k, v in janelas.items() if solver.Value(v))
     mensagem = "Grade gerada com sucesso respeitando todas as regras!"
-    if janelas_restantes:
-        mensagem = (
-            f"Grade gerada com sucesso. {len(janelas_restantes)} janela(s) de professor não puderam ser evitadas."
-        )
+    if len(janelas_restantes) == 1:
+        mensagem = "Grade gerada com sucesso. 1 janela de professor não pôde ser evitada."
+    elif janelas_restantes:
+        mensagem = f"Grade gerada com sucesso. {len(janelas_restantes)} janelas de professor não puderam ser evitadas."
 
     return SolverResult(
         sucesso=True,

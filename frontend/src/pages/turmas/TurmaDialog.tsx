@@ -73,16 +73,14 @@ export function TurmaDialog({ turma, onClose, onSave }: TurmaDialogProps) {
       }}
       onClick={(e) => e.target === e.currentTarget && close()}
       aria-labelledby="turma-dialog-title"
-      className="m-auto w-[min(460px,calc(100%-2rem))] rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
+      className="m-auto w-[min(460px,calc(100%-2rem))] card p-0 text-ink"
     >
       <form onSubmit={handleSubmit} className="p-6">
         <h3 id="turma-dialog-title" className="text-[17px] font-semibold">
-          {turma ? 'Editar Turma' : 'Nova Turma'}
+          {turma ? 'Editar turma' : 'Nova turma'}
         </h3>
         <p className="mt-1 text-[13px] text-muted">
-          {turma
-            ? 'Altere as informações da turma selecionada.'
-            : 'Cadastre uma nova turma com seu respectivo turno.'}
+          {turma ? 'Altere as informações da turma selecionada.' : 'Cadastre uma nova turma com seu respectivo turno.'}
         </p>
 
         <div className="mt-4 flex flex-col gap-4">
@@ -98,15 +96,10 @@ export function TurmaDialog({ turma, onClose, onSave }: TurmaDialogProps) {
             autoFocus
           />
 
-          <SelectField
-            label="Turno"
-            options={SHIFT_OPTIONS}
-            value={turno}
-            onChange={(e) => setTurno(e.target.value)}
-          />
+          <SelectField label="Turno" options={SHIFT_OPTIONS} value={turno} onChange={(v) => setTurno(v)} />
 
           {turno === TURNO_MANHA_E_TARDES && (
-            <fieldset className="rounded-md border border-line-soft bg-paper p-3">
+            <fieldset className="rounded-xl border border-line-soft bg-paper p-3">
               <legend className="px-1 text-xs font-medium text-muted">Tardes com aula</legend>
               <div className="flex flex-wrap gap-3">
                 {weekDays.map((dia) => (
@@ -126,7 +119,7 @@ export function TurmaDialog({ turma, onClose, onSave }: TurmaDialogProps) {
             label="Nível de ensino (define os horários das aulas)"
             options={niveisEnsino}
             value={nivel}
-            onChange={(e) => setNivel(e.target.value)}
+            onChange={(v) => setNivel(v)}
           />
         </div>
 

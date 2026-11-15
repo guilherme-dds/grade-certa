@@ -45,11 +45,11 @@ export function DeleteTurmaDialog({ turma, onClose, onConfirm }: DeleteTurmaDial
       }}
       onClick={(e) => e.target === e.currentTarget && close()}
       aria-labelledby="delete-turma-dialog-title"
-      className="m-auto w-[min(420px,calc(100%-2rem))] rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
+      className="m-auto w-[min(420px,calc(100%-2rem))] card p-0 text-ink"
     >
       <div className="p-6">
         <h3 id="delete-turma-dialog-title" className="text-[17px] font-semibold text-danger">
-          Excluir Turma
+          Excluir turma
         </h3>
         <p className="mt-2 text-[14px] text-ink">
           Tem certeza que deseja excluir a turma <strong className="font-semibold">{turma.nome}</strong> ({turma.turno})?

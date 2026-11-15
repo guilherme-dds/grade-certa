@@ -4,7 +4,7 @@ import { deleteUser, getUsers, setUserActive } from '@/api/users'
 import type { User } from '@/api/types'
 import { useAuth } from '@/auth/useAuth'
 import { Button } from '@/components/ui/Button'
-import { PageHeader } from '@/components/ui/PageHeader'
+import { TabHeader } from '@/layouts/SectionLayout'
 import { getApiErrorMessage } from '@/lib/apiError'
 import { formatDateTime } from '@/lib/schedule'
 import { UserForm } from './UserForm'
@@ -37,13 +37,13 @@ export function UsersPage() {
 
   return (
     <>
-      <PageHeader
+      <TabHeader
         title="Usuários"
-        description="Contas de quem usa o sistema. Todos os usuários têm o mesmo acesso; ninguém desativa ou exclui a própria conta."
+        description="Quem acessa o Grade Certa. Todos têm o mesmo acesso; ninguém desativa ou exclui a própria conta."
       />
 
       <div className="grid items-start gap-5 lg:grid-cols-[1fr_360px]">
-        <div className="overflow-x-auto rounded-lg border border-line bg-white">
+        <div className="relative overflow-x-auto card">
           {error && (
             <p role="alert" className="border-b border-line px-4 py-2.5 text-[13px] text-danger">
               {error}
@@ -121,10 +121,10 @@ export function UsersPage() {
           )}
         </div>
 
-        <div className="rounded-lg border border-line bg-white p-6">
-          <h2 className="mb-4 text-sm font-semibold">Novo usuário</h2>
+        <div className="card p-6">
+          <h2 className="mb-4 font-display text-[17px] font-bold">Novo usuário</h2>
           {created && (
-            <p role="status" className="mb-4 rounded-md border border-primary-soft-line bg-primary-soft px-3 py-2 text-[13px]">
+            <p role="status" className="mb-4 rounded-xl border border-primary-soft-line bg-primary-soft px-3 py-2 text-[13px]">
               Conta de {created} criada. Passe o e-mail e a senha para a pessoa entrar.
             </p>
           )}

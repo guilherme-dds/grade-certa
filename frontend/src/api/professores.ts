@@ -17,7 +17,8 @@ export interface ProfessorBackend {
   jornada?: Jornada | null
 }
 
-export type TipoDisponibilidade = 'indisponivel' | 'preferencial'
+/** "evitar": o gerador só põe aula ali se não houver outro jeito */
+export type TipoDisponibilidade = 'indisponivel' | 'evitar'
 
 /** Horário marcado na grade de disponibilidade; horários não enviados ficam disponíveis */
 export interface DisponibilidadeItem {

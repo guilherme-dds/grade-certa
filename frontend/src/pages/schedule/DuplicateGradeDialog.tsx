@@ -52,7 +52,7 @@ export function DuplicateGradeDialog({ grade, onClose, onConfirm }: DuplicateGra
       }}
       onClick={(e) => e.target === e.currentTarget && close()}
       aria-labelledby="duplicate-grade-dialog-title"
-      className="m-auto w-[min(440px,calc(100%-2rem))] rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
+      className="m-auto w-[min(440px,calc(100%-2rem))] card p-0 text-ink"
     >
       <form onSubmit={handleSubmit} className="p-6">
         <h3 id="duplicate-grade-dialog-title" className="text-[17px] font-semibold">

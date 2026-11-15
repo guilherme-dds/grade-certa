@@ -44,11 +44,11 @@ export function LoginPage() {
 
   return (
     <form onSubmit={onSubmit} noValidate>
-      <h1 className="mb-1 text-[19px] font-semibold">Entrar</h1>
-      <p className="mb-6 text-[13px] text-muted">Acesse com o e-mail e a senha da sua conta.</p>
+      <h1 className="mb-1.5 font-display text-[28px] font-bold tracking-[-0.02em]">Entrar</h1>
+      <p className="mb-7 text-[14px] text-muted">Acesse com o e-mail e a senha da sua conta.</p>
 
       {state?.registered && (
-        <p className="mb-4 rounded-md border border-primary-soft-line bg-primary-soft px-3 py-2 text-[13px]">
+        <p className="mb-4 rounded-xl border border-primary-soft-line bg-primary-soft px-3 py-2 text-[13px]">
           Conta criada! Faça login para continuar.
         </p>
       )}

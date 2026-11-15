@@ -66,8 +66,11 @@ export interface JanelaProfessor {
   horario: string
 }
 
-/** "gerando" enquanto o solver roda; depois "sucesso", "inviavel", "tempo_esgotado" ou "erro" */
-export type StatusGrade = 'gerando' | 'sucesso' | 'inviavel' | 'tempo_esgotado' | 'erro' | string
+/**
+ * "gerando" enquanto o solver roda; depois "sucesso", "inviavel", "tempo_esgotado" ou "erro".
+ * "cancelando" enquanto o worker para uma geração cancelada (depois ela some do histórico).
+ */
+export type StatusGrade = 'gerando' | 'cancelando' | 'sucesso' | 'inviavel' | 'tempo_esgotado' | 'erro' | string
 
 export interface GradeResumo {
   id: number
@@ -118,6 +121,15 @@ export async function gerarGrade(nome: string, tempoLimiteSeg: number): Promise<
 
 export async function getStatusGrade(gradeId: number): Promise<GradeResumo> {
   const { data } = await api.get<GradeResumo>(`/grades/${gradeId}/status`)
+  return data
+}
+
+/**
+ * Cancela uma geração: nada é salvo e ela sai do histórico. "cancelada" se ainda estava na
+ * fila (já foi apagada); "cancelando" se o worker estava rodando (para em ~1 s e apaga).
+ */
+export async function cancelarGeracao(gradeId: number): Promise<{ id: number; status: 'cancelada' | 'cancelando' }> {
+  const { data } = await api.post<{ id: number; status: 'cancelada' | 'cancelando' }>(`/grades/${gradeId}/cancelar`)
   return data
 }
 

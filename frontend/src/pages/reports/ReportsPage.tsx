@@ -5,8 +5,9 @@ import { getProfessores } from '@/api/professores'
 import { getSalas } from '@/api/salas'
 import { Button } from '@/components/ui/Button'
 import { buttonStyles } from '@/components/ui/buttonStyles'
-import { PageHeader } from '@/components/ui/PageHeader'
-import { cn } from '@/lib/cn'
+import { Select, type SelectOption } from '@/components/ui/Select'
+import { paths } from '@/config/paths'
+import { TabHeader } from '@/layouts/SectionLayout'
 import { formatDateTime } from '@/lib/schedule'
 import { useSchedule } from '@/schedule/useSchedule'
 import { ClassScheduleReport } from './ClassScheduleReport'
@@ -17,15 +18,24 @@ import { cargaPorProfessor, nomesOrdenados, ocupacaoSalas } from './reportMetric
 
 const TODOS = 'todos'
 
-const abas = [
-  { id: 'geral', label: 'Visão geral' },
-  { id: 'professores', label: 'Professores' },
-  { id: 'turmas', label: 'Turmas' },
-  { id: 'salas', label: 'Salas' },
-] as const
+export type AbaRelatorio = 'resumo' | 'professores' | 'turmas' | 'salas'
 
-// Aba e filtros ficam na URL: /relatorios?aba=salas&sala=…
-export function ReportsPage() {
+const TITULO: Record<AbaRelatorio, string> = {
+  resumo: 'Resumo da grade',
+  professores: 'Grade por professor',
+  turmas: 'Impressão por turma',
+  salas: 'Grade por sala',
+}
+
+const DESCRICAO: Record<AbaRelatorio, string> = {
+  resumo: 'Indicadores da grade, carga dos professores e ocupação das salas.',
+  professores: 'Grade individual de cada professor, com planejamentos e janelas. Pronta para imprimir e entregar.',
+  turmas: 'Grade de cada turma em sequência, uma por página na impressão.',
+  salas: 'Ocupação de cada sala ao longo da semana.',
+}
+
+// Filtros ficam na URL: /grade/salas?sala=…
+export function ReportsPage({ aba }: { aba: AbaRelatorio }) {
   const { lessons, conflicts, activeGrade, horariosTurmas, isLoading, refreshSchedule } = useSchedule()
   const [params, setParams] = useSearchParams()
   const { data: historico = [] } = useQuery({ queryKey: ['historicoGrades'], queryFn: getHistoricoGrades })
@@ -41,8 +51,6 @@ export function ReportsPage() {
   const professores = nomesOrdenados(cargas.map((c) => c.nome))
   const turmas = nomesOrdenados(lessons.map((l) => l.classGroup))
   const salas = ocupacoes.map((o) => o.nome)
-
-  const aba = abas.find((a) => a.id === params.get('aba'))?.id ?? 'geral'
 
   /** Filtro da URL; um valor fora da grade atual (ex.: depois de trocar de grade) volta ao primeiro */
   const filtro = (chave: string, opcoes: string[]) => {
@@ -65,12 +73,6 @@ export function ReportsPage() {
       { replace: true },
     )
 
-  const hrefDaAba = (id: string) => {
-    const next = new URLSearchParams(params)
-    next.set('aba', id)
-    return `?${next}`
-  }
-
   if (isLoading || professoresQuery.isLoading || salasQuery.isLoading) {
     return <p className="py-16 text-center text-sm text-muted">Carregando grade...</p>
   }
@@ -78,12 +80,11 @@ export function ReportsPage() {
   if (!activeGrade) {
     return (
       <>
-        <PageHeader title="Relatórios" />
-        <div className="max-w-xl rounded-lg border border-dashed border-line bg-white px-6 py-8">
+        <div className="max-w-xl rounded-[20px] border-2 border-dashed border-line bg-white/60 px-6 py-8">
           <p className="text-sm font-semibold">Nenhuma grade gerada</p>
-          <p className="mt-1 text-[13px] text-muted">Os relatórios usam a grade gerada. Gere uma grade primeiro.</p>
-          <Link to="/geracao" className={buttonStyles({ variant: 'secondary', size: 'sm' }, 'mt-4')}>
-            Ir para geração
+          <p className="mt-1 text-[13px] text-muted">Esta visão usa a grade gerada. Gere uma grade primeiro.</p>
+          <Link to={paths.geracao} className={buttonStyles({ variant: 'secondary', size: 'sm' }, 'mt-4')}>
+            Gerar grade
           </Link>
         </div>
       </>
@@ -92,9 +93,9 @@ export function ReportsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Relatórios"
-        description={`${activeGrade.nome} · gerada em ${formatDateTime(activeGrade.criado_em)}.`}
+      <TabHeader
+        title={TITULO[aba]}
+        description={`${DESCRICAO[aba]} Grade gerada em ${formatDateTime(activeGrade.criado_em)}.`}
         actions={
           <div className="flex flex-wrap items-center gap-2 print:hidden">
             {gradesGeradas.length > 1 && (
@@ -103,7 +104,8 @@ export function ReportsPage() {
                 value={String(activeGrade.id)}
                 options={gradesGeradas.map((g) => ({
                   value: String(g.id),
-                  label: `${g.nome} (${formatDateTime(g.criado_em)})`,
+                  label: g.nome,
+                  hint: formatDateTime(g.criado_em),
                 }))}
                 onChange={(v) => refreshSchedule(Number(v))}
               />
@@ -132,40 +134,25 @@ export function ReportsPage() {
                 onChange={(v) => setParam('sala', v)}
               />
             )}
+            {aba === 'turmas' && (
+              <Link to={paths.grade} className={buttonStyles({ variant: 'secondary' })}>
+                Voltar à grade
+              </Link>
+            )}
             <Button variant="dark" onClick={() => window.print()}>
-              Exportar PDF
+              {aba === 'resumo' ? 'Exportar PDF' : 'Imprimir'}
             </Button>
           </div>
         }
       />
 
-      <nav
-        aria-label="Tipos de relatório"
-        className="mb-5 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-line print:hidden"
-      >
-        {abas.map(({ id, label }) => (
-          <Link
-            key={id}
-            to={hrefDaAba(id)}
-            replace
-            aria-current={id === aba ? 'page' : undefined}
-            className={cn(
-              'border-b-2 px-3 py-2 text-[13px] font-medium whitespace-nowrap transition-colors',
-              id === aba ? 'border-primary text-ink' : 'border-transparent text-muted hover:text-ink',
-            )}
-          >
-            {label}
-          </Link>
-        ))}
-      </nav>
-
       {(professoresQuery.isError || salasQuery.isError) && (
-        <p role="alert" className="mb-4 rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-[13px]">
+        <p role="alert" className="mb-4 rounded-2xl border border-danger/30 bg-danger-soft px-4 py-3 text-[13px]">
           Não foi possível carregar professores ou salas. Carga máxima e ocupação podem estar incompletas.
         </p>
       )}
 
-      {aba === 'geral' && (
+      {aba === 'resumo' && (
         <OverviewReport
           lessons={lessons}
           conflitos={conflicts.length}
@@ -210,26 +197,21 @@ function opcoesComTodos(rotulo: string, opcoes: string[]) {
 interface ReportSelectProps {
   label: string
   value: string
-  options: { value: string; label: string }[]
+  options: SelectOption[]
   onChange: (value: string) => void
 }
 
 function ReportSelect({ label, value, options, onChange }: ReportSelectProps) {
   return (
-    <label className="flex items-center gap-1 rounded-md border border-line bg-white py-1 pr-1 pl-3 text-[12.5px] focus-within:border-primary">
-      <span className="text-muted">{label}:</span>
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="max-w-56 cursor-pointer bg-transparent py-1 pr-1 font-medium outline-none"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
+    <Select
+      label={label}
+      prefix
+      size="sm"
+      value={value}
+      onChange={onChange}
+      options={options}
+      className="max-w-72"
+      menuMinWidth={380}
+    />
   )
 }

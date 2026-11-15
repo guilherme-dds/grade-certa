@@ -45,11 +45,11 @@ export function DeleteSalaDialog({ sala, onClose, onConfirm }: DeleteSalaDialogP
       }}
       onClick={(e) => e.target === e.currentTarget && close()}
       aria-labelledby="delete-sala-dialog-title"
-      className="m-auto w-[min(420px,calc(100%-2rem))] rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
+      className="m-auto w-[min(420px,calc(100%-2rem))] card p-0 text-ink"
     >
       <div className="p-6">
         <h3 id="delete-sala-dialog-title" className="text-[17px] font-semibold text-danger">
-          Excluir Sala
+          Excluir sala
         </h3>
         <p className="mt-2 text-[14px] text-ink">
           Tem certeza que deseja excluir a sala <strong className="font-semibold">{sala.nome}</strong> ({sala.tipo})?

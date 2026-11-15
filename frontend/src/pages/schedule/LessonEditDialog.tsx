@@ -32,8 +32,36 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
   })
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
-  // Resultado da simulação dos valores atuais; com conflitos novos, o próximo "Salvar" confirma
-  const [simulacao, setSimulacao] = useState<SimulacaoEdicao | null>(null)
+  // Simulação feita para uma combinação de valores (a chave); só vale enquanto os valores forem os mesmos
+  const [previa, setPrevia] = useState<{ chave: string; resultado: SimulacaoEdicao } | null>(null)
+  const [erroPrevia, setErroPrevia] = useState<string | null>(null)
+
+  const payload = {
+    dia_semana: values.day,
+    horario: values.time,
+    professor_ids: values.teacherIds.map(Number),
+    sala_nome: values.room || null,
+  }
+  const chave = JSON.stringify(payload)
+  const [chaveOriginal] = useState(chave)
+  const alterado = chave !== chaveOriginal
+  const simulacao = previa?.chave === chave ? previa.resultado : null
+  const conferindo = alterado && !simulacao && !erroPrevia
+
+  // Confere os conflitos assim que a pessoa muda algo (com uma pequena espera entre mudanças seguidas)
+  useEffect(() => {
+    if (!alterado) return
+    let ativo = true
+    const timer = window.setTimeout(() => {
+      simularEdicao(lesson.id, JSON.parse(chave))
+        .then((resultado) => ativo && setPrevia({ chave, resultado }))
+        .catch((err) => ativo && setErroPrevia(getApiErrorMessage(err, 'Não foi possível conferir os conflitos.')))
+    }, 300)
+    return () => {
+      ativo = false
+      clearTimeout(timer)
+    }
+  }, [chave, alterado, lesson.id])
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -49,7 +77,7 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
   const set = <K extends keyof typeof values>(key: K, value: (typeof values)[K]) => {
     setValues((prev) => ({ ...prev, [key]: value }))
     setError(null)
-    setSimulacao(null)
+    setErroPrevia(null)
   }
 
   const professorOptions = (professoresQuery.data ?? [])
@@ -69,20 +97,17 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
       teacherIds: values.teacherIds.map(Number),
       room: values.room || null,
     }
+    if (!alterado) {
+      close()
+      return
+    }
     try {
       setIsSaving(true)
-      // Primeiro "Salvar": confere os conflitos que a edição criaria e, havendo algum, pede confirmação
+      // Se a conferência ainda não voltou, faz agora; havendo conflito novo, mostra antes de gravar
       if (!simulacao) {
-        const resultado = await simularEdicao(lesson.id, {
-          dia_semana: changes.day,
-          horario: changes.time,
-          professor_ids: changes.teacherIds,
-          sala_nome: changes.room,
-        })
-        if (resultado.novos.length > 0) {
-          setSimulacao(resultado)
-          return
-        }
+        const resultado = await simularEdicao(lesson.id, payload)
+        setPrevia({ chave, resultado })
+        if (resultado.novos.length > 0) return
       }
       const result = await updateLesson(lesson.id, changes)
       if (result.ok) close()
@@ -103,14 +128,15 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
       }}
       onClick={(e) => e.target === e.currentTarget && close()}
       aria-labelledby="lesson-edit-title"
-      className="m-auto w-[min(420px,calc(100%-2rem))] rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
+      className="m-auto w-[min(420px,calc(100%-2rem))] card p-0 text-ink"
     >
       <form onSubmit={handleSubmit} className="p-6">
         <h2 id="lesson-edit-title" className="text-[17px] font-semibold">
           Editar aula — {lesson.subject} · {lesson.classGroup}
         </h2>
         <p className="mt-1 text-[13px] text-muted">
-          Atualmente em {lesson.day}, {lesson.time}. Antes de salvar, os conflitos que a mudança criaria são mostrados aqui.
+          Atualmente em {lesson.day}, {lesson.time}. Ao mudar algo, os conflitos que a mudança criaria aparecem aqui
+          antes de salvar.
         </p>
 
         <div className="mt-5 space-y-4">
@@ -124,15 +150,33 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
               emptyLabel="Sem professor"
             />
           </div>
-          <SelectField label="Sala" options={salaOptions} value={values.room} onChange={(e) => set('room', e.target.value)} />
+          <SelectField label="Sala" options={salaOptions} value={values.room} onChange={(v) => set('room', v)} />
           <div className="grid grid-cols-2 gap-3">
-            <SelectField label="Dia" options={weekDays} value={values.day} onChange={(e) => set('day', e.target.value)} />
-            <SelectField label="Horário" options={horarios} value={values.time} onChange={(e) => set('time', e.target.value)} />
+            <SelectField label="Dia" options={weekDays} value={values.day} onChange={(v) => set('day', v)} />
+            <SelectField label="Horário" options={horarios} value={values.time} onChange={(v) => set('time', v)} />
           </div>
         </div>
 
-        {simulacao && (
-          <div role="alert" className="mt-4 rounded-md border border-warning/40 bg-warning-soft p-3 text-[13px]">
+        {alterado && (conferindo || erroPrevia || simulacao?.novos.length === 0) && (
+          <p
+            role="status"
+            className={
+              erroPrevia
+                ? 'mt-4 rounded-xl bg-danger-soft px-3 py-2.5 text-[13px] font-medium text-danger'
+                : simulacao
+                  ? 'mt-4 rounded-xl bg-primary-soft px-3 py-2.5 text-[13px] font-medium text-primary'
+                  : 'mt-4 rounded-xl bg-paper px-3 py-2.5 text-[13px] text-muted'
+            }
+          >
+            {erroPrevia ??
+              (simulacao
+                ? `Sem conflitos novos.${simulacao.resolvidos.length ? ` E resolve ${simulacao.resolvidos.length} ${simulacao.resolvidos.length > 1 ? 'conflitos atuais' : 'conflito atual'}.` : ''}`
+                : 'Conferindo conflitos…')}
+          </p>
+        )}
+
+        {simulacao && simulacao.novos.length > 0 && (
+          <div role="alert" className="mt-4 rounded-xl border border-warning/40 bg-warning-soft p-3 text-[13px]">
             <p className="font-semibold text-warning">
               Esta mudança cria {simulacao.novos.length} conflito{simulacao.novos.length > 1 ? 's' : ''}:
             </p>
@@ -144,7 +188,10 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
               ))}
             </ul>
             {simulacao.resolvidos.length > 0 && (
-              <p className="mt-1.5 text-muted">E resolve {simulacao.resolvidos.length} conflito(s) atual(is).</p>
+              <p className="mt-1.5 text-muted">
+                E resolve {simulacao.resolvidos.length}{' '}
+                {simulacao.resolvidos.length > 1 ? 'conflitos atuais' : 'conflito atual'}.
+              </p>
             )}
           </div>
         )}
@@ -159,8 +206,9 @@ export function LessonEditDialog({ lesson, onClose }: LessonEditDialogProps) {
           <Button variant="secondary" onClick={close} disabled={isSaving}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={isSaving}>
-            {isSaving ? 'Salvando...' : simulacao ? 'Salvar mesmo assim' : 'Salvar'}
+          {/* Mudança que o backend recusa (ex.: horário já ocupado pela turma) não tem como salvar */}
+          <Button type="submit" disabled={isSaving || Boolean(erroPrevia)}>
+            {isSaving ? 'Salvando...' : simulacao?.novos.length ? 'Salvar mesmo assim' : 'Salvar'}
           </Button>
         </div>
       </form>

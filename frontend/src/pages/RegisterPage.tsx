@@ -9,8 +9,8 @@ export function RegisterPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-[19px] font-semibold">Criar conta</h1>
-      <p className="mb-6 text-[13px] text-muted">
+      <h1 className="mb-1.5 font-display text-[28px] font-bold tracking-[-0.02em]">Criar conta</h1>
+      <p className="mb-7 text-[14px] text-muted">
         Disponível só no primeiro acesso ao sistema. Depois, as contas são criadas por quem já tem acesso.
       </p>
 

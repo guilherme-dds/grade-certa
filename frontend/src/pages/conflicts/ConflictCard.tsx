@@ -21,8 +21,8 @@ export function ConflictCard({ conflict, editHref, onApply, isApplying }: Confli
   const severity = severityStyles[conflict.gravidade]
 
   return (
-    <article className={cn('rounded-lg border border-l-4 border-line bg-white px-[18px] py-4', severity.border)}>
-      <p className={cn('text-[11px] font-bold tracking-[0.04em] uppercase', severity.text)}>
+    <article className={cn('rounded-2xl border border-l-4 border-line bg-white px-[18px] py-4', severity.border)}>
+      <p className={cn('text-[12.5px] font-semibold', severity.text)}>
         {severity.label} · {conflict.tipo}
       </p>
       <p className="mt-1.5 text-sm">{conflict.descricao}</p>

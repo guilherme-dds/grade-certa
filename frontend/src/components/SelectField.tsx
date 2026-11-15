@@ -1,38 +1,34 @@
-import { useId, type ComponentProps } from 'react'
-import { cn } from '@/lib/cn'
+import { useId } from 'react'
+import { Select } from '@/components/ui/Select'
 
-interface SelectFieldProps extends ComponentProps<'select'> {
+interface SelectFieldProps {
   label: string
   /** Texto simples (valor = rótulo) ou par valor/rótulo */
   options: readonly (string | { value: string; label: string })[]
+  value: string
+  onChange: (value: string) => void
+  disabled?: boolean
+  className?: string
 }
 
-export function SelectField({ label, options, className, ...selectProps }: SelectFieldProps) {
+/** Rótulo acima + seletor da plataforma, no mesmo estilo dos campos de texto */
+export function SelectField({ label, options, value, onChange, disabled, className }: SelectFieldProps) {
   const id = useId()
-
   return (
     <div>
-      <label htmlFor={id} className="mb-1.5 block text-xs font-medium text-muted">
+      <label htmlFor={id} className="mb-1.5 block text-[13px] font-medium text-ink/80">
         {label}
       </label>
-      <select
+      <Select
         id={id}
-        className={cn(
-          'w-full rounded-md border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none transition-colors',
-          'focus:border-primary focus:ring-1 focus:ring-primary',
-          className,
-        )}
-        {...selectProps}
-      >
-        {options.map((option) => {
-          const { value, label: optionLabel } = typeof option === 'string' ? { value: option, label: option } : option
-          return (
-            <option key={value} value={value}>
-              {optionLabel}
-            </option>
-          )
-        })}
-      </select>
+        label={label}
+        variant="field"
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        className={className}
+        options={options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o))}
+      />
     </div>
   )
 }

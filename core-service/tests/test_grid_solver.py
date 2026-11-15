@@ -243,20 +243,34 @@ def test_disciplina_com_aulas_demais():
     assert "no máximo 10" in res.mensagem
 
 
-def test_indisponibilidade_de_outro_nivel_nao_bloqueia_e_preferencia_atrai_aulas():
+def test_indisponibilidade_de_outro_nivel_nao_bloqueia_e_horario_a_evitar_fica_vazio():
     turmas, professores = montar_escola()
     # Eva só dá aula nos Anos Finais: o bloqueio marcado no Ensino Médio não a afeta
     professores["eva"].indisponivel = [Intervalo(dia="Seg", horario=h, nivel="Ensino Médio") for h in SLOTS]
-    # Hugo (Inglês, sempre individual) prefere quarta-feira
-    professores["hugo"].preferencial = [Intervalo(dia="Qua", horario=h) for h in SLOTS]
+    # Hugo (Inglês, sempre individual) pede para evitar a quarta-feira
+    professores["hugo"].evitar = [Intervalo(dia="Qua", horario=h) for h in SLOTS]
     res = resolver_grade(turmas, professores, {}, tempo_limite_seg=60)
     verificar_regras(res, turmas)
-    assert sum(1 for a in res.aulas if "hugo" in a.professor_chaves and a.dia == "Qua") == 4
+    assert any("hugo" in a.professor_chaves for a in res.aulas)
+    assert not any("hugo" in a.professor_chaves and a.dia == "Qua" for a in res.aulas)
 
     professores["eva"].indisponivel = [Intervalo(dia="Seg", horario=h, nivel="Anos Finais") for h in SLOTS]
     res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
     verificar_regras(res, turmas)
     assert not any("eva" in a.professor_chaves and a.dia == "Seg" for a in res.aulas)
+
+
+
+def test_horario_a_evitar_e_usado_quando_nao_ha_outro_jeito():
+    turmas, professores = montar_escola()
+    # Hugo (8 aulas, no máximo 1 por turma por dia) só pode na quarta e na sexta e pediu para
+    # evitar a quarta: a sexta comporta 4, então a quarta recebe as outras 4
+    professores["hugo"].indisponivel = [Intervalo(dia=d, horario=h) for d in ("Seg", "Ter", "Qui") for h in SLOTS]
+    professores["hugo"].evitar = [Intervalo(dia="Qua", horario=h) for h in SLOTS]
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=60)
+    verificar_regras(res, turmas)
+    por_dia = {d: sum(1 for a in res.aulas if "hugo" in a.professor_chaves and a.dia == d) for d in ("Qua", "Sex")}
+    assert por_dia == {"Qua": 4, "Sex": 4}
 
 
 def test_aula_com_dois_professores_reserva_os_dois():
@@ -373,6 +387,42 @@ def test_tarde_fixa_fora_dos_dias_escolhidos():
     assert "não é um horário de aula da turma" in res.mensagem
 
 
+
+def test_disciplinas_so_a_tarde_ficam_nas_tardes():
+    turmas, professores = montar_1em()
+    for item in turmas[0].itens:
+        item.so_tarde = item.disciplina in ("Ciências Jurídicas", "Tecnologia")
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    assert res.sucesso, res.mensagem
+    # 34 aulas e 30 horários de manhã: as 4 da tarde são justamente as duas disciplinas
+    assert sorted(a.disciplina for a in res.aulas if a.horario in TARDE_EM) == ["Ciências Jurídicas"] * 2 + [
+        "Tecnologia"
+    ] * 2
+
+
+def test_disciplina_so_a_tarde_que_nao_cabe_nas_tardes():
+    turmas, professores = montar_escola()  # turno Manhã: não há tarde
+    turmas[0].itens[0].so_tarde = True
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    assert not res.sucesso
+    assert "não tem aulas à tarde" in res.mensagem
+
+    # Individual (1 por dia) com 3 aulas e só 2 tardes escolhidas
+    turmas, professores = montar_1em(tardes=["Qua", "Sex"])
+    filosofia = next(i for i in turmas[0].itens if i.disciplina == "Filosofia")
+    filosofia.aulas_semanais, filosofia.aula_dobrada, filosofia.so_tarde = 3, False, True
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    assert not res.sucesso
+    assert "comportam no máximo 2 aulas dela" in res.mensagem
+
+    # Horário fixo de manhã contradiz o "só à tarde"
+    turmas, professores = montar_1em()
+    turmas[0].itens[0].so_tarde = True
+    turmas[0].itens[0].horarios_fixos = [("Seg", "07:20 - 08:10")]
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    assert not res.sucesso
+    assert "horário fixo de manhã" in res.mensagem
+
 def test_janela_inevitavel_e_permitida_e_informada():
     turmas, professores = montar_escola()
     # Ana tem aulas fixas no 1º e no 3º horário de segunda e não pode no 2º: sobra uma janela
@@ -383,7 +433,7 @@ def test_janela_inevitavel_e_permitida_e_informada():
     res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
     assert res.sucesso, res.mensagem
     assert res.janelas == [("ana", "Seg", SLOTS[1])]
-    assert "1 janela(s)" in res.mensagem
+    assert "1 janela de professor" in res.mensagem
 
 
 def montar_em_2025():
@@ -581,3 +631,20 @@ def test_duracao_maxima_do_dia():
         if p.professor_chave == "ana":
             por_dia[p.dia].append(parse_slot_range(p.horario))
     assert all(max(f for _, f in faixas) - min(i for i, _ in faixas) <= 3 * 60 for faixas in por_dia.values())
+
+
+def test_cancelada_nao_devolve_grade():
+    turmas, professores = montar_escola()
+    # A escola de teste fecha em menos de um segundo; o cancelamento no meio da busca real
+    # é conferido pelo vigia a cada INTERVALO_CANCELAMENTO_SEG
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=60, cancelado=lambda: True)
+    assert res.status == "cancelada" and not res.sucesso and not res.aulas
+
+
+def test_falha_ao_conferir_o_cancelamento_nao_derruba_a_geracao():
+    def banco_fora():
+        raise RuntimeError("sem conexão")
+
+    turmas, professores = montar_escola()
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO, cancelado=banco_fora)
+    assert res.sucesso

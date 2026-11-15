@@ -48,9 +48,11 @@ export function TeacherScheduleReport({ professor, lessons, planejamentos, janel
       title={professor}
       summary={
         <>
-          {aulas.length} aulas · {planos.length} planejamentos
-          {planos.length > 0 && ` (${compartilhados} compartilhados)`} ·{' '}
-          {vagos.length === 0 ? 'sem janelas' : `${vagos.length} janela(s)`}
+          {aulas.length} {aulas.length === 1 ? 'aula' : 'aulas'} · {planos.length}{' '}
+          {planos.length === 1 ? 'planejamento' : 'planejamentos'}
+          {planos.length > 0 && ` (${compartilhados} ${compartilhados === 1 ? 'compartilhado' : 'compartilhados'})`}{' '}
+          ·{' '}
+          {vagos.length === 0 ? 'sem janelas' : `${vagos.length} ${vagos.length === 1 ? 'janela' : 'janelas'}`}
         </>
       }
     >
@@ -59,7 +61,7 @@ export function TeacherScheduleReport({ professor, lessons, planejamentos, janel
       {!temItens ? (
         <p className="text-[13px] text-muted">Sem aulas nem planejamentos nesta grade.</p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <div className="grid min-w-[640px] grid-cols-5 gap-2 text-[12px]">
             {dias.map(({ dia, itens }) => (
               <div key={dia}>

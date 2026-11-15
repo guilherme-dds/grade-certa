@@ -47,11 +47,7 @@ export function SalaDialog({ sala, salas, onClose, onSave }: SalaDialogProps) {
 
     if (!trimmedNome) {
       nextErrors.nome = 'Informe o nome da sala.'
-    } else if (
-      salas.some(
-        (s) => s.id !== sala?.id && s.nome.toLowerCase() === trimmedNome.toLowerCase(),
-      )
-    ) {
+    } else if (salas.some((s) => s.id !== sala?.id && s.nome.toLowerCase() === trimmedNome.toLowerCase())) {
       nextErrors.nome = 'Já existe uma sala com esse nome.'
     }
     if (!capacidade || !Number.isInteger(capacidadeNum) || capacidadeNum <= 0) {
@@ -87,16 +83,14 @@ export function SalaDialog({ sala, salas, onClose, onSave }: SalaDialogProps) {
       }}
       onClick={(e) => e.target === e.currentTarget && close()}
       aria-labelledby="sala-dialog-title"
-      className="m-auto w-[min(460px,calc(100%-2rem))] rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
+      className="m-auto w-[min(460px,calc(100%-2rem))] card p-0 text-ink"
     >
       <form onSubmit={handleSubmit} noValidate className="p-6">
         <h3 id="sala-dialog-title" className="text-[17px] font-semibold">
-          {sala ? 'Editar Sala' : 'Nova Sala'}
+          {sala ? 'Editar sala' : 'Nova sala'}
         </h3>
         <p className="mt-1 text-[13px] text-muted">
-          {sala
-            ? 'Altere as informações da sala selecionada.'
-            : 'Cadastre uma sala com sua capacidade e tipo.'}
+          {sala ? 'Altere as informações da sala selecionada.' : 'Cadastre uma sala com sua capacidade e tipo.'}
         </p>
 
         <div className="mt-4 flex flex-col gap-4">
@@ -126,12 +120,7 @@ export function SalaDialog({ sala, salas, onClose, onSave }: SalaDialogProps) {
             error={errors.capacidade}
           />
 
-          <SelectField
-            label="Tipo"
-            options={TIPOS_SALA}
-            value={tipo}
-            onChange={(e) => setTipo(e.target.value)}
-          />
+          <SelectField label="Tipo" options={TIPOS_SALA} value={tipo} onChange={(v) => setTipo(v)} />
         </div>
 
         {errors.form && <p className="mt-4 text-xs text-danger">{errors.form}</p>}

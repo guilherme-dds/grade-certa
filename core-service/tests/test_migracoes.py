@@ -3,7 +3,7 @@ import logging
 import pytest
 from sqlalchemy import create_engine, inspect, text
 
-from database.migracoes import COLUNAS, adicionar_colunas
+from database.migracoes import COLUNAS, adicionar_colunas, descartar_preferenciais
 
 
 def _colunas(engine, tabela):
@@ -43,3 +43,18 @@ def test_toda_coluna_da_lista_existe_no_modelo():
 
     for tabela, coluna, _ in COLUNAS:
         assert coluna in Base.metadata.tables[tabela].columns, f"{tabela}.{coluna}"
+
+
+def test_horarios_preferenciais_antigos_voltam_a_ficar_livres():
+    engine = create_engine("sqlite://")
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE disponibilidades (id INTEGER PRIMARY KEY, tipo TEXT)"))
+        conn.execute(text("INSERT INTO disponibilidades (tipo) VALUES ('preferencial'), ('indisponivel'), ('evitar')"))
+
+    assert descartar_preferenciais(engine) == 1
+    with engine.begin() as conn:
+        tipos = sorted(r[0] for r in conn.execute(text("SELECT tipo FROM disponibilidades")))
+    assert tipos == ["evitar", "indisponivel"]
+    assert descartar_preferenciais(engine) == 0
+    # Banco novo, sem a tabela: nada a fazer
+    assert descartar_preferenciais(create_engine("sqlite://")) == 0

@@ -18,7 +18,7 @@ export function ScheduleGrid({ lessons, timeSlots, editingId, isDimmed, onSelect
   const slots = timeSlots?.length ? timeSlots : Array.from(new Set(lessons.map((l) => l.time))).sort()
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-line bg-white">
+    <div className="relative overflow-x-auto card">
       <table className="w-full min-w-[640px] table-fixed border-collapse text-[12.5px]">
         <thead>
           <tr className="bg-paper">

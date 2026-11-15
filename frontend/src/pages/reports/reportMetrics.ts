@@ -38,9 +38,7 @@ export function cargaPorProfessor(
   }
 
   return Array.from(professores, ([nome, { id, aulas }]) => {
-    const registro = cadastro.find(
-      (p) => p.id === id || p.nome.trim().toLowerCase() === nome.trim().toLowerCase(),
-    )
+    const registro = cadastro.find((p) => p.id === id || p.nome.trim().toLowerCase() === nome.trim().toLowerCase())
     return {
       nome,
       aulas,
@@ -124,10 +122,7 @@ export function ocupacaoSalas(
   const horariosDaGrade = unir(
     [...Object.values(horariosTurmas).flat(), ...lessons.map((l) => l.time)].map(intervaloDoHorario),
   )
-  const nomes = nomesOrdenados([
-    ...salas.map((s) => s.nome),
-    ...lessons.flatMap((l) => (l.room ? [l.room] : [])),
-  ])
+  const nomes = nomesOrdenados([...salas.map((s) => s.nome), ...lessons.flatMap((l) => (l.room ? [l.room] : []))])
 
   return nomes.map((nome) => {
     const sala = salas.find((s) => s.nome === nome)
@@ -167,4 +162,35 @@ export function horariosDaSala(ocupacao: OcupacaoSala, horariosTurmas: Record<nu
     .flat()
     .filter((h) => ocupacao.indisponibilidades.some((i) => horarioBloqueado(h, i)))
   return Array.from(new Set([...comAula, ...bloqueados])).sort()
+}
+
+/**
+ * Horários da sala separados pela grade de horários das turmas (Anos Finais e Ensino Médio
+ * começam em horas diferentes): misturar tudo numa tabela só intercala 09:00 com 09:15.
+ * Sem aulas, volta uma tabela só com os horários bloqueados.
+ */
+export function gruposDeHorarioDaSala(
+  ocupacao: OcupacaoSala,
+  horariosTurmas: Record<number, string[]>,
+): { turmas: string[]; horarios: string[] }[] {
+  const bloqueado = (h: string) => ocupacao.indisponibilidades.some((i) => horarioBloqueado(h, i))
+  const grupos = new Map<string, { slots: string[]; turmas: Set<string>; usados: Set<string> }>()
+  for (const aula of ocupacao.aulas) {
+    const slots = horariosTurmas[aula.turmaId] ?? [aula.time]
+    const chave = slots.join('|')
+    const grupo = grupos.get(chave) ?? { slots, turmas: new Set<string>(), usados: new Set<string>() }
+    grupo.turmas.add(aula.classGroup)
+    grupo.usados.add(aula.time)
+    grupos.set(chave, grupo)
+  }
+  if (grupos.size === 0) {
+    const horarios = horariosDaSala(ocupacao, horariosTurmas)
+    return horarios.length ? [{ turmas: [], horarios }] : []
+  }
+  return [...grupos.values()]
+    .map((g) => ({
+      turmas: [...g.turmas].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true })),
+      horarios: [...new Set([...g.slots.filter((h) => g.usados.has(h) || bloqueado(h)), ...g.usados])].sort(),
+    }))
+    .sort((a, b) => (a.horarios[0] ?? '').localeCompare(b.horarios[0] ?? ''))
 }

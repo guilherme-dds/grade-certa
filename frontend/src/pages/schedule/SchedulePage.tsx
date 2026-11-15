@@ -4,7 +4,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { deleteGrade, duplicarGrade, getHistoricoGrades } from '@/api/grades'
 import { Button } from '@/components/ui/Button'
 import { buttonStyles } from '@/components/ui/buttonStyles'
-import { PageHeader } from '@/components/ui/PageHeader'
+import { Icon } from '@/components/ui/Icon'
+import { Select, type SelectOption } from '@/components/ui/Select'
+import { useToast } from '@/components/ui/Toast'
+import { paths } from '@/config/paths'
+import { cn } from '@/lib/cn'
 import { formatDateTime } from '@/lib/schedule'
 import type { Lesson } from '@/schedule/ScheduleContext'
 import { useSchedule } from '@/schedule/useSchedule'
@@ -17,6 +21,7 @@ export function SchedulePage() {
   const { lessons, activeGrade, horariosTurmas, isLoading, refreshSchedule, changes, undoLastChange } = useSchedule()
   const [params, setParams] = useSearchParams()
   const queryClient = useQueryClient()
+  const toast = useToast()
   const [isDeleting, setIsDeleting] = useState(false)
   const [isDuplicating, setIsDuplicating] = useState(false)
   const [isUndoing, setIsUndoing] = useState(false)
@@ -41,10 +46,12 @@ export function SchedulePage() {
   const gradesGeradas = historico.filter((g) => g.status === 'sucesso')
   const gradeOptions = gradesGeradas.map((g) => ({
     value: String(g.id),
-    label: `${g.nome} (${formatDateTime(g.criado_em)})`,
+    label: g.nome,
+    hint: formatDateTime(g.criado_em),
   }))
 
   const handleDeleteGrade = async () => {
+    const nome = activeGrade!.nome
     await deleteGrade(activeGrade!.id!)
     await queryClient.invalidateQueries({ queryKey: ['historicoGrades'] })
     // Volta para a grade mais recente que sobrou
@@ -58,12 +65,14 @@ export function SchedulePage() {
       { replace: true },
     )
     await refreshSchedule()
+    toast(`${nome} excluída`)
   }
 
   const handleDuplicateGrade = async (nome: string) => {
     const copia = await duplicarGrade(activeGrade!.id!, nome)
     await queryClient.invalidateQueries({ queryKey: ['historicoGrades'] })
     setParam('gradeId', String(copia.id))
+    toast(`${copia.nome} criada`)
   }
 
   const gradeIdParam = params.get('gradeId')
@@ -75,7 +84,9 @@ export function SchedulePage() {
   }, [gradeIdParam, refreshSchedule])
 
   const availableTurmas = useMemo(() => {
-    const fromLessons = Array.from(new Set(lessons.map((l) => l.classGroup))).filter(Boolean).sort()
+    const fromLessons = Array.from(new Set(lessons.map((l) => l.classGroup)))
+      .filter(Boolean)
+      .sort()
     return fromLessons
   }, [lessons])
 
@@ -119,36 +130,17 @@ export function SchedulePage() {
 
   if (lessons.length === 0) {
     return (
-      <div className="space-y-6">
-        <PageHeader
-          title="Grade Horária"
-          description="Visualização dos horários semanais distribuídos por turma e professor."
-          actions={
-            <Link to="/geracao" className={buttonStyles()}>
-              Gerar Grade Automática
-            </Link>
-          }
-        />
-        <div className="rounded-xl border border-dashed border-line bg-white p-12 text-center shadow-xs">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary-soft text-primary">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-              <line x1="16" y1="2" x2="16" y2="6" />
-              <line x1="8" y1="2" x2="8" y2="6" />
-              <line x1="3" y1="10" x2="21" y2="10" />
-            </svg>
-          </div>
-          <h3 className="mt-4 text-base font-semibold text-ink">Nenhuma grade horária encontrada</h3>
-          <p className="mx-auto mt-2 max-w-md text-sm text-muted">
-            Ainda não há horários gerados salvos no sistema. Acesse o gerador inteligente para montar a distribuição
-            semanal de aulas automaticamente com Google OR-Tools.
-          </p>
-          <div className="mt-6">
-            <Link to="/geracao" className={buttonStyles()}>
-              Ir para Geração Automática →
-            </Link>
-          </div>
-        </div>
+      <div className="rounded-[20px] border-2 border-dashed border-line bg-white/60 p-12 text-center">
+        <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-ink text-white">
+          <Icon name="grid" width={26} height={26} />
+        </span>
+        <h2 className="mt-4 font-display text-[20px] font-bold">Nenhuma grade gerada ainda</h2>
+        <p className="mx-auto mt-2 max-w-md text-[14px] text-muted">
+          Gere a primeira grade para ver aqui as aulas de cada turma, resolver conflitos e exportar relatórios.
+        </p>
+        <Link to={paths.geracao} className={buttonStyles({}, 'mt-6')}>
+          Gerar grade
+        </Link>
       </div>
     )
   }
@@ -161,72 +153,100 @@ export function SchedulePage() {
 
   return (
     <>
-      <PageHeader
-        title={`Grade — ${classGroup}`}
-        description={
-          activeGrade
-            ? [
-                activeGrade.nome,
-                origem && `cópia de ${origem.nome}`,
-                activeGrade.ano_semestre && `Semestre ${activeGrade.ano_semestre}`,
-                `${lessons.length} aulas alocadas no total`,
-              ]
-                .filter(Boolean)
-                .join(' · ')
-            : undefined
-        }
-        actions={
-          <>
-            {gradeOptions.length > 1 && (
-              <FilterChip
-                label="Grade"
-                value={String(activeGrade?.id ?? '')}
-                options={gradeOptions}
-                onChange={(v) => setParam('gradeId', v)}
-              />
-            )}
+      <h2 className="sr-only">Grade da turma {classGroup}</h2>
+
+      {/* Grade exibida + ações sobre ela */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[14px] text-muted">
+          {[
+            origem && `Cópia de ${origem.nome}`,
+            `${lessons.length} ${lessons.length === 1 ? 'aula' : 'aulas'} na semana`,
+            `${availableTurmas.length} turmas`,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          {gradeOptions.length > 1 && (
             <FilterChip
-              label="Turma"
-              value={classGroup}
-              options={availableTurmas}
-              onChange={(v) => setParam('turma', v)}
+              label="Grade"
+              value={String(activeGrade?.id ?? '')}
+              options={gradeOptions}
+              onChange={(v) => setParam('gradeId', v)}
             />
-            <FilterChip
-              label="Professor"
-              value={teacher}
-              options={availableTeachers}
-              allLabel="Todos"
-              onChange={(v) => setParam('professor', v)}
-            />
-            <FilterChip
-              label="Sala"
-              value={room}
-              options={availableRooms}
-              allLabel="Todas"
-              onChange={(v) => setParam('sala', v)}
-            />
-            <Link to="/geracao" className={buttonStyles({ variant: 'secondary' })}>
-              Nova Geração
-            </Link>
-            {activeGrade && (
-              <Button variant="secondary" onClick={() => setIsDuplicating(true)}>
-                Duplicar grade
-              </Button>
-            )}
-            {activeGrade && (
-              <Button variant="secondary" onClick={() => setIsDeleting(true)} className="text-danger">
-                Excluir grade
-              </Button>
-            )}
-          </>
-        }
-      />
+          )}
+          <Link to={paths.gradeImpressao} className={buttonStyles({ variant: 'secondary', size: 'sm' })}>
+            Imprimir turmas
+          </Link>
+          {activeGrade && (
+            <Button variant="secondary" size="sm" onClick={() => setIsDuplicating(true)}>
+              Duplicar
+            </Button>
+          )}
+          {activeGrade && (
+            <Button variant="secondary" size="sm" onClick={() => setIsDeleting(true)} className="text-danger">
+              Excluir
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Turmas: um clique troca a turma exibida */}
+      <div className="card mb-4 p-2">
+        <div role="tablist" aria-label="Turmas" className="scrollbar-none flex gap-1 overflow-x-auto">
+          {availableTurmas.map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="tab"
+              aria-selected={t === classGroup}
+              onClick={() => setParam('turma', t)}
+              className={cn(
+                'shrink-0 rounded-full px-4 py-2 text-[14px] font-medium whitespace-nowrap transition-colors',
+                t === classGroup ? 'bg-ink font-semibold text-white' : 'text-muted hover:bg-paper hover:text-ink',
+              )}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-line-soft px-2 pt-2">
+          <span className="text-[13px] text-muted">Destacar aulas de</span>
+          <FilterChip
+            label="Professor"
+            value={teacher}
+            options={availableTeachers}
+            allLabel="Todos"
+            onChange={(v) => setParam('professor', v)}
+          />
+          <FilterChip
+            label="Sala"
+            value={room}
+            options={availableRooms}
+            allLabel="Todas"
+            onChange={(v) => setParam('sala', v)}
+          />
+          {(teacher || room) && (
+            <button
+              type="button"
+              onClick={() => {
+                setParam('professor', null)
+                setParam('sala', null)
+              }}
+              className="rounded-full px-3 py-1.5 text-[13px] font-semibold text-muted hover:bg-paper hover:text-ink"
+            >
+              Limpar
+            </button>
+          )}
+        </div>
+      </div>
 
       {(changes.length > 0 || undoMessage) && (
-        <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-white px-3 py-2 text-[12.5px]">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-white px-4 py-2.5 text-[13px] shadow-(--shadow-float)">
           <p className={undoMessage && !undoMessage.ok ? 'text-danger' : 'text-muted'} role="status">
             {undoMessage ? undoMessage.text : `Última alteração: ${changes[0].descricao}`}
-            {changes.length > 0 && ` · ${changes.length} alteraç${changes.length > 1 ? 'ões' : 'ão'} manual(is) nesta grade`}
+            {changes.length > 0 &&
+              ` · ${changes.length} ${changes.length > 1 ? 'alterações manuais' : 'alteração manual'} nesta grade`}
           </p>
           {changes.length > 0 && (
             <Button variant="secondary" size="sm" onClick={handleUndo} disabled={isUndoing}>
@@ -260,9 +280,9 @@ export function SchedulePage() {
         </p>
       )}
 
-      <p className="mt-3.5 text-[12.5px] text-muted">
-        Clique em uma célula para reatribuir professor, sala ou horário. Célula em destaque: edição em andamento.
-        Para manter a grade como foi gerada, duplique antes de editar e edite a cópia.
+      <p className="mt-3.5 text-[13px] text-muted">
+        Clique numa aula para trocar professor, sala ou horário. Para manter a versão gerada, duplique a grade antes de
+        editar.
       </p>
 
       {editing && <LessonEditDialog key={editing.id} lesson={editing} onClose={() => setParam('aula', null)} />}
@@ -286,31 +306,25 @@ interface FilterChipProps {
   label: string
   value: string
   /** Texto simples (valor = rótulo) ou par valor/rótulo */
-  options: readonly (string | { value: string; label: string })[]
+  options: readonly (string | SelectOption)[]
   allLabel?: string
   onChange: (value: string) => void
 }
 
 function FilterChip({ label, value, options, allLabel, onChange }: FilterChipProps) {
   return (
-    <label className="flex items-center gap-1 rounded-md border border-line bg-white py-1 pr-1 pl-3 text-[12.5px] focus-within:border-primary">
-      <span className="text-muted">{label}:</span>
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="max-w-40 cursor-pointer bg-transparent py-1 pr-1 font-medium outline-none"
-      >
-        {allLabel && <option value="">{allLabel}</option>}
-        {options.map((option) => {
-          const { value: v, label: l } = typeof option === 'string' ? { value: option, label: option } : option
-          return (
-            <option key={v} value={v}>
-              {l}
-            </option>
-          )
-        })}
-      </select>
-    </label>
+    <Select
+      label={label}
+      prefix
+      size="sm"
+      value={value}
+      onChange={onChange}
+      className="max-w-72"
+      menuMinWidth={380}
+      options={[
+        ...(allLabel ? [{ value: '', label: allLabel }] : []),
+        ...options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o)),
+      ]}
+    />
   )
 }

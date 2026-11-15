@@ -1,5 +1,5 @@
 import os
-from typing import Dict, Any, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy.orm import Session, joinedload
 
@@ -43,6 +43,7 @@ class GridGeneratorService:
         ano_semestre: str = "",
         tempo_limite_seg: Optional[float] = None,
         grade: Optional[GradeDB] = None,
+        cancelado: Optional[Callable[[], bool]] = None,
     ) -> Dict[str, Any]:
         """
         Carrega os cadastros, executa o CP-SAT (services/grid_solver.py) e grava o resultado
@@ -61,9 +62,9 @@ class GridGeneratorService:
         id_por_nome = {normalizar(p.nome): p.id for p in prof_by_id.values() if p.nome}
 
         indisp_prof: Dict[int, List[Intervalo]] = {}
-        pref_prof: Dict[int, List[Intervalo]] = {}
+        evitar_prof: Dict[int, List[Intervalo]] = {}
         for disp in self.db.query(DisponibilidadeDB).all():
-            destino = pref_prof if disp.tipo == "preferencial" else indisp_prof
+            destino = evitar_prof if disp.tipo == "evitar" else indisp_prof
             destino.setdefault(disp.professor_id, []).append(
                 Intervalo(
                     dia=disp.dia_semana,
@@ -100,7 +101,7 @@ class GridGeneratorService:
                 id=prof.id if prof else None,
                 carga_maxima=prof.carga_maxima_aulas if prof else None,
                 indisponivel=indisp_prof.get(prof.id, []) if prof else [],
-                preferencial=pref_prof.get(prof.id, []) if prof else [],
+                evitar=evitar_prof.get(prof.id, []) if prof else [],
                 almoco=(
                     Almoco(jornada.almoco_inicio, jornada.almoco_fim, jornada.almoco_minutos)
                     if jornada.almoco_minutos
@@ -163,6 +164,7 @@ class GridGeneratorService:
                             else inferir_aula_dobrada(nome_disc)
                         ),
                         tipo_sala=self._tipo_sala(disc, nome_disc, tipos_cadastrados),
+                        so_tarde=bool(item.get("so_tarde")),
                     )
                 )
             turmas.append(
@@ -183,7 +185,13 @@ class GridGeneratorService:
             self.db.flush()
 
         tempo_limite = tempo_limite_seg or TEMPO_LIMITE_SEG
-        resultado = resolver_grade(turmas, professores, salas, tempo_limite_seg=tempo_limite)
+        resultado = resolver_grade(turmas, professores, salas, tempo_limite_seg=tempo_limite, cancelado=cancelado)
+        if resultado.status == "cancelada":
+            # Cancelada pela tela: nada é salvo e a geração sai do histórico
+            grade_id = grade.id
+            self.db.delete(grade)
+            self.db.commit()
+            return {"sucesso": False, "status": "cancelada", "mensagem": resultado.mensagem, "grade_id": grade_id}
         avisos = avisos_carga + resultado.avisos
         detalhes = {
             "mensagem": resultado.mensagem,

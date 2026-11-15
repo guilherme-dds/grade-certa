@@ -22,6 +22,8 @@ class ItemMatriz(BaseModel):
     horarios_fixos: List[HorarioFixo] = []
     # Aula extra (ex.: laboratório): ocupa horário na grade, mas não entra no total da matriz
     extra: bool = False
+    # Só nos horários da tarde (ex.: disciplina do Ensino Médio que a escola quer à tarde)
+    so_tarde: bool = False
 
     @model_validator(mode="after")
     def _sincroniza_professores(self):

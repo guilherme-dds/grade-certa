@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import type { Jornada } from '@/api/configuracoes'
 import { FormField } from '@/components/FormField'
-import { SelectField } from '@/components/SelectField'
 import { Button } from '@/components/ui/Button'
+import { Sheet, SheetBody, SheetFooter, useSheetClose } from '@/components/ui/Sheet'
 import { cn } from '@/lib/cn'
 import { resumoJornada, validarJornada, type JornadaErrors } from './jornada'
 import { JornadaFields } from './JornadaFields'
@@ -27,14 +27,11 @@ export function TeacherDialog({
   onClose,
   onSave,
 }: TeacherDialogProps) {
-  const dialogRef = useRef<HTMLDialogElement>(null)
   const isEditing = Boolean(teacher)
 
   const [name, setName] = useState(teacher?.name ?? '')
   const [email, setEmail] = useState(teacher?.email ?? '')
-  const [selectedNiveis, setSelectedNiveis] = useState<NivelEnsino[]>(
-    teacher?.niveisEnsino ?? ['Anos Finais'],
-  )
+  const [selectedNiveis, setSelectedNiveis] = useState<NivelEnsino[]>(teacher?.niveisEnsino ?? ['Anos Finais'])
   const [maxWeeklyHours, setMaxWeeklyHours] = useState(teacher?.maxWeeklyHours ?? 20)
   const [status, setStatus] = useState<'ativo' | 'inativo'>(teacher?.status ?? 'ativo')
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>(teacher?.subjects ?? [])
@@ -42,91 +39,29 @@ export function TeacherDialog({
   const [jornadaPersonalizada, setJornadaPersonalizada] = useState(Boolean(teacher?.jornada))
   const [jornada, setJornada] = useState<Jornada>(teacher?.jornada ?? jornadaPadrao)
   const [jornadaErrors, setJornadaErrors] = useState<JornadaErrors>({})
+  const [touched, setTouched] = useState(false)
 
-  // Estado para criação inline de disciplina
-  const [isAddingSubject, setIsAddingSubject] = useState(false)
-  const [newSubjectName, setNewSubjectName] = useState('')
-  const [newSubjectError, setNewSubjectError] = useState('')
-
-  useEffect(() => {
-    const dialog = dialogRef.current
-    if (dialog && !dialog.open) {
-      dialog.showModal()
-    }
-  }, [])
-
-  const close = () => {
-    dialogRef.current?.close()
-    onClose()
-  }
+  const clearError = (key: string) => errors[key] && setErrors((prev) => ({ ...prev, [key]: '' }))
+  const touch = () => setTouched(true)
 
   const toggleNivel = (nivel: NivelEnsino) => {
+    touch()
     setSelectedNiveis((prev) =>
-      prev.includes(nivel)
-        ? prev.length > 1
-          ? prev.filter((n) => n !== nivel)
-          : prev
-        : [...prev, nivel],
+      prev.includes(nivel) ? (prev.length > 1 ? prev.filter((n) => n !== nivel) : prev) : [...prev, nivel],
     )
-  }
-
-  const toggleSubject = (subject: string) => {
-    setSelectedSubjects((prev) =>
-      prev.includes(subject) ? prev.filter((s) => s !== subject) : [...prev, subject],
-    )
-    if (errors.subjects) {
-      setErrors((prev) => ({ ...prev, subjects: '' }))
-    }
-  }
-
-  const handleCreateSubject = (e: FormEvent) => {
-    e.preventDefault()
-    const trimmed = newSubjectName.trim()
-    if (!trimmed) {
-      setNewSubjectError('Digite o nome da disciplina.')
-      return
-    }
-
-    const exists = availableSubjects.some(
-      (s) => s.toLowerCase() === trimmed.toLowerCase(),
-    )
-    if (exists) {
-      setNewSubjectError('Esta disciplina já existe.')
-      return
-    }
-
-    onAddSubject(trimmed)
-    if (!selectedSubjects.includes(trimmed)) {
-      setSelectedSubjects((prev) => [...prev, trimmed])
-    }
-    setNewSubjectName('')
-    setNewSubjectError('')
-    setIsAddingSubject(false)
-    if (errors.subjects) {
-      setErrors((prev) => ({ ...prev, subjects: '' }))
-    }
   }
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
     const newErrors: Record<string, string> = {}
-
-    if (!name.trim()) {
-      newErrors.name = 'Nome é obrigatório.'
-    }
-    if (!email.trim() || !email.includes('@')) {
-      newErrors.email = 'Informe um e-mail válido.'
-    }
-    if (selectedSubjects.length === 0) {
-      newErrors.subjects = 'Selecione pelo menos uma disciplina.'
-    }
-    if (maxWeeklyHours < 1 || maxWeeklyHours > 60) {
-      newErrors.maxWeeklyHours = 'Carga horária deve ser entre 1h e 60h.'
-    }
+    if (!name.trim()) newErrors.name = 'Informe o nome.'
+    // E-mail é só contato (opcional): professores não acessam o sistema
+    if (email.trim() && !email.includes('@')) newErrors.email = 'Informe um e-mail válido.'
+    if (selectedSubjects.length === 0) newErrors.subjects = 'Escolha pelo menos uma disciplina.'
+    if (maxWeeklyHours < 1 || maxWeeklyHours > 60) newErrors.maxWeeklyHours = 'Entre 1 e 60 horas.'
 
     const errosJornada = jornadaPersonalizada ? validarJornada(jornada) : {}
     setJornadaErrors(errosJornada)
-
     if (Object.keys(newErrors).length > 0 || Object.keys(errosJornada).length > 0) {
       setErrors(newErrors)
       return
@@ -142,220 +77,327 @@ export function TeacherDialog({
       status,
       jornada: jornadaPersonalizada ? jornada : null,
     })
-
-    close()
+    onClose()
   }
 
   return (
-    <dialog
-      ref={dialogRef}
-      onCancel={(e) => {
-        e.preventDefault()
-        close()
-      }}
-      onClick={(e) => e.target === e.currentTarget && close()}
-      aria-labelledby="teacher-dialog-title"
-      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(520px,calc(100%-2rem))] overflow-y-auto rounded-lg border border-line bg-white p-0 text-ink shadow-lg backdrop:bg-black/40"
+    <Sheet
+      width="md"
+      dirty={touched}
+      onClose={onClose}
+      title={isEditing ? `Editar ${teacher?.name}` : 'Novo professor'}
+      description="O que o gerador precisa saber: o que a pessoa ensina, em quais níveis e quanto pode trabalhar."
     >
-      <form onSubmit={handleSubmit} className="p-6">
-        <h2 id="teacher-dialog-title" className="text-[17px] font-semibold">
-          {isEditing ? 'Editar Professor' : 'Novo Professor'}
-        </h2>
-        <p className="mt-1 text-[13px] text-muted">
-          {isEditing
-            ? 'Atualize as informações e carga horária do docente.'
-            : 'Cadastre um novo docente para alocação na grade.'}
-        </p>
-
-        <div className="mt-5 space-y-4">
-          <FormField
-            label="Nome completo"
-            placeholder="Ex.: Ana Ferreira"
-            value={name}
-            onChange={(e) => {
-              setName(e.target.value)
-              if (errors.name) setErrors((prev) => ({ ...prev, name: '' }))
-            }}
-            error={errors.name}
-          />
-
-          <FormField
-            label="E-mail institucional"
-            type="email"
-            placeholder="nome@escola.gov.br"
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value)
-              if (errors.email) setErrors((prev) => ({ ...prev, email: '' }))
-            }}
-            error={errors.email}
-          />
-
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-muted">
-              Nível(is) de Ensino (pode selecionar mais de um)
-            </label>
-            <div className="flex flex-wrap gap-1.5 rounded-md border border-line p-2.5 bg-paper/50">
-              {allNiveis.map((nivel) => {
-                const isSelected = selectedNiveis.includes(nivel)
-                return (
-                  <button
-                    type="button"
-                    key={nivel}
-                    onClick={() => toggleNivel(nivel)}
-                    className={
-                      isSelected
-                        ? 'rounded border border-primary-soft-line bg-primary-soft px-3 py-1 text-xs font-semibold text-primary transition-colors'
-                        : 'rounded border border-line-soft bg-white px-3 py-1 text-xs text-muted transition-colors hover:border-line hover:text-ink'
-                    }
-                  >
-                    {isSelected ? `✓ ${nivel}` : `+ ${nivel}`}
-                  </button>
-                )
-              })}
+      <form
+        onSubmit={handleSubmit}
+        onChange={(e) => (e.target as EventTarget & { type?: string }).type !== 'search' && touch()}
+        className="contents"
+        noValidate
+      >
+        <SheetBody className="space-y-7">
+          <Section title="Identificação">
+            <div className="space-y-4">
+              <FormField
+                label="Nome"
+                placeholder="Ex.: Ana Ferreira"
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value)
+                  clearError('name')
+                }}
+                error={errors.name}
+                autoFocus={!isEditing}
+              />
+              <FormField
+                label="E-mail (opcional)"
+                type="email"
+                placeholder="nome@escola.com.br"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value)
+                  clearError('email')
+                }}
+                error={errors.email}
+              />
             </div>
-          </div>
+          </Section>
 
-          <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <label className="block text-xs font-medium text-muted">
-                Disciplinas ministradas
-              </label>
-              {!isAddingSubject && (
-                <button
-                  type="button"
-                  onClick={() => setIsAddingSubject(true)}
-                  className="text-xs font-semibold text-primary hover:underline"
-                >
-                  + Criar nova disciplina
-                </button>
-              )}
-            </div>
-
-            {/* Campo Inline para criar disciplina */}
-            {isAddingSubject && (
-              <div className="mb-3 rounded-md border border-primary-soft-line bg-primary-soft/40 p-2.5">
-                <p className="mb-1.5 text-xs font-semibold text-primary">Nova disciplina</p>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Nome da disciplina (ex: Filosofia)"
-                    value={newSubjectName}
-                    onChange={(e) => {
-                      setNewSubjectName(e.target.value)
-                      if (newSubjectError) setNewSubjectError('')
-                    }}
-                    className="flex-1 rounded border border-line bg-white px-2.5 py-1.5 text-xs outline-none focus:border-primary"
-                    autoFocus
-                  />
-                  <Button type="button" size="sm" onClick={handleCreateSubject}>
-                    Adicionar
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      setIsAddingSubject(false)
-                      setNewSubjectName('')
-                      setNewSubjectError('')
-                    }}
-                  >
-                    Cancelar
-                  </Button>
-                </div>
-                {newSubjectError && (
-                  <p className="mt-1 text-xs text-danger">{newSubjectError}</p>
-                )}
-              </div>
-            )}
-
-            <div className="flex flex-wrap gap-1.5 rounded-md border border-line p-3">
-              {availableSubjects.map((subject) => {
-                const isSelected = selectedSubjects.includes(subject)
-                return (
-                  <button
-                    type="button"
-                    key={subject}
-                    onClick={() => toggleSubject(subject)}
-                    className={
-                      isSelected
-                        ? 'rounded border border-primary-soft-line bg-primary-soft px-2.5 py-1 text-xs font-medium text-primary transition-colors'
-                        : 'rounded border border-line-soft bg-paper px-2.5 py-1 text-xs text-muted transition-colors hover:border-line hover:text-ink'
-                    }
-                  >
-                    {isSelected ? `✓ ${subject}` : `+ ${subject}`}
-                  </button>
-                )
-              })}
-            </div>
-            {errors.subjects && (
-              <p className="mt-1 text-xs text-danger">{errors.subjects}</p>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <FormField
-              label="Carga máx. semanal (horas)"
-              type="number"
-              min={1}
-              max={60}
-              value={maxWeeklyHours}
-              onChange={(e) => {
-                setMaxWeeklyHours(Number(e.target.value))
-                if (errors.maxWeeklyHours) setErrors((prev) => ({ ...prev, maxWeeklyHours: '' }))
-              }}
-              error={errors.maxWeeklyHours}
-            />
-
-            <SelectField
-              label="Status no sistema"
-              options={['ativo', 'inativo'] as const}
-              value={status}
-              onChange={(e) => setStatus(e.target.value as 'ativo' | 'inativo')}
-            />
-          </div>
-
-          <fieldset>
-            <legend className="mb-1.5 block text-xs font-medium text-muted">Almoço e aulas por dia</legend>
-            <div className="flex gap-1 rounded-md bg-paper p-[3px]">
-              {[
-                { personalizada: false, label: 'Padrão da escola' },
-                { personalizada: true, label: 'Personalizado' },
-              ].map((opcao) => (
-                <button
-                  type="button"
-                  key={opcao.label}
-                  aria-pressed={jornadaPersonalizada === opcao.personalizada}
-                  onClick={() => setJornadaPersonalizada(opcao.personalizada)}
-                  className={cn(
-                    'flex-1 rounded py-1.5 text-xs transition-colors',
-                    jornadaPersonalizada === opcao.personalizada
-                      ? 'bg-white font-semibold text-primary shadow-xs'
-                      : 'text-muted hover:text-ink',
-                  )}
-                >
-                  {opcao.label}
-                </button>
+          <Section title="Níveis de ensino" hint="Pode marcar mais de um.">
+            <div className="flex flex-wrap gap-1.5">
+              {allNiveis.map((nivel) => (
+                <Toggle key={nivel} pressed={selectedNiveis.includes(nivel)} onClick={() => toggleNivel(nivel)}>
+                  {nivel}
+                </Toggle>
               ))}
             </div>
-            <div className="mt-3">
-              {jornadaPersonalizada ? (
-                <JornadaFields value={jornada} errors={jornadaErrors} onChange={setJornada} />
-              ) : (
-                <p className="text-xs text-muted">{resumoJornada(jornadaPadrao)}</p>
-              )}
-            </div>
-          </fieldset>
-        </div>
+          </Section>
 
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="secondary" onClick={close}>
-            Cancelar
-          </Button>
-          <Button type="submit">{isEditing ? 'Salvar alterações' : 'Cadastrar'}</Button>
-        </div>
+          <Section title="Disciplinas" hint="Na matriz das turmas, quem tem a disciplina aparece primeiro.">
+            <SubjectPicker
+              available={availableSubjects}
+              value={selectedSubjects}
+              onChange={(next) => {
+                touch()
+                setSelectedSubjects(next)
+                clearError('subjects')
+              }}
+              onCreate={onAddSubject}
+              error={errors.subjects}
+            />
+          </Section>
+
+          <Section title="Carga e jornada">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField
+                label="Carga máxima por semana (aulas)"
+                type="number"
+                min={1}
+                max={60}
+                value={maxWeeklyHours}
+                onChange={(e) => {
+                  setMaxWeeklyHours(Number(e.target.value))
+                  clearError('maxWeeklyHours')
+                }}
+                error={errors.maxWeeklyHours}
+              />
+              <div>
+                <p className="mb-1.5 text-[13px] font-medium text-ink/80">Situação</p>
+                <Segmented
+                  value={status}
+                  onChange={(v) => {
+                    touch()
+                    setStatus(v)
+                  }}
+                  options={[
+                    { value: 'ativo', label: 'Ativo' },
+                    { value: 'inativo', label: 'Inativo' },
+                  ]}
+                />
+              </div>
+            </div>
+
+            <div className="mt-5">
+              <p className="mb-1.5 text-[13px] font-medium text-ink/80">Almoço e aulas por dia</p>
+              <Segmented
+                value={jornadaPersonalizada ? 'propria' : 'padrao'}
+                onChange={(v) => {
+                  touch()
+                  setJornadaPersonalizada(v === 'propria')
+                }}
+                options={[
+                  { value: 'padrao', label: 'Padrão da escola' },
+                  { value: 'propria', label: 'Própria' },
+                ]}
+              />
+              <div className="mt-3">
+                {jornadaPersonalizada ? (
+                  <JornadaFields value={jornada} errors={jornadaErrors} onChange={setJornada} />
+                ) : (
+                  <p className="rounded-xl bg-paper px-3.5 py-2.5 text-[13px] text-muted">
+                    {resumoJornada(jornadaPadrao)}
+                  </p>
+                )}
+              </div>
+            </div>
+          </Section>
+        </SheetBody>
+
+        <SheetFooter>
+          <CancelButton />
+          <Button type="submit">{isEditing ? 'Salvar alterações' : 'Cadastrar professor'}</Button>
+        </SheetFooter>
       </form>
-    </dialog>
+    </Sheet>
+  )
+}
+
+function CancelButton() {
+  const close = useSheetClose()
+  return (
+    <Button variant="secondary" onClick={close}>
+      Cancelar
+    </Button>
+  )
+}
+
+function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
+  return (
+    <section>
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3">
+        <h3 className="font-display text-[16px] font-bold">{title}</h3>
+        {hint && <p className="text-[12.5px] text-muted">{hint}</p>}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function Toggle({ pressed, onClick, children }: { pressed: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      onClick={onClick}
+      className={cn(
+        'inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-[13.5px] font-medium transition-colors',
+        pressed ? 'border-ink bg-ink text-white' : 'border-line bg-white text-ink hover:border-ink/30',
+      )}
+    >
+      {pressed && <span aria-hidden>✓</span>}
+      {children}
+    </button>
+  )
+}
+
+function Segmented<T extends string>({
+  value,
+  onChange,
+  options,
+}: {
+  value: T
+  onChange: (value: T) => void
+  options: { value: T; label: string }[]
+}) {
+  return (
+    <div className="flex h-11 gap-1 rounded-full bg-paper p-1">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          aria-pressed={value === o.value}
+          onClick={() => onChange(o.value)}
+          className={cn(
+            'flex-1 rounded-full text-[13.5px] transition-colors',
+            value === o.value ? 'bg-white font-semibold shadow-xs' : 'text-muted hover:text-ink',
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** Escolhidas no topo; abaixo, busca que filtra a lista e cria a disciplina quando ela não existe. */
+function SubjectPicker({
+  available,
+  value,
+  onChange,
+  onCreate,
+  error,
+}: {
+  available: string[]
+  value: string[]
+  onChange: (value: string[]) => void
+  onCreate: (name: string) => void
+  error?: string
+}) {
+  const [query, setQuery] = useState('')
+  const term = query.trim()
+  const norm = (s: string) =>
+    s
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase()
+  const remaining = available.filter((s) => !value.includes(s) && norm(s).includes(norm(term)))
+  const exists = available.some((s) => norm(s) === norm(term))
+
+  const add = (subject: string) => {
+    onChange([...value, subject])
+    setQuery('')
+  }
+  const create = () => {
+    onCreate(term)
+    add(term)
+  }
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    if (!term) return
+    const exact = available.find((s) => norm(s) === norm(term))
+    if (exact) {
+      if (!value.includes(exact)) add(exact)
+      else setQuery('')
+    } else if (remaining.length > 0) add(remaining[0])
+    // Criar só por clique explícito na opção "Criar": um Enter apressado não cadastra nada
+  }
+
+  return (
+    <div>
+      <div className="flex min-h-11 flex-wrap gap-1.5">
+        {value.length === 0 ? (
+          <p className={cn('self-center text-[13.5px]', error ? 'font-medium text-danger' : 'text-muted')}>
+            {error ?? 'Nenhuma disciplina escolhida ainda.'}
+          </p>
+        ) : (
+          value.map((s) => (
+            <span
+              key={s}
+              className="inline-flex h-9 items-center gap-1 rounded-full bg-ink py-0.5 pr-1 pl-3.5 text-[13.5px] font-medium text-white"
+            >
+              {s}
+              <button
+                type="button"
+                onClick={() => onChange(value.filter((x) => x !== s))}
+                aria-label={`Remover ${s}`}
+                className="grid size-7 place-items-center rounded-full text-white/70 hover:bg-white/15 hover:text-white"
+              >
+                ×
+              </button>
+            </span>
+          ))
+        )}
+      </div>
+
+      <div className="mt-3 overflow-hidden rounded-2xl border border-line">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder="Buscar ou criar disciplina"
+          aria-label="Buscar ou criar disciplina"
+          className="h-11 w-full border-b border-line-soft bg-paper px-3.5 text-[14px] outline-none focus:bg-white"
+        />
+        <ul className="grid max-h-52 grid-cols-1 overflow-y-auto p-1 sm:grid-cols-2">
+          {remaining.map((s, i) => (
+            <li key={s}>
+              <button
+                type="button"
+                onClick={() => add(s)}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[13.5px] hover:bg-paper',
+                  term && i === 0 && 'bg-paper font-semibold',
+                )}
+              >
+                <span aria-hidden className="text-muted">
+                  +
+                </span>
+                {s}
+              </button>
+            </li>
+          ))}
+          {term && !exists && (
+            <li className="sm:col-span-2">
+              <button
+                type="button"
+                onClick={create}
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[13.5px] font-semibold hover:bg-paper"
+              >
+                <span aria-hidden className="text-primary">
+                  +
+                </span>
+                Criar “{term}”
+              </button>
+            </li>
+          )}
+          {remaining.length === 0 && (!term || exists) && (
+            <li className="px-3 py-2 text-[13px] text-muted sm:col-span-2">
+              {term ? 'Essa disciplina já foi escolhida.' : 'Todas as disciplinas já foram escolhidas.'}
+            </li>
+          )}
+        </ul>
+      </div>
+    </div>
   )
 }

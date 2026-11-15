@@ -1,15 +1,17 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { ConflitoGrade } from '@/api/grades'
 import { buttonStyles } from '@/components/ui/buttonStyles'
-import { PageHeader } from '@/components/ui/PageHeader'
+import { Icon } from '@/components/ui/Icon'
+import { paths } from '@/config/paths'
+import { TabHeader } from '@/layouts/SectionLayout'
 import { useSchedule } from '@/schedule/useSchedule'
 import { ConflictCard } from './ConflictCard'
 
 function scheduleHref(classGroup: string, lessonId?: number) {
   const params = new URLSearchParams({ turma: classGroup })
   if (lessonId) params.set('aula', String(lessonId))
-  return `/grade?${params}`
+  return `${paths.grade}?${params}`
 }
 
 export function ConflictsPage() {
@@ -31,13 +33,13 @@ export function ConflictsPage() {
   const count = conflicts.length
 
   return (
-    <div className="max-w-[760px]">
-      <PageHeader
+    <>
+      <TabHeader
         title="Conflitos"
         description={
           count > 0
-            ? `${count} ${count === 1 ? 'conflito detectado' : 'conflitos detectados'} em ${activeGrade?.nome}. Resolva ou aplique as sugestões automáticas.`
-            : undefined
+            ? `${count} ${count === 1 ? 'problema precisa' : 'problemas precisam'} de ajuste na grade. Aplique a sugestão ou edite a aula.`
+            : 'Choques de horário e regras não cumpridas na grade aparecem aqui.'
         }
       />
 
@@ -46,14 +48,14 @@ export function ConflictsPage() {
           role="status"
           className={
             notice.ok
-              ? 'mb-4 rounded-lg border border-primary-soft-line bg-primary-soft px-4 py-3 text-[13px]'
-              : 'mb-4 rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-[13px]'
+              ? 'mb-4 rounded-2xl border border-primary-soft-line bg-primary-soft px-4 py-3 text-[13px]'
+              : 'mb-4 rounded-2xl border border-danger/30 bg-danger-soft px-4 py-3 text-[13px]'
           }
         >
           {notice.text}{' '}
           {notice.classGroup && (
             <Link to={scheduleHref(notice.classGroup)} className="font-medium text-primary hover:underline">
-              Ver na grade →
+              Ver na grade
             </Link>
           )}
         </div>
@@ -62,23 +64,33 @@ export function ConflictsPage() {
       {isLoading ? (
         <p className="py-8 text-center text-sm text-muted">Carregando conflitos...</p>
       ) : !activeGrade ? (
-        <div className="rounded-lg border border-line bg-white px-6 py-8">
-          <p className="text-sm font-semibold">Nenhuma grade gerada</p>
-          <p className="mt-1 text-[13px] text-muted">Os conflitos aparecem depois que uma grade é gerada e editada.</p>
-          <Link to="/geracao" className={buttonStyles({ variant: 'secondary', size: 'sm' }, 'mt-4')}>
-            Ir para geração
-          </Link>
-        </div>
+        <EmptyState
+          title="Nenhuma grade gerada"
+          text="Os conflitos aparecem depois que uma grade é gerada e editada à mão."
+          action={
+            <Link to={paths.geracao} className={buttonStyles()}>
+              Gerar grade
+            </Link>
+          }
+        />
       ) : count === 0 ? (
-        <div className="rounded-lg border border-line bg-white px-6 py-8">
-          <p className="text-sm font-semibold">Nenhum conflito pendente</p>
-          <p className="mt-1 text-[13px] text-muted">A grade está pronta para publicação.</p>
-          <Link to="/grade" className={buttonStyles({ variant: 'secondary', size: 'sm' }, 'mt-4')}>
-            Ver grade
-          </Link>
-        </div>
+        <EmptyState
+          ok
+          title="Nenhum conflito pendente"
+          text="Nenhum problema na grade. Se uma edição criar um choque, ele aparece aqui com uma sugestão de ajuste."
+          action={
+            <>
+              <Link to={paths.grade} className={buttonStyles()}>
+                Ver grade por turma
+              </Link>
+              <Link to={paths.resumo} className={buttonStyles({ variant: 'secondary' })}>
+                Ver resumo
+              </Link>
+            </>
+          }
+        />
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-3 2xl:grid-cols-2">
           {conflicts.map((conflict) => (
             <ConflictCard
               key={conflict.id}
@@ -90,6 +102,27 @@ export function ConflictsPage() {
           ))}
         </div>
       )}
+    </>
+  )
+}
+
+function EmptyState({ title, text, action, ok }: { title: string; text: string; action: ReactNode; ok?: boolean }) {
+  return (
+    <div className="card flex flex-col gap-5 p-6 md:flex-row md:items-center md:p-8">
+      <span
+        className={
+          ok
+            ? 'grid size-14 shrink-0 place-items-center rounded-full bg-accent text-ink'
+            : 'grid size-14 shrink-0 place-items-center rounded-full bg-paper text-muted'
+        }
+      >
+        <Icon name={ok ? 'check' : 'conflict'} width={26} height={26} strokeWidth={2.2} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <h3 className="font-display text-[20px] font-bold">{title}</h3>
+        <p className="mt-1 max-w-[60ch] text-[14px] leading-relaxed text-muted">{text}</p>
+      </div>
+      <div className="flex flex-wrap gap-2">{action}</div>
     </div>
   )
 }

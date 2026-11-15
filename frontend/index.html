@@ -7,10 +7,16 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Urbanist:wght@500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <title>GradeCerta</title>
+    <title>Grade Certa</title>
+    <script>
+      // Aplica o tema escolhido antes da primeira pintura (sem piscar claro ao abrir no escuro)
+      try {
+        if (localStorage.getItem('grade-certa:tema') === 'escuro') document.documentElement.dataset.theme = 'dark'
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
