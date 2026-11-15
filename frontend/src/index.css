@@ -57,6 +57,26 @@
   --color-danger-soft: #fbe4de;
   --color-lilac-soft: #ebe7f8;
 
+  /* Áreas das disciplinas na grade: fundo suave e faixa lateral mais forte */
+  --color-area-linguagens: #fcf0d8;
+  --color-area-linguagens-edge: #d99a2b;
+  --color-area-idiomas: #ecf2d5;
+  --color-area-idiomas-edge: #7fa52b;
+  --color-area-arte: #fbe2ee;
+  --color-area-arte-edge: #d65a95;
+  --color-area-matematica: #dcf3ea;
+  --color-area-matematica-edge: #2fa982;
+  --color-area-natureza: #ebe6fa;
+  --color-area-natureza-edge: #8a72d6;
+  --color-area-humanas: #fbe3dd;
+  --color-area-humanas-edge: #d9674c;
+  --color-area-formacao: #f0ebdd;
+  --color-area-formacao-edge: #a8915a;
+  --color-area-corpo: #dbecfa;
+  --color-area-corpo-edge: #4a8fd1;
+  --color-area-tecnologia: #d8f0f2;
+  --color-area-tecnologia-edge: #2d9ca8;
+
   --radius-card: 1.25rem;
   --shadow-float: 0 1px 2px rgb(21 22 26 / 0.04), 0 8px 24px -12px rgb(21 22 26 / 0.12);
 }
@@ -96,6 +116,25 @@
   --color-lilac-soft: #29253d;
 
   --shadow-float: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.5);
+
+  --color-area-linguagens: #3a2e15;
+  --color-area-linguagens-edge: #e8b04a;
+  --color-area-idiomas: #29321a;
+  --color-area-idiomas-edge: #a9cf5a;
+  --color-area-arte: #3a1f2d;
+  --color-area-arte-edge: #ec7fb1;
+  --color-area-matematica: #133a2f;
+  --color-area-matematica-edge: #3fd1a6;
+  --color-area-natureza: #2a2542;
+  --color-area-natureza-edge: #a693f0;
+  --color-area-humanas: #3d2019;
+  --color-area-humanas-edge: #f08a6e;
+  --color-area-formacao: #322d20;
+  --color-area-formacao-edge: #cbb27a;
+  --color-area-corpo: #172d40;
+  --color-area-corpo-edge: #6aaef0;
+  --color-area-tecnologia: #123437;
+  --color-area-tecnologia-edge: #4cc3cf;
 }
 
 /* Na lousa o giz continua branco e a tinta escura, como no tema claro */

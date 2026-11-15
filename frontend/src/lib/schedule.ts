@@ -47,23 +47,48 @@ export function capacidadeSemanal(
   return horariosDaTurma(turma, horarios).length * weekDays.length
 }
 
-/** Cor do cartão da aula pela área da disciplina */
+// Cores das áreas (tokens em index.css): fundo suave e faixa à esquerda, para aulas vizinhas
+// de áreas diferentes não se confundirem
+const CORES_AREA = {
+  linguagens: 'bg-area-linguagens shadow-[inset_3px_0_0_var(--color-area-linguagens-edge)]',
+  idiomas: 'bg-area-idiomas shadow-[inset_3px_0_0_var(--color-area-idiomas-edge)]',
+  arte: 'bg-area-arte shadow-[inset_3px_0_0_var(--color-area-arte-edge)]',
+  matematica: 'bg-area-matematica shadow-[inset_3px_0_0_var(--color-area-matematica-edge)]',
+  natureza: 'bg-area-natureza shadow-[inset_3px_0_0_var(--color-area-natureza-edge)]',
+  humanas: 'bg-area-humanas shadow-[inset_3px_0_0_var(--color-area-humanas-edge)]',
+  formacao: 'bg-area-formacao shadow-[inset_3px_0_0_var(--color-area-formacao-edge)]',
+  corpo: 'bg-area-corpo shadow-[inset_3px_0_0_var(--color-area-corpo-edge)]',
+  tecnologia: 'bg-area-tecnologia shadow-[inset_3px_0_0_var(--color-area-tecnologia-edge)]',
+} as const
+type AreaCor = keyof typeof CORES_AREA
+
+// Início de palavra (sem acento) que indica a área. A ordem importa: "Educação Física" antes de
+// "Física", "Ciências Jurídicas" antes de "Ciências" e "Itinerário Matemática…" cai em Matemática.
+const PALAVRAS_POR_AREA: [AreaCor, string[]][] = [
+  ['corpo', ['educacao fisica', 'ed fisica', 'ed. fisica', 'esporte']],
+  ['humanas', ['juridic', 'historia', 'geografia', 'filosofia', 'sociologia', 'atualidades', 'humanas']],
+  ['formacao', ['projeto de vida', 'crista', 'religi', 'etica', 'cidadania']],
+  ['matematica', ['matematica', 'algebra', 'geometria', 'trigonometria', 'aritmetica', 'estatistica', 'financeira']],
+  ['natureza', ['ciencia', 'biologia', 'fisica', 'quimica', 'laboratorio', 'natureza']],
+  ['idiomas', ['ingles', 'espanhol', 'frances', 'lingua estrangeira']],
+  ['arte', ['arte', 'musica', 'teatro', 'danca', 'talent']],
+  ['linguagens', ['portugues', 'lingua', 'lp', 'gramatica', 'literatura', 'redacao', 'leitura', 'producao de texto']],
+  ['tecnologia', ['tecnologia', 'informatica', 'robotica', 'programacao', 'computa']],
+]
+
+const semAcento = (texto: string) => texto.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+
+/** Cor do cartão da aula pela área da disciplina; nome sem área conhecida ganha uma cor fixa pelo nome. */
 export function getSubjectColor(subject: string): string {
-  const clean = (subject || '').trim().toLowerCase()
-  if (clean.includes('mat') || clean.includes('geom')) return 'bg-primary-soft'
-  if (clean.includes('port') || clean.includes('ingl') || clean.includes('arte') || clean.includes('red'))
-    return 'bg-warning-soft'
-  if (
-    clean.includes('cien') ||
-    clean.includes('ciên') ||
-    clean.includes('quí') ||
-    clean.includes('qui') ||
-    clean.includes('bio')
-  )
-    return 'bg-lilac-soft'
-  if (clean.includes('hist') || clean.includes('geog') || clean.includes('soc') || clean.includes('filo'))
-    return 'bg-danger-soft'
-  return 'bg-line-soft'
+  const nome = ` ${semAcento(subject || '').replace(/[^a-z0-9.]+/g, ' ')} `
+  for (const [area, palavras] of PALAVRAS_POR_AREA) {
+    if (palavras.some((p) => nome.includes(` ${p}`))) return CORES_AREA[area]
+  }
+  // Disciplinas próprias da escola (eletivas, projetos): sempre a mesma cor, nunca cinza
+  const areas = Object.keys(CORES_AREA) as AreaCor[]
+  let hash = 0
+  for (const letra of nome) hash = (hash * 31 + letra.charCodeAt(0)) >>> 0
+  return CORES_AREA[areas[hash % areas.length]]
 }
 
 /** "Ana Ferreira" → "Ana F." */
