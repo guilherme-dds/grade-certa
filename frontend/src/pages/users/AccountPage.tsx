@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { paths } from '@/config/paths'
 import { TabHeader } from '@/layouts/SectionLayout'
 import { getApiErrorMessage } from '@/lib/apiError'
+import { parseServerDate } from '@/lib/schedule'
 
 const passwordSchema = z
   .object({
@@ -76,7 +77,7 @@ export function AccountPage() {
               </div>
               <div className="flex justify-between gap-4 py-3">
                 <dt className="text-muted">Conta criada em</dt>
-                <dd className="font-semibold">{new Date(user.created_at).toLocaleDateString('pt-BR')}</dd>
+                <dd className="font-semibold">{parseServerDate(user.created_at).toLocaleDateString('pt-BR')}</dd>
               </div>
             </dl>
             <p className="mt-4 text-[13px] text-muted">

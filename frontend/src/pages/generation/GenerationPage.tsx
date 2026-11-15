@@ -14,7 +14,7 @@ import { getApiErrorMessage } from '@/lib/apiError'
 import { professoresAcimaDaCarga } from '@/lib/cargaDocente'
 import { cn } from '@/lib/cn'
 import { fixoIndisponivel, useDisponibilidades } from '@/lib/fixosIndisponiveis'
-import { capacidadeSemanal, formatDateTime, formatDuracao, horariosDaTurma } from '@/lib/schedule'
+import { capacidadeSemanal, formatDateTime, formatDuracao, horariosDaTurma, parseServerDate } from '@/lib/schedule'
 import { useHorarios } from '@/schedule/useHorarios'
 import { useSchedule } from '@/schedule/useSchedule'
 import { isFalha, STATUS_LABEL } from './generationShared'
@@ -62,6 +62,8 @@ export function GenerationPage() {
 
   // Ao abrir a página com uma geração rodando (ex.: depois de recarregar), volta a acompanhá-la
   const emAndamento = historico.find((g) => g.status === 'gerando')
+  // Guarda o id para continuar mostrando o resultado depois que ela sai de "gerando"
+  if (emAndamento && geracaoId == null) setGeracaoId(emAndamento.id)
   const acompanhada = geracaoId ?? emAndamento?.id ?? null
 
   // Consulta o status a cada 2s enquanto o solver roda
@@ -72,16 +74,26 @@ export function GenerationPage() {
     refetchInterval: (query) => (query.state.data?.status === 'gerando' ? 2000 : false),
   })
   const isGenerating = isStarting || geracao?.status === 'gerando'
+  // O tempo conta desde o início no servidor, para não zerar quando a pessoa sai e volta para a tela
+  const inicioGeracao = geracao?.status === 'gerando' && geracao.criado_em ? geracao.criado_em : null
 
   useEffect(() => {
     if (!isGenerating) return
-    const inicio = Date.now()
-    const timer = window.setInterval(() => setElapsed(Math.round((Date.now() - inicio) / 1000)), 1000)
+    const inicio = inicioGeracao ? parseServerDate(inicioGeracao).getTime() : Date.now()
+    const atualizar = () => setElapsed(Math.max(0, Math.round((Date.now() - inicio) / 1000)))
+    atualizar()
+    const timer = window.setInterval(atualizar, 1000)
     return () => {
       clearInterval(timer)
       setElapsed(0)
     }
-  }, [isGenerating])
+  }, [isGenerating, inicioGeracao])
+
+  // Durante a geração, os campos mostram o nome e o tempo dela, e não o rascunho da próxima
+  const rodando = geracao?.status === 'gerando' ? geracao : null
+  const nomeExibido = rodando ? rodando.nome : nomeGrade
+  const tempoExibido =
+    rodando?.detalhes?.tempo_limite_seg != null ? String(rodando.detalhes.tempo_limite_seg) : tempoLimite
 
   // Quando a geração termina: atualiza o histórico e, se deu certo, a grade exibida no sistema
   const statusFinal = geracao && geracao.status !== 'gerando' ? geracao.status : null
@@ -276,7 +288,7 @@ export function GenerationPage() {
               <input
                 id="nomeGrade"
                 type="text"
-                value={nomeGrade}
+                value={nomeExibido}
                 disabled={isGenerating}
                 onChange={(e) => setNomeGrade(e.target.value)}
                 placeholder={`Ex.: Grade ${semestreAtual()} – versão final`}
@@ -291,7 +303,7 @@ export function GenerationPage() {
                 id="tempoLimite"
                 label="Tempo máximo de busca"
                 variant="dark"
-                value={tempoLimite}
+                value={tempoExibido}
                 disabled={isGenerating}
                 onChange={setTempoLimite}
                 options={TEMPOS_LIMITE}

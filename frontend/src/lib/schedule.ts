@@ -90,9 +90,18 @@ export function splitHorario(horario: string): [string, string] {
   return [inicio, fim]
 }
 
+/**
+ * O servidor grava as datas em UTC sem indicar o fuso ("2026-11-15T15:13:57"). Sem o "Z",
+ * o navegador leria como hora local e mostraria 3 h a mais no Brasil.
+ */
+export function parseServerDate(iso: string) {
+  const semFuso = iso.includes('T') && !/(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(iso)
+  return new Date(semFuso ? `${iso}Z` : iso)
+}
+
 export function formatDateTime(iso?: string | null) {
   if (!iso) return '—'
-  const d = new Date(iso)
+  const d = parseServerDate(iso)
   if (Number.isNaN(d.getTime())) return iso
   return new Intl.DateTimeFormat('pt-BR', {
     day: '2-digit',
