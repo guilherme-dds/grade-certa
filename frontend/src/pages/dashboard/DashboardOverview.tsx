@@ -14,8 +14,8 @@ import { formatDateTime, weekDays } from '@/lib/schedule'
 import type { Lesson } from '@/schedule/ScheduleContext'
 import { paths } from '@/config/paths'
 import { useSchedule } from '@/schedule/useSchedule'
-import { useWorkflow, type StepState } from '@/schedule/useWorkflow'
 import { isEmAndamento, isFalha as falhou } from '../generation/generationShared'
+import { GradeQualityCard } from './GradeQualityCard'
 import { WeekBoard } from './WeekBoard'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -57,11 +57,6 @@ export function DashboardOverview() {
     (acc, t) => acc + (t.matriz_curricular || []).reduce((sub, item) => sub + Number(item.aulas_semanais || 0), 0),
     0,
   )
-  const partes = [
-    turmas.length ? turmasValidas.length / turmas.length : null,
-    ativos.length ? comDisponibilidade / ativos.length : null,
-  ].filter((v): v is number => v != null)
-  const prontidao = partes.length ? Math.round((partes.reduce((a, b) => a + b, 0) / partes.length) * 100) : 0
   const cadastrosLoading = turmasQuery.isLoading || professoresQuery.isLoading
 
   const ultimaAlteracao = changes[0]
@@ -285,7 +280,7 @@ export function DashboardOverview() {
 
       {/* Coluna lateral: prontidão, cadastros e carga */}
       <div className="flex flex-col gap-4">
-        <WorkflowCard percent={prontidao} loading={cadastrosLoading} conflitos={conflicts.length} />
+        <GradeQualityCard grade={activeGrade} lessons={lessons} professores={professores} loading={scheduleLoading} />
 
         <section className="card p-5 md:p-6">
           <h2 className="mb-3 font-display text-[18px] font-bold">Cadastros</h2>
@@ -544,118 +539,6 @@ function BoardTile({
       </span>
       <span className="mt-0.5 truncate text-[12.5px] text-white/45">{hint}</span>
     </Link>
-  )
-}
-
-function WorkflowCard({ percent, loading, conflitos }: { percent: number; loading: boolean; conflitos: number }) {
-  const { steps, podeGerar } = useWorkflow()
-  const r = 54
-  const circ = 2 * Math.PI * r
-  const value = loading ? 0 : percent
-
-  // O botão leva sempre ao próximo passo pendente
-  const next =
-    steps.cadastros !== 'done' && !podeGerar
-      ? { to: paths.turmas, label: 'Completar cadastros' }
-      : steps.geracao !== 'done'
-        ? { to: paths.geracao, label: 'Gerar grade' }
-        : conflitos > 0
-          ? { to: paths.conflitos, label: `Resolver ${conflitos} ${conflitos === 1 ? 'conflito' : 'conflitos'}` }
-          : steps.cadastros !== 'done'
-            ? { to: paths.professoresSemDisponibilidade, label: 'Registrar disponibilidade' }
-            : { to: paths.resumo, label: 'Ver resumo da grade' }
-
-  const rows: { key: keyof typeof steps; label: string; to: string; hint: Record<StepState, string> }[] = [
-    {
-      key: 'cadastros',
-      label: 'Cadastros',
-      to: paths.cadastros,
-      hint: { done: 'Completos', current: `${percent}% completos`, todo: '' },
-    },
-    {
-      key: 'geracao',
-      label: 'Gerar grade',
-      to: paths.geracao,
-      hint: { done: 'Grade gerada', current: 'Pronto para gerar', todo: 'Aguardando cadastros' },
-    },
-    {
-      key: 'revisao',
-      label: 'Revisar grade',
-      to: paths.grade,
-      hint: {
-        done: 'Sem conflitos',
-        current: `${conflitos} ${conflitos === 1 ? 'conflito' : 'conflitos'}`,
-        todo: 'Aguardando grade',
-      },
-    },
-  ]
-
-  return (
-    <section className="card flex flex-col p-6">
-      <h2 className="font-display text-[18px] font-bold">Montar a grade</h2>
-      <p className="text-[13px] text-muted">Cadastros prontos para o gerador</p>
-
-      <div className="relative mx-auto my-5 grid size-[140px] place-items-center">
-        <svg viewBox="0 0 128 128" className="absolute inset-0 -rotate-90" aria-hidden="true">
-          <circle cx="64" cy="64" r={r} fill="none" stroke="var(--color-line-soft)" strokeWidth="12" />
-          <circle
-            cx="64"
-            cy="64"
-            r={r}
-            fill="none"
-            stroke="var(--color-ink)"
-            strokeWidth="12"
-            strokeLinecap="round"
-            strokeDasharray={circ}
-            strokeDashoffset={circ * (1 - value / 100)}
-            className="transition-[stroke-dashoffset] duration-700 ease-out"
-          />
-        </svg>
-        <p className="font-display text-[32px] font-bold tracking-[-0.03em] tabular-nums">
-          {loading ? '…' : `${percent}%`}
-        </p>
-      </div>
-
-      <ol className="space-y-1">
-        {rows.map((row, i) => {
-          const state = steps[row.key]
-          return (
-            <li key={row.key}>
-              <Link
-                to={row.to}
-                className="flex items-center gap-3 rounded-2xl px-2 py-2 transition-colors hover:bg-paper"
-              >
-                <span
-                  className={cn(
-                    'grid size-7 shrink-0 place-items-center rounded-full text-[12.5px] font-bold',
-                    state === 'done' && 'bg-accent text-ink',
-                    state === 'current' && 'bg-ink text-white',
-                    state === 'todo' && 'text-muted ring-1 ring-line',
-                  )}
-                >
-                  {state === 'done' ? <Icon name="check" width={14} height={14} strokeWidth={2.6} /> : i + 1}
-                </span>
-                <span className="flex-1 text-[14px] font-semibold">{row.label}</span>
-                <span
-                  className={cn(
-                    'text-[12.5px]',
-                    state === 'current' && row.key === 'revisao' && conflitos > 0
-                      ? 'font-semibold text-danger'
-                      : 'text-muted',
-                  )}
-                >
-                  {row.hint[state]}
-                </span>
-              </Link>
-            </li>
-          )
-        })}
-      </ol>
-
-      <Link to={next.to} className={buttonStyles({}, 'mt-5 w-full')}>
-        {next.label}
-      </Link>
-    </section>
   )
 }
 
