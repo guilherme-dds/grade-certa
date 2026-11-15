@@ -137,3 +137,19 @@ def test_sem_regras_quebradas(db):
     aulas = _manha_completa("6A", professores={0: "Ana", 1: "Ana"}) + _manha_completa("7A", professores={2: "Ana"})
     grade = _grade(db, aulas)
     assert DetectorConflitos(db, grade).detectar() == []
+
+
+def test_disciplina_so_a_tarde_movida_para_a_manha(db):
+    aulas = [("Ana", "1EM", "Tecnologia", "Seg", MANHA[0]), ("Bia", "1EM", "Física", "Seg", MANHA[1])]
+    grade = _grade(db, aulas, matriz={"1EM": [
+        {"disciplina": "Tecnologia", "aulas_semanais": 1, "so_tarde": True},
+        {"disciplina": "Física", "aulas_semanais": 1},
+    ]})
+    turma = db.query(TurmaDB).filter_by(nome="1EM").one()
+    turma.turno, turma.nivel_ensino = "Manhã + tardes", "Ensino Médio"
+    db.commit()
+
+    [c] = _do_tipo(db, grade, "Fora da tarde")
+    assert c["descricao"] == f"Tecnologia em 1EM deve ficar à tarde, mas está em Seg, {MANHA[0]}."
+    # A sugestão leva a aula para um horário da tarde
+    assert c["correcao"]["horario"] in TARDE

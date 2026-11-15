@@ -13,6 +13,8 @@ export interface ItemMatriz {
   horarios_fixos?: HorarioFixo[]
   /** Aula extra (ex.: laboratório): ocupa horário na grade, mas não entra no total da matriz */
   extra?: boolean
+  /** Só nos horários da tarde da turma (ex.: disciplina do Ensino Médio que a escola quer à tarde) */
+  so_tarde?: boolean
 }
 
 export interface HorarioFixo {

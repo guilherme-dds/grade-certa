@@ -387,6 +387,42 @@ def test_tarde_fixa_fora_dos_dias_escolhidos():
     assert "não é um horário de aula da turma" in res.mensagem
 
 
+
+def test_disciplinas_so_a_tarde_ficam_nas_tardes():
+    turmas, professores = montar_1em()
+    for item in turmas[0].itens:
+        item.so_tarde = item.disciplina in ("Ciências Jurídicas", "Tecnologia")
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    assert res.sucesso, res.mensagem
+    # 34 aulas e 30 horários de manhã: as 4 da tarde são justamente as duas disciplinas
+    assert sorted(a.disciplina for a in res.aulas if a.horario in TARDE_EM) == ["Ciências Jurídicas"] * 2 + [
+        "Tecnologia"
+    ] * 2
+
+
+def test_disciplina_so_a_tarde_que_nao_cabe_nas_tardes():
+    turmas, professores = montar_escola()  # turno Manhã: não há tarde
+    turmas[0].itens[0].so_tarde = True
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    assert not res.sucesso
+    assert "não tem aulas à tarde" in res.mensagem
+
+    # Individual (1 por dia) com 3 aulas e só 2 tardes escolhidas
+    turmas, professores = montar_1em(tardes=["Qua", "Sex"])
+    filosofia = next(i for i in turmas[0].itens if i.disciplina == "Filosofia")
+    filosofia.aulas_semanais, filosofia.aula_dobrada, filosofia.so_tarde = 3, False, True
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    assert not res.sucesso
+    assert "comportam no máximo 2 aulas dela" in res.mensagem
+
+    # Horário fixo de manhã contradiz o "só à tarde"
+    turmas, professores = montar_1em()
+    turmas[0].itens[0].so_tarde = True
+    turmas[0].itens[0].horarios_fixos = [("Seg", "07:20 - 08:10")]
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO)
+    assert not res.sucesso
+    assert "horário fixo de manhã" in res.mensagem
+
 def test_janela_inevitavel_e_permitida_e_informada():
     turmas, professores = montar_escola()
     # Ana tem aulas fixas no 1º e no 3º horário de segunda e não pode no 2º: sobra uma janela

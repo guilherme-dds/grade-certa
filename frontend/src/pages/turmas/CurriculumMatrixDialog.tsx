@@ -52,6 +52,7 @@ const normalizarItem = (m: ItemMatriz): ItemMatriz => ({
   professores: nomesSemCadastro(m),
   horarios_fixos: m.horarios_fixos ?? [],
   extra: m.extra ?? false,
+  so_tarde: m.so_tarde ?? false,
 })
 
 export function CurriculumMatrixDialog({
@@ -98,6 +99,11 @@ export function CurriculumMatrixDialog({
   const horariosQuery = useHorarios()
   const turmaSlots = horariosQuery.data ? horariosDaTurma(turma, horariosQuery.data) : []
   const capacidade = horariosQuery.data ? capacidadeSemanal(turma, horariosQuery.data) : null
+  const tardeDoNivel = horariosQuery.data?.niveis[turma.nivel_ensino ?? 'Anos Finais']?.tarde ?? []
+  const tardeSlots = turmaSlots.filter((h) => tardeDoNivel.includes(h))
+  // "Só à tarde" vale para o Ensino Médio com aula de manhã e à tarde (ex.: manhã + tardes)
+  const podeSoTarde =
+    turma.nivel_ensino === 'Ensino Médio' && tardeSlots.length > 0 && tardeSlots.length < turmaSlots.length
 
   // Linha com o painel de dias/horários fixos aberto
   const [expanded, setExpanded] = useState<number | null>(null)
@@ -144,6 +150,7 @@ export function CurriculumMatrixDialog({
         professores: [],
         horarios_fixos: [],
         extra: false,
+        so_tarde: false,
       },
     ])
     setError('')
@@ -180,6 +187,13 @@ export function CurriculumMatrixDialog({
     const excedente = items.find((i) => (i.horarios_fixos?.length ?? 0) > i.aulas_semanais)
     if (excedente) {
       setError(`${excedente.disciplina} tem mais dias ou horários fixos que aulas na semana.`)
+      return
+    }
+    const fixoNaManha = items.find(
+      (i) => i.so_tarde && (i.horarios_fixos ?? []).some((f) => f.horario && !tardeSlots.includes(f.horario)),
+    )
+    if (fixoNaManha) {
+      setError(`${fixoNaManha.disciplina} está só à tarde, mas tem horário fixo de manhã.`)
       return
     }
     try {
@@ -298,6 +312,7 @@ export function CurriculumMatrixDialog({
                     foraDoCadastro.length > 0 ||
                     repetida ||
                     item.extra ||
+                    item.so_tarde ||
                     fixos.length > 0 ||
                     bloqueios.length > 0
 
@@ -346,6 +361,14 @@ export function CurriculumMatrixDialog({
                                 label: item.extra ? 'Contar no total da matriz' : 'Marcar como aula extra',
                                 onSelect: () => updateItem(idx, { extra: !item.extra }),
                               },
+                              ...(podeSoTarde || item.so_tarde
+                                ? [
+                                    {
+                                      label: item.so_tarde ? 'Liberar manhã e tarde' : 'Só à tarde',
+                                      onSelect: () => updateItem(idx, { so_tarde: !item.so_tarde }),
+                                    },
+                                  ]
+                                : []),
                               { label: 'Remover da matriz', danger: true, onSelect: () => handleRemoveItem(idx) },
                             ]}
                           />
@@ -399,6 +422,16 @@ export function CurriculumMatrixDialog({
                               Aula extra, fora do total
                             </span>
                           )}
+                          {item.so_tarde && (
+                            <button
+                              type="button"
+                              onClick={() => updateItem(idx, { so_tarde: false })}
+                              title="Clique para liberar manhã e tarde"
+                              className="rounded-full bg-primary-soft px-2.5 py-0.5 font-semibold text-primary hover:bg-primary-soft-line/70"
+                            >
+                              Só à tarde ×
+                            </button>
+                          )}
                           {fixos.length > 0 && (
                             <button
                               type="button"
@@ -414,7 +447,7 @@ export function CurriculumMatrixDialog({
                       {isOpen && (
                         <FixedSlotsEditor
                           item={item}
-                          slots={turmaSlots}
+                          slots={item.so_tarde ? tardeSlots : turmaSlots}
                           indisponiveis={(fixo) => indisponiveisNo(item, fixo)}
                           onChange={(changes) => updateItem(idx, changes)}
                         />

@@ -10,7 +10,7 @@ import { TabHeader } from '@/layouts/SectionLayout'
 const SEMPRE = [
   'Aulas semanais de cada disciplina, conforme a matriz da turma',
   'Disponibilidade de cada professor e horários bloqueados das salas',
-  'Aulas dobradas e aulas fixadas em dia ou horário',
+  'Aulas dobradas, aulas fixadas em dia ou horário e disciplinas só à tarde',
   'Quem dá a primeira aula do turno não dá a última no mesmo dia',
   'Turmas sem horário vago no meio do turno',
   'Almoço, limite de aulas e de horas por dia (jornada)',
@@ -34,7 +34,9 @@ export function GenerationRulesPage() {
   })
   const nomePorId = new Map(professores.flatMap((p) => (p.id ? [[p.id, p.nome] as const] : [])))
   const aulasFixas = turmas.flatMap((t) =>
-    (t.matriz_curricular ?? []).filter((item) => item.horarios_fixos?.length).map((item) => ({ turma: t, item })),
+    (t.matriz_curricular ?? [])
+      .filter((item) => item.horarios_fixos?.length || item.so_tarde)
+      .map((item) => ({ turma: t, item })),
   )
 
   return (
@@ -107,7 +109,7 @@ export function GenerationRulesPage() {
               Aulas fixadas
             </h2>
             <p className="text-[13px] text-muted">
-              Ficam exatamente onde foram fixadas. Para mudar, edite a matriz da turma.
+              Ficam onde foram fixadas ou só nas tardes da turma. Para mudar, edite a matriz da turma.
             </p>
           </div>
           {loadingTurmas ? (
@@ -147,9 +149,12 @@ export function GenerationRulesPage() {
                         {professoresDoItem(item, nomePorId).join(', ') || 'Sem professor'}
                       </td>
                       <td className="py-2.5 pr-3">
-                        {item
-                          .horarios_fixos!.map((f) => `${f.dia_semana}, ${f.horario ?? 'qualquer horário'}`)
-                          .join('; ')}
+                        {[
+                          ...(item.so_tarde ? ['Só à tarde'] : []),
+                          ...(item.horarios_fixos ?? []).map(
+                            (f) => `${f.dia_semana}, ${f.horario ?? 'qualquer horário'}`,
+                          ),
+                        ].join('; ')}
                       </td>
                       <td className="py-2.5 text-right">
                         <Link to={paths.matrizDaTurma(turma.id!)} className="font-semibold hover:underline">

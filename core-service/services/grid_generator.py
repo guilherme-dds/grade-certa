@@ -164,6 +164,7 @@ class GridGeneratorService:
                             else inferir_aula_dobrada(nome_disc)
                         ),
                         tipo_sala=self._tipo_sala(disc, nome_disc, tipos_cadastrados),
+                        so_tarde=bool(item.get("so_tarde")),
                     )
                 )
             turmas.append(

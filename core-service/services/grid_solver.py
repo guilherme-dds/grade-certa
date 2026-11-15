@@ -35,6 +35,7 @@ REGRAS = {
     "primeira_ultima": "quem dá a primeira aula do turno não dá a última",
     "planejamento": f"{PLANEJAMENTOS_SEMANAIS} horários de planejamento por professor",
     "horarios_fixos": "aulas com dia ou horário fixos",
+    "so_tarde": "disciplinas só à tarde",
     "manha_completa": "manhãs completas nas turmas de manhã + tardes",
     "estrutura_tardes": "tardes completas ou meia tarde nas turmas de manhã + tardes",
     "almoco": "almoço dos professores",
@@ -116,6 +117,8 @@ class ItemInput:
     # na quarta à tarde). Horário None = qualquer horário daquele dia. As aulas restantes,
     # se houver, o gerador distribui.
     horarios_fixos: List[Tuple[str, Optional[str]]] = field(default_factory=list)
+    # Só nos horários da tarde da turma
+    so_tarde: bool = False
 
     def fixos_exatos(self) -> set:
         return {(dia, h) for dia, h in self.horarios_fixos if h}
@@ -301,6 +304,27 @@ def _opcoes_almoco(almoco: Almoco, horarios: List[str]) -> List[List[int]]:
     return [o for o in opcoes if not any(set(m) < set(o) for m in opcoes)]
 
 
+def _erro_so_tarde(t: TurmaInput, item: ItemInput, slots: List[dict]) -> Optional[str]:
+    """Mensagem quando a disciplina só à tarde não cabe nas tardes da turma (None se cabe)."""
+    onde = f"'{item.disciplina}' na turma '{t.nome}'"
+    tarde = [s["horario"] for s in slots if s["turno"] == "tarde"]
+    if not tarde:
+        return f"Inviável: {onde} está marcada só à tarde, mas o turno '{t.turno}' não tem aulas à tarde."
+    dias = t.dias_com_tarde()
+    for dia, horario in item.horarios_fixos:
+        if horario is not None and horario not in tarde:
+            return f"Inviável: {onde} está marcada só à tarde, mas tem horário fixo de manhã ({dia}, {horario})."
+        if horario is None and dia not in dias:
+            return f"Inviável: {onde} está marcada só à tarde, mas está fixa em {dia}, um dia sem aula à tarde."
+    por_dia = min(len(tarde), 2 if item.aula_dobrada else 1)
+    if item.aulas_semanais > por_dia * len(dias):
+        return (
+            f"Inviável: {onde} tem {item.aulas_semanais} aulas e está marcada só à tarde, mas as "
+            f"{len(dias)} tardes da turma comportam no máximo {por_dia * len(dias)} aulas dela."
+        )
+    return None
+
+
 def resolver_grade(
     turmas: List[TurmaInput],
     professores: Dict[str, ProfessorInput],
@@ -367,6 +391,10 @@ def resolver_grade(
                         f"que não é um horário de aula da turma no turno '{t.turno}'.",
                         avisos,
                     )
+            if item.so_tarde:
+                erro = _erro_so_tarde(t, item, slots)
+                if erro:
+                    return _inviavel(erro, avisos)
             max_semana = len(DIAS_SEMANA) * (2 if item.aula_dobrada else 1)
             if item.aulas_semanais > max_semana:
                 regra = "no máximo 2 por dia" if item.aula_dobrada else "aulas individuais, 1 por dia"
@@ -379,6 +407,14 @@ def resolver_grade(
                 aulas_por_prof[chave] = aulas_por_prof.get(chave, 0) + item.aulas_semanais
             if not item.professores:
                 avisos.append(f"'{item.disciplina}' na turma '{t.nome}' está sem professor.")
+        so_tarde = sum(i.aulas_semanais for i in t.itens if i.so_tarde)
+        horarios_tarde = len(t.dias_com_tarde()) * sum(1 for s in slots if s["turno"] == "tarde")
+        if so_tarde > horarios_tarde:
+            return _inviavel(
+                f"Inviável: a turma '{t.nome}' tem {so_tarde} aulas de disciplinas só à tarde, mas as "
+                f"tardes dela têm {horarios_tarde} horários na semana.",
+                avisos,
+            )
 
     for chave, total in aulas_por_prof.items():
         prof = professores[chave]
@@ -517,6 +553,15 @@ def resolver_grade(
                     for s in slots
                     if s["turno"] == "tarde" and (dia, s["horario"]) not in fixos_tarde
                 ]
+
+    # Disciplinas só à tarde: nenhuma aula nos horários da manhã
+    for t in turmas:
+        manha = [s["ordem"] for s in turma_slots[t.id] if s["turno"] != "tarde"]
+        for idx, item in enumerate(t.itens):
+            if item.so_tarde:
+                for dia in DIAS_SEMANA:
+                    for o in manha:
+                        model.Add(x[(t.id, idx, dia, o)] == 0).OnlyEnforceIf(lits["so_tarde"])
 
     # Aulas com dia (e horário) definidos pela escola
     for t in turmas:
