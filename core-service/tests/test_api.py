@@ -559,3 +559,57 @@ def test_excluir_disciplina_em_matriz_e_recusado(ctx_disciplinas):
     resp = client.delete(f"/disciplinas/{musica.id}")
     assert resp.status_code == 409
     assert "6º Ano A" in resp.json()["detail"]
+
+
+def test_excluir_disciplina_tirando_das_matrizes(ctx_disciplinas):
+    from database.models import DisciplinaDB
+
+    client, db = ctx_disciplinas
+    musica = DisciplinaDB(nome="Música", quantidade_aulas=2)
+    db.add(musica)
+    db.flush()
+    prof = ProfessorDB(nome="Ana", email="ana@x.com", disciplinas=[musica.id])
+    turma = TurmaDB(nome="6º Ano A", turno="Manhã", matriz_curricular=[
+        {"disciplina": "musica", "aulas_semanais": 2},
+        {"disciplina": "Arte", "aulas_semanais": 2},
+    ])
+    db.add_all([prof, turma])
+    db.commit()
+    musica_id, prof_id, turma_id = musica.id, prof.id, turma.id
+
+    r = client.delete(f"/disciplinas/{musica_id}", params={"tirar_das_matrizes": True})
+    assert r.status_code == 204, r.text
+    db.expire_all()
+    assert db.get(TurmaDB, turma_id).matriz_curricular == [{"disciplina": "Arte", "aulas_semanais": 2}]
+    assert db.get(ProfessorDB, prof_id).disciplinas == []
+
+
+def test_renomear_disciplina_troca_nas_matrizes_e_mantem_o_resto(ctx_disciplinas):
+    from database.models import DisciplinaDB
+
+    client, db = ctx_disciplinas
+    lp = DisciplinaDB(nome="LP - Gramatica", quantidade_aulas=4, area="Linguagens", aula_dobrada=True)
+    db.add_all([lp, DisciplinaDB(nome="Arte", quantidade_aulas=2)])
+    turma = TurmaDB(nome="6º Ano A", turno="Manhã", matriz_curricular=[
+        {"disciplina": "LP - Gramatica", "aulas_semanais": 4, "professor_ids": [1]},
+        {"disciplina": "Arte", "aulas_semanais": 2},
+    ])
+    db.add(turma)
+    db.commit()
+    lp_id, turma_id = lp.id, turma.id
+
+    r = client.put(f"/disciplinas/{lp_id}", json={"nome": "  LP – Gramática "})
+    assert r.status_code == 200, r.text
+    assert r.json()["nome"] == "LP – Gramática"
+    assert r.json()["area"] == "Linguagens" and r.json()["aula_dobrada"] is True
+    db.expire_all()
+    assert db.get(TurmaDB, turma_id).matriz_curricular == [
+        {"disciplina": "LP – Gramática", "aulas_semanais": 4, "professor_ids": [1]},
+        {"disciplina": "Arte", "aulas_semanais": 2},
+    ]
+
+    # Nome de outra disciplina (sem olhar acento e caixa) é recusado, ao renomear e ao criar
+    assert client.put(f"/disciplinas/{lp_id}", json={"nome": "arte"}).status_code == 409
+    assert client.post("/disciplinas/", json={"nome": "ÁRTE", "quantidade_aulas": 2}).status_code == 409
+    assert client.put(f"/disciplinas/{lp_id}", json={"nome": "  "}).status_code == 422
+

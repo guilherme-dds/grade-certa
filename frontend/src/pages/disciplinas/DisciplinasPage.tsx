@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createDisciplina, deleteDisciplina, getDisciplinas } from '@/api/disciplinas'
+import { createDisciplina, deleteDisciplina, getDisciplinas, renameDisciplina } from '@/api/disciplinas'
 import { getProfessores } from '@/api/professores'
 import { getTurmas } from '@/api/turmas'
 import { Button } from '@/components/ui/Button'
@@ -27,11 +27,17 @@ interface DisciplinaRow {
   turmasSemProfessor: { id: number; nome: string }[]
 }
 
+/** "A", "A e B", "A, B e C" */
+function listar(nomes: string[]) {
+  return nomes.length <= 1 ? (nomes[0] ?? '') : `${nomes.slice(0, -1).join(', ')} e ${nomes.at(-1)}`
+}
+
 export function DisciplinasPage() {
   const queryClient = useQueryClient()
   const confirm = useConfirm()
   const toast = useToast()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [renomeando, setRenomeando] = useState<DisciplinaRow | null>(null)
   const [filter, setFilter] = useState('todas')
   const [search, setSearch] = useState('')
   const [erroExclusao, setErroExclusao] = useState<string | null>(null)
@@ -47,6 +53,19 @@ export function DisciplinasPage() {
       return queryClient.invalidateQueries({ queryKey: ['disciplinas'] })
     },
   })
+
+  const recarregar = () =>
+    Promise.all(
+      ['disciplinas', 'professores', 'turmas'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })),
+    )
+
+  // O backend também troca o nome nas matrizes das turmas
+  const renomear = async (r: DisciplinaRow, nome: string) => {
+    if (r.id == null) return
+    const salva = await renameDisciplina(r.id, nome)
+    await recarregar()
+    toast(`${r.nome} agora se chama ${salva.nome}`)
+  }
 
   const rows = useMemo<DisciplinaRow[]>(() => {
     const ativos = (professoresQuery.data ?? []).filter((p) => p.ativo)
@@ -92,25 +111,28 @@ export function DisciplinasPage() {
     await queryClient.invalidateQueries({ queryKey: ['turmas'] })
   }
 
-  // Só sai disciplina que não está em nenhuma matriz; o cadastro dos professores é limpo junto
+  // Sai do cadastro dos professores e, se estiver em alguma matriz, das matrizes também
   const excluir = async (r: DisciplinaRow) => {
     if (r.id == null) return
+    const naMatriz = r.turmas.length > 0
+    const partes = [
+      naMatriz &&
+        `As ${r.aulasSemana} ${r.aulasSemana === 1 ? 'aula' : 'aulas'} por semana saem da matriz de ${listar(r.turmas.map((t) => t.nome))}, que ${r.turmas.length === 1 ? 'fica' : 'ficam'} com horários vagos até você completar a matriz.`,
+      r.professores.length > 0 && `${r.nome} também sai do cadastro de ${listar(r.professores)}.`,
+      naMatriz && 'Grades já geradas não mudam.',
+      'Não dá para desfazer.',
+    ]
     const ok = await confirm({
       title: `Excluir ${r.nome}?`,
-      description: r.professores.length
-        ? `${r.nome} também sai do cadastro de ${r.professores.join(', ')}. Não dá para desfazer.`
-        : 'Não dá para desfazer.',
-      confirmLabel: 'Excluir',
+      description: partes.filter(Boolean).join(' '),
+      confirmLabel: naMatriz ? 'Excluir e tirar das matrizes' : 'Excluir',
       tone: 'danger',
     })
     if (!ok) return
     setErroExclusao(null)
     try {
-      await deleteDisciplina(r.id)
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['disciplinas'] }),
-        queryClient.invalidateQueries({ queryKey: ['professores'] }),
-      ])
+      await deleteDisciplina(r.id, { tirarDasMatrizes: naMatriz })
+      await recarregar()
       toast(`${r.nome} excluída`)
     } catch (err) {
       setErroExclusao(getApiErrorMessage(err, `Não foi possível excluir ${r.nome}.`))
@@ -246,13 +268,15 @@ export function DisciplinasPage() {
             {
               header: 'Ações',
               className: 'w-px',
-              cell: (r) =>
-                foraDasMatrizes(r) ? (
-                  <RowMenu
-                    label={`Mais ações para ${r.nome}`}
-                    items={[{ label: 'Excluir disciplina', danger: true, onSelect: () => excluir(r) }]}
-                  />
-                ) : null,
+              cell: (r) => (
+                <RowMenu
+                  label={`Mais ações para ${r.nome}`}
+                  items={[
+                    { label: 'Renomear', onSelect: () => setRenomeando(r) },
+                    { label: 'Excluir disciplina', danger: true, onSelect: () => excluir(r) },
+                  ]}
+                />
+              ),
             },
           ]}
         />
@@ -261,8 +285,22 @@ export function DisciplinasPage() {
       {isDialogOpen && (
         <SubjectDialog
           availableSubjects={rows.map((r) => r.nome)}
-          onAddSubject={(nome) => createMutation.mutate(nome.trim())}
+          onSave={(nome) => createMutation.mutateAsync(nome)}
           onClose={() => setIsDialogOpen(false)}
+        />
+      )}
+
+      {renomeando && (
+        <SubjectDialog
+          availableSubjects={rows.map((r) => r.nome)}
+          currentName={renomeando.nome}
+          renameHint={
+            renomeando.turmas.length
+              ? `O novo nome vai para a matriz de ${listar(renomeando.turmas.map((t) => t.nome))} e para o cadastro dos professores. Grades já geradas continuam com o nome antigo.`
+              : undefined
+          }
+          onSave={(nome) => renomear(renomeando, nome)}
+          onClose={() => setRenomeando(null)}
         />
       )}
     </>
