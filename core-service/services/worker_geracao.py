@@ -6,6 +6,10 @@ roda o solver. Assim, reiniciar a API não interrompe uma geração. Se o própr
 parar no meio, ao voltar ele refaz a geração do zero; depois de MAX_TENTATIVAS
 interrupções seguidas (ex.: falta de memória), a grade fica com status "erro".
 
+Para cancelar, a API muda o status para "cancelando". Durante a busca o solver confere
+isso a cada segundo, para e o worker apaga a grade. Uma que ficou "cancelando" sem estar
+rodando (ex.: o worker caiu) é apagada na volta seguinte do laço.
+
 Rodar: python -m services.worker_geracao
 """
 import logging
@@ -27,11 +31,29 @@ def proxima_pendente(db: Session) -> Optional[GradeDB]:
     return db.query(GradeDB).filter(GradeDB.status == "gerando").order_by(GradeDB.id).first()
 
 
+def apagar_canceladas(db: Session) -> int:
+    """Apaga as gerações canceladas que não estão rodando (o worker roda uma por vez)."""
+    canceladas = db.query(GradeDB).filter(GradeDB.status == "cancelando").all()
+    for grade in canceladas:
+        db.delete(grade)
+    db.commit()
+    return len(canceladas)
+
+
+def foi_cancelada(session_factory, grade_id: int) -> bool:
+    """Lido numa sessão à parte: a da geração não enxerga a mudança feita pela API."""
+    with session_factory() as db:
+        status = db.query(GradeDB.status).filter(GradeDB.id == grade_id).scalar()
+    return status != "gerando"
+
+
 def executar_geracao(session_factory, grade_id: int) -> None:
     """Roda o solver e grava o resultado (ou o erro) na grade."""
     db = session_factory()
     try:
         grade = db.get(GradeDB, grade_id)
+        if grade is None or grade.status != "gerando":
+            return
         detalhes = grade.detalhes or {}
         tentativa = int(detalhes.get("tentativas", 0)) + 1
         if tentativa > MAX_TENTATIVAS:
@@ -47,14 +69,22 @@ def executar_geracao(session_factory, grade_id: int) -> None:
         grade.detalhes = {**detalhes, "tentativas": tentativa}
         db.commit()
         logger.info("Gerando a grade %s (tentativa %s)", grade_id, tentativa)
-        GridGeneratorService(db).generate(
-            grade=grade, tempo_limite_seg=float(detalhes.get("tempo_limite_seg") or TEMPO_LIMITE_SEG)
+        resultado = GridGeneratorService(db).generate(
+            grade=grade,
+            tempo_limite_seg=float(detalhes.get("tempo_limite_seg") or TEMPO_LIMITE_SEG),
+            cancelado=lambda: foi_cancelada(session_factory, grade_id),
         )
-        logger.info("Grade %s terminou com status %s", grade_id, grade.status)
+        logger.info("Grade %s terminou com status %s", grade_id, resultado.get("status"))
     except Exception:
         logger.exception("Falha na geração da grade %s", grade_id)
         db.rollback()
         grade = db.get(GradeDB, grade_id)
+        if grade is None:
+            return
+        if grade.status == "cancelando":
+            db.delete(grade)
+            db.commit()
+            return
         grade.status = "erro"
         grade.detalhes = {**(grade.detalhes or {}), "mensagem": "Erro inesperado ao gerar a grade."}
         db.commit()
@@ -67,6 +97,7 @@ def processar_pendentes(session_factory) -> int:
     processadas = 0
     while True:
         with session_factory() as db:
+            apagar_canceladas(db)
             grade = proxima_pendente(db)
             grade_id = grade.id if grade else None
         if grade_id is None:

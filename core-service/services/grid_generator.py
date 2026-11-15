@@ -1,5 +1,5 @@
 import os
-from typing import Dict, Any, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy.orm import Session, joinedload
 
@@ -43,6 +43,7 @@ class GridGeneratorService:
         ano_semestre: str = "",
         tempo_limite_seg: Optional[float] = None,
         grade: Optional[GradeDB] = None,
+        cancelado: Optional[Callable[[], bool]] = None,
     ) -> Dict[str, Any]:
         """
         Carrega os cadastros, executa o CP-SAT (services/grid_solver.py) e grava o resultado
@@ -183,7 +184,13 @@ class GridGeneratorService:
             self.db.flush()
 
         tempo_limite = tempo_limite_seg or TEMPO_LIMITE_SEG
-        resultado = resolver_grade(turmas, professores, salas, tempo_limite_seg=tempo_limite)
+        resultado = resolver_grade(turmas, professores, salas, tempo_limite_seg=tempo_limite, cancelado=cancelado)
+        if resultado.status == "cancelada":
+            # Cancelada pela tela: nada é salvo e a geração sai do histórico
+            grade_id = grade.id
+            self.db.delete(grade)
+            self.db.commit()
+            return {"sucesso": False, "status": "cancelada", "mensagem": resultado.mensagem, "grade_id": grade_id}
         avisos = avisos_carga + resultado.avisos
         detalhes = {
             "mensagem": resultado.mensagem,

@@ -1,14 +1,17 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { gerarGrade, getHistoricoGrades, getStatusGrade, type GradeResumo } from '@/api/grades'
+import { isAxiosError } from 'axios'
+import { cancelarGeracao, gerarGrade, getHistoricoGrades, getStatusGrade, type GradeResumo } from '@/api/grades'
 import { getProfessores, type ProfessorBackend } from '@/api/professores'
 import { getTurmas, type TurmaBackend } from '@/api/turmas'
 import { GenerationWarnings } from '@/components/GenerationWarnings'
 import { Button } from '@/components/ui/Button'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { buttonStyles } from '@/components/ui/buttonStyles'
 import { Icon } from '@/components/ui/Icon'
 import { Select } from '@/components/ui/Select'
+import { useToast } from '@/components/ui/Toast'
 import { paths } from '@/config/paths'
 import { getApiErrorMessage } from '@/lib/apiError'
 import { professoresAcimaDaCarga } from '@/lib/cargaDocente'
@@ -17,7 +20,7 @@ import { fixoIndisponivel, useDisponibilidades } from '@/lib/fixosIndisponiveis'
 import { capacidadeSemanal, formatDateTime, formatDuracao, horariosDaTurma, parseServerDate } from '@/lib/schedule'
 import { useHorarios } from '@/schedule/useHorarios'
 import { useSchedule } from '@/schedule/useSchedule'
-import { isFalha, STATUS_LABEL } from './generationShared'
+import { isEmAndamento, isFalha, STATUS_LABEL } from './generationShared'
 
 /** Mesmo padrão do backend: "2026.2" para o 2º semestre de 2026 */
 function semestreAtual() {
@@ -34,9 +37,23 @@ const TEMPOS_LIMITE = [
   { value: '900', label: '15 minutos' },
 ]
 
+/** Status da geração; depois de cancelada ela é apagada no servidor e o status passa a 404 */
+async function statusOuCancelada(gradeId: number): Promise<GradeResumo> {
+  try {
+    return await getStatusGrade(gradeId)
+  } catch (err) {
+    if (isAxiosError(err) && err.response?.status === 404) {
+      return { id: gradeId, nome: '', status: 'cancelada', total_aulas: 0 }
+    }
+    throw err
+  }
+}
+
 export function GenerationPage() {
   const queryClient = useQueryClient()
   const { refreshSchedule } = useSchedule()
+  const confirm = useConfirm()
+  const toast = useToast()
 
   const [nomeGrade, setNomeGrade] = useState(`Grade ${semestreAtual()}`)
   const [tempoLimite, setTempoLimite] = useState('120')
@@ -45,6 +62,7 @@ export function GenerationPage() {
   // Geração acompanhada nesta tela (iniciada aqui ou já em andamento ao abrir a página)
   const [geracaoId, setGeracaoId] = useState<number | null>(null)
   const [elapsed, setElapsed] = useState(0)
+  const [isCancelling, setIsCancelling] = useState(false)
 
   const { data: turmas = [], isLoading: loadingTurmas } = useQuery<TurmaBackend[]>({
     queryKey: ['turmas'],
@@ -61,7 +79,7 @@ export function GenerationPage() {
   })
 
   // Ao abrir a página com uma geração rodando (ex.: depois de recarregar), volta a acompanhá-la
-  const emAndamento = historico.find((g) => g.status === 'gerando')
+  const emAndamento = historico.find((g) => isEmAndamento(g.status))
   // Guarda o id para continuar mostrando o resultado depois que ela sai de "gerando"
   if (emAndamento && geracaoId == null) setGeracaoId(emAndamento.id)
   const acompanhada = geracaoId ?? emAndamento?.id ?? null
@@ -69,13 +87,14 @@ export function GenerationPage() {
   // Consulta o status a cada 2s enquanto o solver roda
   const { data: geracao } = useQuery({
     queryKey: ['statusGrade', acompanhada],
-    queryFn: () => getStatusGrade(acompanhada!),
+    queryFn: () => statusOuCancelada(acompanhada!),
     enabled: acompanhada != null,
-    refetchInterval: (query) => (query.state.data?.status === 'gerando' ? 2000 : false),
+    refetchInterval: (query) => (query.state.data && isEmAndamento(query.state.data.status) ? 2000 : false),
   })
-  const isGenerating = isStarting || geracao?.status === 'gerando'
+  const isGenerating = isStarting || (geracao != null && isEmAndamento(geracao.status))
+  const isStopping = isCancelling || geracao?.status === 'cancelando'
   // O tempo conta desde o início no servidor, para não zerar quando a pessoa sai e volta para a tela
-  const inicioGeracao = geracao?.status === 'gerando' && geracao.criado_em ? geracao.criado_em : null
+  const inicioGeracao = isGenerating && geracao?.criado_em ? geracao.criado_em : null
 
   useEffect(() => {
     if (!isGenerating) return
@@ -90,18 +109,44 @@ export function GenerationPage() {
   }, [isGenerating, inicioGeracao])
 
   // Durante a geração, os campos mostram o nome e o tempo dela, e não o rascunho da próxima
-  const rodando = geracao?.status === 'gerando' ? geracao : null
+  const rodando = geracao && isEmAndamento(geracao.status) ? geracao : null
   const nomeExibido = rodando ? rodando.nome : nomeGrade
   const tempoExibido =
     rodando?.detalhes?.tempo_limite_seg != null ? String(rodando.detalhes.tempo_limite_seg) : tempoLimite
 
   // Quando a geração termina: atualiza o histórico e, se deu certo, a grade exibida no sistema
-  const statusFinal = geracao && geracao.status !== 'gerando' ? geracao.status : null
+  const statusFinal = geracao && !isEmAndamento(geracao.status) ? geracao.status : null
   useEffect(() => {
     if (!statusFinal || !geracao) return
     queryClient.invalidateQueries({ queryKey: ['historicoGrades'] })
     if (statusFinal === 'sucesso') refreshSchedule(geracao.id)
-  }, [statusFinal, geracao, queryClient, refreshSchedule])
+    if (statusFinal === 'cancelada') toast('Geração cancelada. Nada foi salvo.')
+  }, [statusFinal, geracao, queryClient, refreshSchedule, toast])
+
+  const handleCancelar = async () => {
+    if (acompanhada == null) return
+    const ok = await confirm({
+      title: 'Cancelar a geração?',
+      description: 'A busca para agora e nada é salvo. A geração também sai do histórico.',
+      confirmLabel: 'Cancelar geração',
+      cancelLabel: 'Continuar gerando',
+      tone: 'danger',
+    })
+    if (!ok) return
+    setErrorMessage(null)
+    setIsCancelling(true)
+    try {
+      const { status } = await cancelarGeracao(acompanhada)
+      // "cancelada": já foi apagada; "cancelando": o worker para em instantes e o status passa a 404
+      queryClient.setQueryData<GradeResumo>(['statusGrade', acompanhada], (atual) =>
+        atual ? { ...atual, status } : atual,
+      )
+    } catch (err) {
+      setErrorMessage(getApiErrorMessage(err, 'Não foi possível cancelar a geração.'))
+    } finally {
+      setIsCancelling(false)
+    }
+  }
 
   // Checagem antes de gerar
   const temMatriz = (t: TurmaBackend) => (t.matriz_curricular || []).some((item) => Number(item.aulas_semanais) > 0)
@@ -317,7 +362,7 @@ export function GenerationPage() {
               <div className="flex items-center justify-between text-[13.5px]">
                 <span className="flex items-center gap-2 font-semibold">
                   <span className="size-3.5 animate-spin rounded-full border-2 border-accent border-r-transparent" />
-                  Gerando…
+                  {isStopping ? 'Cancelando…' : 'Gerando…'}
                 </span>
                 <span className="text-white/55 tabular-nums">
                   {elapsed}s de até {Math.round(limiteAtual / 60)} min
@@ -329,7 +374,21 @@ export function GenerationPage() {
                   style={{ width: `${Math.min(100, (elapsed / limiteAtual) * 100)}%` }}
                 />
               </div>
-              <p className="mt-2 text-[12.5px] text-white/45">Pode sair desta tela; a geração continua.</p>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <p className="text-[12.5px] text-white/45">
+                  {isStopping ? 'Parando a busca. Nada será salvo.' : 'Pode sair desta tela; a geração continua.'}
+                </p>
+                {acompanhada != null && (
+                  <button
+                    type="button"
+                    onClick={handleCancelar}
+                    disabled={isStopping}
+                    className="shrink-0 rounded-full border border-white/20 px-3.5 py-1.5 text-[12.5px] font-semibold text-white/85 hover:border-white/40 hover:text-white disabled:opacity-50"
+                  >
+                    Cancelar geração
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             <Button

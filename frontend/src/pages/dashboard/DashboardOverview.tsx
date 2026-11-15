@@ -15,6 +15,7 @@ import type { Lesson } from '@/schedule/ScheduleContext'
 import { paths } from '@/config/paths'
 import { useSchedule } from '@/schedule/useSchedule'
 import { useWorkflow, type StepState } from '@/schedule/useWorkflow'
+import { isEmAndamento, isFalha as falhou } from '../generation/generationShared'
 import { WeekBoard } from './WeekBoard'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -44,8 +45,8 @@ export function DashboardOverview() {
   const semDisponibilidade = ativos.length - comDisponibilidade
 
   const ultimaGeracao = historico[0] as GradeResumo | undefined
-  const isGerando = ultimaGeracao?.status === 'gerando'
-  const isFalha = ultimaGeracao != null && ultimaGeracao.status !== 'gerando' && ultimaGeracao.status !== 'sucesso'
+  const isGerando = ultimaGeracao != null && isEmAndamento(ultimaGeracao.status)
+  const isFalha = ultimaGeracao != null && falhou(ultimaGeracao.status)
 
   // Prontidão da escola para gerar: turmas com matriz e docentes com disponibilidade
   const temMatriz = (t: (typeof turmas)[number]) =>

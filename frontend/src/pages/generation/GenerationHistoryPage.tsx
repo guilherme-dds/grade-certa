@@ -11,7 +11,7 @@ import { cn } from '@/lib/cn'
 import { getApiErrorMessage } from '@/lib/apiError'
 import { formatDateTime, formatDuracao } from '@/lib/schedule'
 import { useSchedule } from '@/schedule/useSchedule'
-import { isFalha, STATUS_LABEL } from './generationShared'
+import { isEmAndamento, isFalha, STATUS_LABEL } from './generationShared'
 
 /** Todas as gerações, da mais recente para a mais antiga; abrir uma a torna a grade exibida no sistema. */
 export function GenerationHistoryPage() {
@@ -131,7 +131,7 @@ export function GenerationHistoryPage() {
                           className={cn(
                             'inline-flex rounded-full px-2.5 py-1 text-[12px] font-semibold whitespace-nowrap',
                             g.status === 'sucesso' && 'bg-primary-soft text-primary',
-                            g.status === 'gerando' && 'bg-warning-soft text-warning',
+                            isEmAndamento(g.status) && 'bg-warning-soft text-warning',
                             isFalha(g.status) && 'bg-danger-soft text-danger',
                           )}
                         >
@@ -163,7 +163,7 @@ export function GenerationHistoryPage() {
                             Excluir
                           </button>
                         )}
-                        {g.status === 'gerando' && (
+                        {isEmAndamento(g.status) && (
                           <Link to={paths.geracao} className="text-[13px] font-semibold hover:underline">
                             Acompanhar
                           </Link>

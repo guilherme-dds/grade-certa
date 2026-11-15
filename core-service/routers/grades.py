@@ -64,11 +64,35 @@ def excluir_grade(grade_id: int, db: Session = Depends(get_db)):
     grade = db.get(GradeDB, grade_id)
     if not grade:
         raise HTTPException(status_code=404, detail="Grade não encontrada")
-    if grade.status == "gerando":
+    if grade.status in ("gerando", "cancelando"):
         raise HTTPException(status_code=409, detail="A geração desta grade ainda está em andamento.")
     db.delete(grade)
     db.commit()
     return None
+
+
+@router.post("/{grade_id}/cancelar")
+def cancelar_geracao(grade_id: int, db: Session = Depends(get_db)):
+    """
+    Cancela uma geração: nada é salvo e ela sai do histórico. Se ainda estava na fila, é
+    apagada na hora ("cancelada"); se o worker já está rodando, ele para a busca em até
+    ~1 s e apaga a grade ("cancelando" até lá; depois, GET /status devolve 404).
+    """
+    grade = db.get(GradeDB, grade_id)
+    if not grade:
+        raise HTTPException(status_code=404, detail="Grade não encontrada")
+    if grade.status == "cancelando":
+        return {"id": grade.id, "status": "cancelando"}
+    if grade.status != "gerando":
+        raise HTTPException(status_code=409, detail="Esta geração já terminou e não pode mais ser cancelada.")
+    if "tentativas" not in (grade.detalhes or {}):
+        # O worker ainda não pegou: basta apagar
+        db.delete(grade)
+        db.commit()
+        return {"id": grade_id, "status": "cancelada"}
+    grade.status = "cancelando"
+    db.commit()
+    return {"id": grade.id, "status": "cancelando"}
 
 
 @router.post("/{grade_id}/duplicar", status_code=status.HTTP_201_CREATED)
@@ -104,7 +128,7 @@ def duplicar_grade(grade_id: int, nome: Optional[str] = Query(None, description=
 
 @router.get("/{grade_id}/status")
 def status_grade(grade_id: int, db: Session = Depends(get_db)):
-    """Situação de uma geração: "gerando", "sucesso", "inviavel", "tempo_esgotado" ou "erro"."""
+    """Situação de uma geração: "gerando", "cancelando", "sucesso", "inviavel", "tempo_esgotado" ou "erro"."""
     grade = db.get(GradeDB, grade_id)
     if not grade:
         raise HTTPException(status_code=404, detail="Grade não encontrada")

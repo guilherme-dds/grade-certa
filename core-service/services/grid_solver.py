@@ -6,9 +6,10 @@ aulas e os horários de planejamento alocados. Fica separado do GridGeneratorSer
 para poder ser testado sem MySQL.
 """
 import re
+import threading
 import unicodedata
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from ortools.sat.python import cp_model
 
@@ -212,6 +213,48 @@ class SolverResult:
     tempo_seg: float = 0.0
 
 
+MENSAGEM_CANCELADA = "Geração cancelada antes de terminar."
+# De quanto em quanto tempo a busca confere se a geração foi cancelada
+INTERVALO_CANCELAMENTO_SEG = 1.0
+
+
+def _foi_cancelado(cancelado: Optional[Callable[[], bool]]) -> bool:
+    if cancelado is None:
+        return False
+    try:
+        return bool(cancelado())
+    except Exception:
+        # Uma falha ao conferir (ex.: banco fora do ar) não derruba a geração
+        return False
+
+
+def _resolver(solver: cp_model.CpSolver, model: cp_model.CpModel, cancelado: Optional[Callable[[], bool]]):
+    """Solve que para a busca no meio quando `cancelado()` passa a devolver True."""
+    if cancelado is None:
+        return solver.Solve(model)
+    terminou = threading.Event()
+
+    def vigiar():
+        while not terminou.wait(INTERVALO_CANCELAMENTO_SEG):
+            if _foi_cancelado(cancelado):
+                solver.stop_search()
+                return
+
+    vigia = threading.Thread(target=vigiar, daemon=True)
+    vigia.start()
+    try:
+        return solver.Solve(model)
+    finally:
+        terminou.set()
+        vigia.join()
+
+
+def _cancelada(avisos: List[str], tempo: float) -> SolverResult:
+    return SolverResult(
+        sucesso=False, status="cancelada", mensagem=MENSAGEM_CANCELADA, avisos=avisos, tempo_seg=tempo
+    )
+
+
 def _inviavel(mensagem: str, avisos: List[str]) -> SolverResult:
     return SolverResult(sucesso=False, status="inviavel", mensagem=mensagem, avisos=avisos)
 
@@ -264,6 +307,7 @@ def resolver_grade(
     tempo_limite_seg: float = 45.0,
     workers: int = 8,
     regras_desligadas: Tuple[str, ...] = (),
+    cancelado: Optional[Callable[[], bool]] = None,
 ) -> SolverResult:
     avisos: List[str] = []
     turmas = [t for t in turmas if any(i.aulas_semanais > 0 for i in t.itens)]
@@ -784,8 +828,10 @@ def resolver_grade(
     solver.parameters.max_time_in_seconds = tempo_limite_seg
     solver.parameters.num_workers = workers
     solver.parameters.stop_after_first_solution = True
-    status = solver.Solve(busca)
+    status = _resolver(solver, busca, cancelado)
     tempo = round(solver.WallTime(), 3)
+    if _foi_cancelado(cancelado):
+        return _cancelada(avisos, tempo)
 
     # Fase 2: melhora essa grade (menos janelas, tardes concentradas, preferências) no tempo que sobrou
     # (sem objetivo, a primeira solução já volta como OPTIMAL)
@@ -797,8 +843,10 @@ def resolver_grade(
         melhoria = cp_model.CpSolver()
         melhoria.parameters.max_time_in_seconds = max(5.0, tempo_limite_seg - tempo)
         melhoria.parameters.num_workers = workers
-        status_melhoria = melhoria.Solve(model)
+        status_melhoria = _resolver(melhoria, model, cancelado)
         tempo = round(tempo + melhoria.WallTime(), 3)
+        if _foi_cancelado(cancelado):
+            return _cancelada(avisos, tempo)
         # As duas cópias têm as mesmas variáveis, então a extração funciona com qualquer um dos solvers
         if status_melhoria in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             solver, status = melhoria, status_melhoria
@@ -811,8 +859,10 @@ def resolver_grade(
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = tempo_limite_seg
         solver.parameters.num_workers = workers
-        solver.Solve(diagnostico)
+        _resolver(solver, diagnostico, cancelado)
         tempo = round(tempo + solver.WallTime(), 3)
+        if _foi_cancelado(cancelado):
+            return _cancelada(avisos, tempo)
         indices = set(solver.SufficientAssumptionsForInfeasibility())
         conflito = [nome for nome, lit in lits.items() if lit.Index() in indices]
         if conflito:

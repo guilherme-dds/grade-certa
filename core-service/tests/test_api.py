@@ -396,6 +396,56 @@ def test_excluir_grade(ctx):
     assert [g["id"] for g in client.get("/grades/historico").json()] == [rodando.id]
 
 
+def test_cancelar_geracao_na_fila_apaga_na_hora(ctx):
+    client, db = ctx
+    _turma_para_gerar(db)
+    grade_id = client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).json()["id"]
+
+    r = client.post(f"/grades/{grade_id}/cancelar")
+    assert r.status_code == 200 and r.json()["status"] == "cancelada"
+    assert client.get(f"/grades/{grade_id}/status").status_code == 404
+    assert _rodar_worker(db) == 0
+    assert client.post(f"/grades/{grade_id}/cancelar").status_code == 404
+
+
+def test_cancelar_geracao_rodando_e_o_worker_apaga(ctx):
+    client, db = ctx
+    # Já pega pelo worker (tem tentativas): fica "cancelando" até o worker parar
+    rodando = GradeDB(nome="Rodando", status="gerando", total_aulas=0,
+                      detalhes={"tempo_limite_seg": 20, "tentativas": 1})
+    pronta = GradeDB(nome="Pronta", status="sucesso", total_aulas=0)
+    db.add_all([rodando, pronta])
+    db.commit()
+
+    assert client.post(f"/grades/{pronta.id}/cancelar").status_code == 409
+    r = client.post(f"/grades/{rodando.id}/cancelar")
+    assert r.json()["status"] == "cancelando"
+    assert client.get(f"/grades/{rodando.id}/status").json()["status"] == "cancelando"
+    assert client.delete(f"/grades/{rodando.id}").status_code == 409
+    # Uma nova geração pode entrar na fila enquanto a cancelada termina de parar
+    assert client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).status_code == 202
+
+    # O worker não estava rodando esta (ex.: caiu): apaga na volta seguinte do laço
+    from services.worker_geracao import apagar_canceladas
+
+    assert apagar_canceladas(db) == 1
+    assert client.get(f"/grades/{rodando.id}/status").status_code == 404
+
+
+def test_worker_para_e_apaga_quando_cancelada_durante_a_busca(ctx, monkeypatch):
+    import services.worker_geracao as worker
+
+    client, db = ctx
+    _turma_para_gerar(db)
+    grade_id = client.post("/grades/gerar-grade", params={"tempo_limite_seg": 20}).json()["id"]
+    # Cancelada assim que a busca começa
+    monkeypatch.setattr(worker, "foi_cancelada", lambda *_: True)
+
+    assert _rodar_worker(db) == 1
+    assert client.get(f"/grades/{grade_id}/status").status_code == 404
+    assert client.get("/grades/historico").json() == []
+
+
 JORNADA = {"almoco_inicio": "12:00", "almoco_fim": "14:00", "almoco_minutos": 40, "max_aulas_dia": 6, "max_horas_dia": 10.5}
 
 

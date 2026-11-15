@@ -581,3 +581,20 @@ def test_duracao_maxima_do_dia():
         if p.professor_chave == "ana":
             por_dia[p.dia].append(parse_slot_range(p.horario))
     assert all(max(f for _, f in faixas) - min(i for i, _ in faixas) <= 3 * 60 for faixas in por_dia.values())
+
+
+def test_cancelada_nao_devolve_grade():
+    turmas, professores = montar_escola()
+    # A escola de teste fecha em menos de um segundo; o cancelamento no meio da busca real
+    # é conferido pelo vigia a cada INTERVALO_CANCELAMENTO_SEG
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=60, cancelado=lambda: True)
+    assert res.status == "cancelada" and not res.sucesso and not res.aulas
+
+
+def test_falha_ao_conferir_o_cancelamento_nao_derruba_a_geracao():
+    def banco_fora():
+        raise RuntimeError("sem conexão")
+
+    turmas, professores = montar_escola()
+    res = resolver_grade(turmas, professores, {}, tempo_limite_seg=TEMPO, cancelado=banco_fora)
+    assert res.sucesso
