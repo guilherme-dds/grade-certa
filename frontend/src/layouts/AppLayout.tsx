@@ -11,6 +11,7 @@ import { ConfirmProvider } from '@/components/ui/ConfirmDialog'
 import { ToastProvider } from '@/components/ui/Toast'
 import { Icon } from '@/components/ui/Icon'
 import { Logo } from '@/components/ui/Logo'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import {
   currentPage,
   isNavItemActive,
@@ -67,7 +68,7 @@ function Shell() {
             type="button"
             aria-label="Fechar menu"
             onClick={() => setMenuOpen(false)}
-            className="absolute inset-0 animate-[fade-in_200ms_ease-out] bg-ink/40 backdrop-blur-[2px]"
+            className="absolute inset-0 animate-[fade-in_200ms_ease-out] bg-black/40 backdrop-blur-[2px]"
           />
           <div className="relative h-full w-[272px] animate-[drawer-in_260ms_cubic-bezier(0.2,0.8,0.2,1)] p-3">
             <Sidebar />
@@ -314,6 +315,8 @@ function Topbar({ onOpenMenu, menuOpen }: { onOpenMenu: () => void; menuOpen: bo
         <Icon name="calendar" width={15} height={15} className="text-muted" />
         <span className="first-letter:uppercase">{today}</span>
       </span>
+
+      <ThemeToggle />
 
       <Link
         to={paths.conflitos}

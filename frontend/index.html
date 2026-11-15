@@ -11,6 +11,12 @@
       rel="stylesheet"
     />
     <title>Grade Certa</title>
+    <script>
+      // Aplica o tema escolhido antes da primeira pintura (sem piscar claro ao abrir no escuro)
+      try {
+        if (localStorage.getItem('grade-certa:tema') === 'escuro') document.documentElement.dataset.theme = 'dark'
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

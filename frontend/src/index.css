@@ -61,6 +61,50 @@
   --shadow-float: 0 1px 2px rgb(21 22 26 / 0.04), 0 8px 24px -12px rgb(21 22 26 / 0.12);
 }
 
+/*
+ * Tema escuro — "a lousa à noite"
+ * As superfícies viram grafite e a lousa ganha o verde de um quadro-negro de verdade; o giz
+ * menta continua sendo o único acento. "white" passa a ser a superfície elevada (cartões,
+ * campos, menus), então o texto branco sobre a tinta (que fica clara) vira escuro sozinho.
+ */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --color-white: #1d2024;
+  --color-canvas: #121417;
+  --color-paper: #191c20;
+  --color-ink: #e8eaed;
+  --color-ink-soft: #c6cad1;
+  --color-muted: #959aa4;
+  --color-line: #2b2f35;
+  --color-line-soft: #23262b;
+
+  --color-navy: #e8eaed;
+  --color-board: #13271f;
+  --color-board-raised: #1b3429;
+
+  --color-primary: #3fd1a6;
+  --color-primary-hover: #64dcb8;
+  --color-primary-soft: #143a2f;
+  --color-primary-soft-line: #1f5645;
+  --color-accent: #3fd1a6;
+
+  --color-warning: #f0a845;
+  --color-warning-soft: #3a2b12;
+  --color-danger: #ff7a5c;
+  --color-danger-soft: #3e1e17;
+  --color-lilac-soft: #29253d;
+
+  --shadow-float: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.5);
+}
+
+/* Na lousa o giz continua branco e a tinta escura, como no tema claro */
+:root[data-theme='dark'] .bg-board {
+  --color-white: #fff;
+  --color-ink: #15161a;
+  --color-ink-soft: #2a2c32;
+}
+
 @layer base {
   html {
     font-feature-settings: 'tnum' 0;
@@ -69,6 +113,7 @@
   body {
     @apply bg-canvas font-sans text-ink antialiased;
     font-size: 15px;
+    transition: background-color 200ms ease;
   }
 
   h1,
@@ -120,7 +165,7 @@
 
 @utility card {
   border-radius: var(--radius-card);
-  background: white;
+  background: var(--color-white);
   box-shadow: var(--shadow-float);
 }
 
@@ -141,6 +186,14 @@
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+/* Ícone do botão de tema ao trocar */
+@keyframes theme-swap {
+  from {
+    opacity: 0;
+    transform: rotate(-60deg) scale(0.6);
   }
 }
 
@@ -212,7 +265,7 @@
 
 @media print {
   body {
-    background: white;
+    background: #fff;
     print-color-adjust: exact;
   }
 

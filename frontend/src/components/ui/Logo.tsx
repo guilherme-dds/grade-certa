@@ -7,7 +7,7 @@ import { cn } from '@/lib/cn'
 export function LogoMark({ className, inverted = false }: { className?: string; inverted?: boolean }) {
   return (
     <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" className={cn('size-8 shrink-0', className)}>
-      <rect width="32" height="32" rx="9" fill={inverted ? '#fff' : '#15161A'} />
+      <rect width="32" height="32" rx="9" fill={inverted ? '#fff' : 'var(--color-board)'} />
       <path
         d="M22.4 9.6A8.6 8.6 0 1 0 24.6 17.6"
         stroke={inverted ? '#15161A' : '#fff'}
