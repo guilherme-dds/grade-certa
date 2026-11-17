@@ -357,6 +357,14 @@ export function CurriculumMatrixDialog({
                                 label: isOpen ? 'Fechar dias e horários fixos' : 'Fixar dia ou horário',
                                 onSelect: () => setExpanded(isOpen ? null : idx),
                               },
+                              ...(fixos.length > 0
+                                ? [
+                                    {
+                                      label: fixos.length === 1 ? 'Desfixar' : 'Desfixar todos os dias e horários',
+                                      onSelect: () => updateItem(idx, { horarios_fixos: [] }),
+                                    },
+                                  ]
+                                : []),
                               {
                                 label: item.extra ? 'Contar no total da matriz' : 'Marcar como aula extra',
                                 onSelect: () => updateItem(idx, { extra: !item.extra }),
@@ -432,15 +440,32 @@ export function CurriculumMatrixDialog({
                               Só à tarde ×
                             </button>
                           )}
-                          {fixos.length > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => setExpanded(isOpen ? null : idx)}
-                              className="rounded-full bg-paper px-2.5 py-0.5 font-medium hover:bg-line-soft"
+                          {fixos.map((f, i) => (
+                            <span
+                              key={`${f.dia_semana}-${f.horario ?? 'dia'}-${i}`}
+                              className="inline-flex items-center rounded-full bg-paper font-medium"
                             >
-                              Fixo: {fixos.map(descricaoFixo).join('; ')}
-                            </button>
-                          )}
+                              <button
+                                type="button"
+                                onClick={() => setExpanded(isOpen ? null : idx)}
+                                title="Abrir dias e horários fixos"
+                                className="rounded-l-full py-0.5 pr-1 pl-2.5 hover:bg-line-soft"
+                              >
+                                Fixo: {descricaoFixo(f)}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateItem(idx, { horarios_fixos: fixos.filter((_, j) => j !== i) })
+                                }
+                                aria-label={`Desfixar ${item.disciplina} de ${descricaoFixo(f)}`}
+                                title="Desfixar"
+                                className="rounded-r-full py-0.5 pr-2.5 pl-1 text-muted hover:bg-danger-soft hover:text-danger"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
                         </div>
                       )}
 
@@ -775,13 +800,14 @@ function FixedSlotsEditor({
         {fixos.map((f, i) => (
           <span
             key={`${f.dia_semana}-${f.horario ?? 'dia'}-${i}`}
-            className="inline-flex h-9 items-center gap-1 rounded-full bg-white py-0.5 pr-1 pl-3 text-[13px] font-medium shadow-xs"
+            className="inline-flex h-9 items-center gap-1 rounded-full bg-paper py-0.5 pr-1 pl-3 text-[13px] font-medium ring-1 ring-line"
           >
             {descricaoFixo(f)}
             <button
               type="button"
               onClick={() => remover(i)}
-              aria-label={`Remover ${descricaoFixo(f)}`}
+              aria-label={`Desfixar ${descricaoFixo(f)}`}
+              title="Desfixar"
               className="grid size-7 place-items-center rounded-full text-muted hover:bg-danger-soft hover:text-danger"
             >
               ×
